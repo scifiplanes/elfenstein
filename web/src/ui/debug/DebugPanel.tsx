@@ -26,8 +26,47 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'camShakePosAmp', label: 'Shake pos amp', min: 0, max: 0.12, step: 0.002, format: (v) => v.toFixed(3) },
       { key: 'camShakeRollDeg', label: 'Shake roll (deg)', min: 0, max: 4, step: 0.05, format: (v) => v.toFixed(2) },
       { key: 'camShakeHz', label: 'Shake Hz', min: 0, max: 22, step: 0.5, format: (v) => v.toFixed(1) },
-      { key: 'camShakeDecayMs', label: 'Shake decay (ms)', min: 40, max: 520, step: 5, format: (v) => String(Math.round(v)) },
+      { key: 'camShakeLengthMs', label: 'Shake length / hold (ms)', min: 0, max: 3000, step: 10, format: (v) => String(Math.round(v)) },
+      { key: 'camShakeDecayMs', label: 'Shake decay / fade (ms)', min: 0, max: 3000, step: 10, format: (v) => String(Math.round(v)) },
       { key: 'camShakeUiMix', label: 'Shake mix (from ui)', min: 0, max: 1.0, step: 0.01, format: (v) => v.toFixed(2) },
+    ],
+    [],
+  )
+
+  const portraitSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+    () => [
+      {
+        key: 'portraitIdleGapMinMs',
+        label: 'Portrait idle gap min (ms)',
+        min: 0,
+        max: 120_000,
+        step: 100,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'portraitIdleGapMaxMs',
+        label: 'Portrait idle gap max (ms)',
+        min: 0,
+        max: 120_000,
+        step: 100,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'portraitIdleFlashMinMs',
+        label: 'Portrait idle flash min (ms)',
+        min: 0,
+        max: 2000,
+        step: 10,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'portraitIdleFlashMaxMs',
+        label: 'Portrait idle flash max (ms)',
+        min: 0,
+        max: 2000,
+        step: 10,
+        format: (v) => String(Math.round(v)),
+      },
     ],
     [],
   )
@@ -67,8 +106,11 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'lowpassNearHz', label: 'Lowpass near (Hz)', min: 200, max: 6000, step: 50 },
       { key: 'lowpassFarHz', label: 'Lowpass far (Hz)', min: 80, max: 1200, step: 20 },
       { key: 'munchVol', label: 'Munch vol', min: 0, max: 2, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'munchCutoffHz', label: 'Munch cutoff start (Hz)', min: 120, max: 4000, step: 20 },
-      { key: 'munchCutoffEndHz', label: 'Munch cutoff end (Hz)', min: 80, max: 2000, step: 20 },
+      { key: 'munchCutoffHz', label: 'Munch noise LP sweep start (Hz)', min: 120, max: 4000, step: 20 },
+      { key: 'munchCutoffEndHz', label: 'Munch noise LP sweep end (Hz)', min: 80, max: 2000, step: 20 },
+      { key: 'munchHighpassHz', label: 'Munch noise HP (Hz)', min: 40, max: 2000, step: 5, format: (v) => String(Math.round(v)) },
+      { key: 'munchHighpassQ', label: 'Munch noise HP Q', min: 0.1, max: 6, step: 0.05, format: (v) => v.toFixed(2) },
+      { key: 'munchLowpassQ', label: 'Munch noise LP Q', min: 0.1, max: 6, step: 0.05, format: (v) => v.toFixed(2) },
       { key: 'munchDurSec', label: 'Munch duration (s)', min: 0.04, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'munchThumpHz', label: 'Munch thump (Hz)', min: 30, max: 220, step: 1 },
       { key: 'munchTremDepth', label: 'Munch trem depth', min: 0, max: 1, step: 0.01, format: (v) => v.toFixed(2) },
@@ -81,6 +123,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const q = query.trim().toLowerCase()
   const visibleCamera = q ? cameraSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cameraSliders
+  const visiblePortrait = q ? portraitSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : portraitSliders
   const visibleRender = q ? renderSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : renderSliders
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
 
@@ -139,6 +182,28 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       </div>
 
       <div className={styles.section}>
+        <div className={styles.sectionTitle}>Portrait</div>
+        {visiblePortrait.map((s) => {
+          const v = state.render[s.key]
+          return (
+            <div key={s.key} className={styles.row}>
+              <div className={styles.label}>{s.label}</div>
+              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <input
+                className={styles.slider}
+                type="range"
+                min={s.min}
+                max={s.max}
+                step={s.step}
+                value={v}
+                onChange={(e) => dispatch({ type: 'render/set', key: s.key, value: Number(e.target.value) })}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      <div className={styles.section}>
         <div className={styles.sectionTitle}>Rendering</div>
         {visibleRender.map((s) => {
           const v = state.render[s.key]
@@ -177,6 +242,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </button>
           <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'hit' })}>
             Play hit
+          </button>
+          <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'step' })}>
+            Play step
+          </button>
+          <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'bump' })}>
+            Play bump
           </button>
         </div>
         {visibleAudio.map((s) => {

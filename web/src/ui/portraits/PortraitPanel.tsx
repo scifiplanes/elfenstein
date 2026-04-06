@@ -7,13 +7,14 @@ import { useCursor } from '../cursor/useCursor'
 import { shakeTransform } from '../feedback/shakeTransform'
 import styles from './PortraitPanel.module.css'
 
-type PortraitSprites = { baseSrc: string; eyesSrc: string; mouthSrc: string }
+type PortraitSprites = { baseSrc: string; eyesSrc: string; mouthSrc: string; idleSrc?: string }
 
 const SPECIES_PORTRAIT: Partial<Record<GameState['party']['chars'][number]['species'], PortraitSprites>> = {
   Igor: {
     baseSrc: '/content/boblin_base.png',
     eyesSrc: '/content/boblin_eyes_open.png',
     mouthSrc: '/content/boblin_mouth_open.png',
+    idleSrc: '/content/boblin_idle.png',
   },
 }
 
@@ -30,6 +31,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   if (!c) return null
   const portrait = SPECIES_PORTRAIT[c.species]
   const [blinkClosed, setBlinkClosed] = useState(false)
+  const [idleFlash, setIdleFlash] = useState(false)
 
   useEffect(() => {
     if (!portrait?.eyesSrc) return
@@ -59,6 +61,44 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     }
   }, [characterId, portrait?.eyesSrc])
 
+  useEffect(() => {
+    if (!portrait?.idleSrc) return
+    let cancelled = false
+    let timeoutId: number | null = null
+
+    const schedule = (ms: number, fn: () => void) => {
+      timeoutId = window.setTimeout(() => {
+        if (cancelled) return
+        fn()
+      }, ms)
+    }
+
+    const { portraitIdleGapMinMs, portraitIdleGapMaxMs, portraitIdleFlashMinMs, portraitIdleFlashMaxMs } = state.render
+    const gapSpan = Math.max(0, portraitIdleGapMaxMs - portraitIdleGapMinMs)
+    const flashSpan = Math.max(0, portraitIdleFlashMaxMs - portraitIdleFlashMinMs)
+
+    const startCycle = () => {
+      setIdleFlash(false)
+      schedule(portraitIdleGapMinMs + Math.random() * gapSpan, () => {
+        setIdleFlash(true)
+        schedule(portraitIdleFlashMinMs + Math.random() * flashSpan, () => startCycle())
+      })
+    }
+
+    startCycle()
+    return () => {
+      cancelled = true
+      if (timeoutId != null) window.clearTimeout(timeoutId)
+    }
+  }, [
+    characterId,
+    portrait?.idleSrc,
+    state.render.portraitIdleGapMinMs,
+    state.render.portraitIdleGapMaxMs,
+    state.render.portraitIdleFlashMinMs,
+    state.render.portraitIdleFlashMaxMs,
+  ])
+
   const isHoveringMouth =
     cursor.state.dragging?.started &&
     cursor.state.hoverTarget?.kind === 'portrait' &&
@@ -71,7 +111,16 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const ps = state.ui.portraitShake
   const portraitShakeStyle =
     ps && ps.characterId === characterId && ps.untilMs > state.nowMs
-      ? { transform: shakeTransform(state.nowMs, ps.untilMs, ps.magnitude) }
+      ? {
+          transform: shakeTransform(
+            state.nowMs,
+            ps.startedAtMs ?? ps.untilMs - 160,
+            ps.untilMs,
+            ps.magnitude,
+            state.render.camShakeLengthMs,
+            state.render.camShakeDecayMs,
+          ),
+        }
       : undefined
 
   return (
@@ -103,6 +152,14 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
               alt=""
               draggable={false}
             />
+            {portrait.idleSrc ? (
+              <img
+                className={`${styles.sprite} ${idleFlash ? '' : styles.idleHidden}`}
+                src={portrait.idleSrc}
+                alt=""
+                draggable={false}
+              />
+            ) : null}
           </div>
         ) : (
           <div className={styles.layer} aria-hidden="true">

@@ -63,7 +63,7 @@ export function HudLayout(props: { state: GameState; dispatch: Dispatch<Action>;
 
       <section className={`${styles.panel} ${styles.nav}`}>
         <h3 className={styles.title}>NAVIGA</h3>
-        <NavigationPanel state={state} />
+        <NavigationPanel state={state} dispatch={dispatch} />
       </section>
 
       <section className={`${styles.panel} ${styles.char3}`}>

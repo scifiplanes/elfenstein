@@ -12,7 +12,7 @@ export function usePoi(state: GameState, poiId: string): GameState {
       ui: {
         ...state.ui,
         toast: { id: `t_${state.nowMs}`, text: 'Game saved at the well.', untilMs: state.nowMs + 1300 },
-        shake: { untilMs: state.nowMs + 120, magnitude: 0.18 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 120, magnitude: 0.18 },
       },
     }
   }
@@ -21,14 +21,22 @@ export function usePoi(state: GameState, poiId: string): GameState {
     return {
       ...state,
       party: { ...state.party, chars },
-      ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'Rested.', untilMs: state.nowMs + 1100 }, shake: { untilMs: state.nowMs + 130, magnitude: 0.2 } },
+      ui: {
+        ...state.ui,
+        toast: { id: `t_${state.nowMs}`, text: 'Rested.', untilMs: state.nowMs + 1100 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 130, magnitude: 0.2 },
+      },
     }
   }
   if (poi.kind === 'Chest') {
     if (poi.opened) {
       return {
         ...state,
-        ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'The chest is empty.', untilMs: state.nowMs + 1100 }, shake: { untilMs: state.nowMs + 110, magnitude: 0.16 } },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: 'The chest is empty.', untilMs: state.nowMs + 1100 },
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+        },
       }
     }
 
@@ -47,7 +55,7 @@ export function usePoi(state: GameState, poiId: string): GameState {
       ui: {
         ...state.ui,
         toast: { id: `t_${state.nowMs}`, text: 'Chest opened.', untilMs: state.nowMs + 1100 },
-        shake: { untilMs: state.nowMs + 160, magnitude: 0.28 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.28 },
         sfxQueue,
       },
     }
@@ -61,7 +69,7 @@ export function usePoi(state: GameState, poiId: string): GameState {
       ui: {
         ...next.ui,
         toast: { id: `t_${state.nowMs}`, text: removedAny ? 'A weight lifts from the party.' : 'The shrine is silent.', untilMs: state.nowMs + 1300 },
-        shake: { untilMs: state.nowMs + 140, magnitude: removedAny ? 0.26 : 0.18 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: removedAny ? 0.26 : 0.18 },
       },
     }
   }
@@ -71,7 +79,7 @@ export function usePoi(state: GameState, poiId: string): GameState {
       ui: {
         ...state.ui,
         toast: { id: `t_${state.nowMs}`, text: 'A cracked wall. Maybe a tool could pry it open.', untilMs: state.nowMs + 1400 },
-        shake: { untilMs: state.nowMs + 110, magnitude: 0.16 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
       },
     }
   }
@@ -91,12 +99,20 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
       return {
         ...state,
         party: { ...state.party, items: { ...state.party.items, [itemId]: nextItem } },
-        ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'Filled the waterbag.', untilMs: state.nowMs + 1300 }, shake: { untilMs: state.nowMs + 140, magnitude: 0.22 } },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: 'Filled the waterbag.', untilMs: state.nowMs + 1300 },
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: 0.22 },
+        },
       }
     }
     return {
       ...state,
-      ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'The well is cool and still.', untilMs: state.nowMs + 1300 }, shake: { untilMs: state.nowMs + 110, magnitude: 0.14 } },
+      ui: {
+        ...state.ui,
+        toast: { id: `t_${state.nowMs}`, text: 'The well is cool and still.', untilMs: state.nowMs + 1300 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.14 },
+      },
     }
   }
 
@@ -114,7 +130,11 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
     if (!okTool) {
       return {
         ...state,
-        ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'That will not chip stone.', untilMs: state.nowMs + 1200 }, shake: { untilMs: state.nowMs + 110, magnitude: 0.16 } },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: 'That will not chip stone.', untilMs: state.nowMs + 1200 },
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+        },
       }
     }
 
@@ -133,7 +153,7 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
         ui: {
           ...next.ui,
           toast: { id: `t_${state.nowMs}`, text: breakRoll <= breakChance ? 'You slip—your tool breaks.' : 'You chip at it, but it holds.', untilMs: state.nowMs + 1400 },
-          shake: { untilMs: state.nowMs + 140, magnitude: 0.28 },
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: 0.28 },
           sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'reject' }]),
         },
       }
@@ -151,7 +171,7 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
       ui: {
         ...state.ui,
         toast: { id: `t_${state.nowMs}`, text: 'The cracked wall gives way.', untilMs: state.nowMs + 1300 },
-        shake: { untilMs: state.nowMs + 160, magnitude: 0.35 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.35 },
         sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
       },
     }

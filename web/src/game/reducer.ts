@@ -18,11 +18,12 @@ export type Action =
   | { type: 'ui/closeNpcDialog' }
   | { type: 'ui/toast'; text: string; ms?: number }
   | { type: 'ui/shake'; magnitude: number; ms?: number }
-  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' }
+  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }
   | { type: 'audio/set'; key: keyof GameState['audio']; value: number }
   | { type: 'time/tick'; nowMs: number }
   | { type: 'player/turn'; dir: -1 | 1 }
   | { type: 'player/step'; forward: 1 | -1 }
+  | { type: 'player/strafe'; side: -1 | 1 }
   | { type: 'poi/use'; poiId: string }
   | { type: 'floor/pickup'; itemId: ItemId }
   | { type: 'drag/drop'; payload: DragPayload; target: DragTarget }
@@ -47,7 +48,14 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'ui/closePaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
     case 'ui/openNpcDialog':
-      return { ...state, ui: { ...state.ui, npcDialogFor: action.npcId, shake: { untilMs: state.nowMs + 110, magnitude: 0.16 } } }
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          npcDialogFor: action.npcId,
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+        },
+      }
     case 'ui/closeNpcDialog':
       return { ...state, ui: { ...state.ui, npcDialogFor: undefined } }
     case 'ui/toast': {
@@ -56,7 +64,7 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'ui/shake': {
       const untilMs = state.nowMs + (action.ms ?? 140)
-      return { ...state, ui: { ...state.ui, shake: { untilMs, magnitude: action.magnitude } } }
+      return { ...state, ui: { ...state.ui, shake: { startedAtMs: state.nowMs, untilMs, magnitude: action.magnitude } } }
     }
     case 'ui/sfx': {
       const q = state.ui.sfxQueue ?? []
@@ -124,6 +132,8 @@ export function reduce(state: GameState, action: Action): GameState {
       const w = state.floor.w
       const h = state.floor.h
       const gen = generateDungeon({ seed: nextSeed, w, h })
+      const playerPos = { x: Math.floor(w / 2), y: h - 2 }
+      const playerDir = 0 as const
       return {
         ...state,
         floor: {
@@ -133,13 +143,15 @@ export function reduce(state: GameState, action: Action): GameState {
           pois: gen.pois,
           itemsOnFloor: [],
           npcs: state.floor.npcs,
-          playerPos: { x: Math.floor(w / 2), y: h - 2 },
-          playerDir: 0,
+          playerPos,
+          playerDir,
         },
+        view: viewSnapToGrid(state, playerPos, playerDir),
         ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `Regenerated (seed ${nextSeed}).`, untilMs: state.nowMs + 1200 } },
       }
     }
     case 'player/turn': {
+      if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
       const fromYaw = state.view.camYaw
       const toYaw = (dir * Math.PI) / 2
@@ -163,52 +175,21 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     }
     case 'player/step': {
-      const { w, tiles, playerDir, playerPos } = state.floor
+      if (state.view.anim) return state
+      const { playerDir, playerPos } = state.floor
       const step = action.forward
       const v = dirVec(playerDir)
       const nx = playerPos.x + v.x * step
       const ny = playerPos.y + v.y * step
-      const idx = nx + ny * w
-      if (idx < 0 || idx >= tiles.length) return bump(state)
-      const tile = tiles[idx]
-      if (tile === 'door' || tile === 'lockedDoor') {
-        return tryOpenDoor(state, idx, tile)
-      }
-      if (tile !== 'floor') return bump(state)
-
-      // Walk-into interactions (MVP): POIs and NPCs resolve contextually.
-      const poi = state.floor.pois.find((p) => p.pos.x === nx && p.pos.y === ny)
-      if (poi) return reduce(state, { type: 'poi/use', poiId: poi.id })
-
-      const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
-      if (npc) {
-        if (npc.status === 'hostile') {
-          const withToast = reduce(state, { type: 'ui/toast', text: `${npc.name} blocks your way!`, ms: 900 })
-          return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
-        }
-        return reduce(state, { type: 'ui/openNpcDialog', npcId: npc.id })
-      }
-
-      const startedAtMs = state.nowMs
-      const endsAtMs = startedAtMs + 140
-      const toPos = { x: nx - state.floor.w / 2, y: state.render.camEyeHeight, z: ny - state.floor.h / 2 }
-
-      return {
-        ...state,
-        floor: { ...state.floor, playerPos: { x: nx, y: ny } },
-        view: {
-          ...state.view,
-          anim: {
-            kind: 'move',
-            fromPos: state.view.camPos,
-            toPos,
-            fromYaw: state.view.camYaw,
-            toYaw: state.view.camYaw,
-            startedAtMs,
-            endsAtMs,
-          },
-        },
-      }
+      return attemptMoveTo(state, nx, ny)
+    }
+    case 'player/strafe': {
+      if (state.view.anim) return state
+      const { playerDir, playerPos } = state.floor
+      const v = strafeVec(playerDir, action.side)
+      const nx = playerPos.x + v.x
+      const ny = playerPos.y + v.y
+      return attemptMoveTo(state, nx, ny)
     }
     case 'poi/use': {
       return usePoi(state, action.poiId)
@@ -388,8 +369,15 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const camShakePosAmp = Math.max(0, Math.min(0.25, r.camShakePosAmp))
   const camShakeRollDeg = Math.max(0, Math.min(12, r.camShakeRollDeg))
   const camShakeHz = Math.max(0, Math.min(40, r.camShakeHz))
-  const camShakeDecayMs = Math.max(40, Math.min(1200, Math.round(r.camShakeDecayMs)))
+  const camShakeLengthMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeLengthMs ?? 0))))
+  const camShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeDecayMs ?? 220))))
   const camShakeUiMix = Math.max(0, Math.min(3, r.camShakeUiMix))
+  let portraitIdleGapMinMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMinMs ?? 8000))))
+  let portraitIdleGapMaxMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMaxMs ?? 18_000))))
+  if (portraitIdleGapMaxMs < portraitIdleGapMinMs) portraitIdleGapMaxMs = portraitIdleGapMinMs
+  let portraitIdleFlashMinMs = Math.max(0, Math.min(5000, Math.round(Number(r.portraitIdleFlashMinMs ?? 120))))
+  let portraitIdleFlashMaxMs = Math.max(0, Math.min(5000, Math.round(Number(r.portraitIdleFlashMaxMs ?? 350))))
+  if (portraitIdleFlashMaxMs < portraitIdleFlashMinMs) portraitIdleFlashMaxMs = portraitIdleFlashMinMs
   return {
     ...r,
     ditherMatrixSize,
@@ -406,8 +394,13 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     camShakePosAmp,
     camShakeRollDeg,
     camShakeHz,
+    camShakeLengthMs,
     camShakeDecayMs,
     camShakeUiMix,
+    portraitIdleGapMinMs,
+    portraitIdleGapMaxMs,
+    portraitIdleFlashMinMs,
+    portraitIdleFlashMaxMs,
   }
 }
 
@@ -439,6 +432,19 @@ function hashStr(s: string) {
   return h >>> 0
 }
 
+function viewSnapToGrid(state: GameState, playerPos: { x: number; y: number }, playerDir: 0 | 1 | 2 | 3): GameState['view'] {
+  const { w, h } = state.floor
+  return {
+    camPos: {
+      x: playerPos.x - w / 2,
+      y: state.render.camEyeHeight,
+      z: playerPos.y - h / 2,
+    },
+    camYaw: (playerDir * Math.PI) / 2,
+    anim: undefined,
+  }
+}
+
 function dirVec(dir: 0 | 1 | 2 | 3) {
   // 0=N, 1=E, 2=S, 3=W (grid y+ is south)
   if (dir === 0) return { x: 0, y: -1 }
@@ -447,9 +453,63 @@ function dirVec(dir: 0 | 1 | 2 | 3) {
   return { x: -1, y: 0 }
 }
 
+/** One cell left (-1) or right (+1) relative to current facing (no rotation). */
+function strafeVec(playerDir: 0 | 1 | 2 | 3, side: -1 | 1) {
+  const d = ((((playerDir + (side === -1 ? 3 : 1)) % 4) + 4) % 4) as 0 | 1 | 2 | 3
+  return dirVec(d)
+}
+
+function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
+  if (state.view.anim) return state
+  const { w, tiles } = state.floor
+  const idx = nx + ny * w
+  if (idx < 0 || idx >= tiles.length) return bump(state)
+  const tile = tiles[idx]
+  if (tile === 'door' || tile === 'lockedDoor') {
+    return tryOpenDoor(state, idx, tile)
+  }
+  if (tile !== 'floor') return bump(state)
+
+  const poi = state.floor.pois.find((p) => p.pos.x === nx && p.pos.y === ny)
+  if (poi) return reduce(state, { type: 'poi/use', poiId: poi.id })
+
+  const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
+  if (npc) {
+    if (npc.status === 'hostile') {
+      const withToast = reduce(state, { type: 'ui/toast', text: `${npc.name} blocks your way!`, ms: 900 })
+      return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+    }
+    return reduce(state, { type: 'ui/openNpcDialog', npcId: npc.id })
+  }
+
+  const startedAtMs = state.nowMs
+  const endsAtMs = startedAtMs + 140
+  const toPos = { x: nx - state.floor.w / 2, y: state.render.camEyeHeight, z: ny - state.floor.h / 2 }
+
+  return reduce(
+    {
+      ...state,
+      floor: { ...state.floor, playerPos: { x: nx, y: ny } },
+      view: {
+        ...state.view,
+        anim: {
+          kind: 'move',
+          fromPos: state.view.camPos,
+          toPos,
+          fromYaw: state.view.camYaw,
+          toYaw: state.view.camYaw,
+          startedAtMs,
+          endsAtMs,
+        },
+      },
+    },
+    { type: 'ui/sfx', kind: 'step' },
+  )
+}
+
 function bump(state: GameState): GameState {
   const withToast = { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'Solid stone.', untilMs: state.nowMs + 700 } } }
-  const withSfx = reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+  const withSfx = reduce(withToast, { type: 'ui/sfx', kind: 'bump' })
   return reduce(withSfx, { type: 'ui/shake', magnitude: 0.25, ms: 90 })
 }
 

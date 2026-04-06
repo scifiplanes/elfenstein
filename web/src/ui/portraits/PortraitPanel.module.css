@@ -79,6 +79,10 @@
   opacity: 0;
 }
 
+.idleHidden {
+  opacity: 0;
+}
+
 .layer {
   position: absolute;
   inset: 0;

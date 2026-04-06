@@ -13,7 +13,7 @@ export function pickupFloorItem(state: GameState, itemId: ItemId): GameState {
       ui: {
         ...state.ui,
         toast: { id: `t_${state.nowMs}`, text: 'Inventory is full.', untilMs: state.nowMs + 1200 },
-        shake: { untilMs: state.nowMs + 110, magnitude: 0.16 },
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
       },
     }
   }
@@ -28,7 +28,7 @@ export function pickupFloorItem(state: GameState, itemId: ItemId): GameState {
     ui: {
       ...withAdded.ui,
       toast: { id: `t_${state.nowMs}`, text: 'Picked up.', untilMs: state.nowMs + 900 },
-      shake: { untilMs: state.nowMs + 120, magnitude: 0.2 },
+      shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 120, magnitude: 0.2 },
       sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'pickup' }]),
     },
   }

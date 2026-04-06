@@ -12,7 +12,7 @@ export function inspectCharacter(state: GameState, characterId: string, itemId: 
     ui: {
       ...state.ui,
       toast: { id: `t_${state.nowMs}`, text: `${c.name} inspects ${item.defId}.`, untilMs: state.nowMs + 1400 },
-      portraitShake: { characterId, untilMs: state.nowMs + 130, magnitude: 0.14 },
+      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 130, magnitude: 0.14 },
     },
   }
 }
@@ -28,8 +28,7 @@ export function feedCharacter(state: GameState, characterId: string, itemId: Ite
     ui: {
       ...state.ui,
       portraitMouth: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 650 },
-      portraitShake: { characterId, untilMs: state.nowMs + 200, magnitude: 0.2 },
-      shake: { untilMs: state.nowMs + 160, magnitude: 0.22 },
+      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 200, magnitude: 0.2 },
       sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'ui' }]),
     },
   }

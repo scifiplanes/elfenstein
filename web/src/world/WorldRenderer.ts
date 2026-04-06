@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
 import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
+import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
 import type { GameState } from '../game/types'
 import { DitherShader } from './DitherShader'
 import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
@@ -182,9 +183,14 @@ export class WorldRenderer {
     let roll = 0
 
     if (hasShake) {
-      const remainingMs = Math.max(0, uiShake!.untilMs - state.nowMs)
-      const decayMs = Math.max(1, state.render.camShakeDecayMs)
-      const t = Math.max(0, Math.min(1, remainingMs / decayMs))
+      const start = uiShake!.startedAtMs ?? uiShake!.untilMs - 160
+      const t = shakeEnvelopeFactor(
+        state.nowMs,
+        start,
+        uiShake!.untilMs,
+        state.render.camShakeLengthMs,
+        state.render.camShakeDecayMs,
+      )
       const mag = Math.max(0, uiShake!.magnitude) * state.render.camShakeUiMix * t
 
       const nowSec = state.nowMs / 1000

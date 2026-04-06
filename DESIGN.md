@@ -14,7 +14,7 @@ Last updated: 2026-04-06
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes spatial emitter mix and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -48,8 +48,16 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 Interactions should resolve with:
 - short relevant animation (e.g. eyes/mouth)
 - sound
-- subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2)
+- subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera**, **HUD overlay shake**, and **portrait frame shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
 - **Portrait frame shake** on portrait interaction resolution (inspect and feed), driven by `ui.portraitShake` on the matching character slot
+
+### 6.4 Grid movement (first-person)
+- **Model**: discrete cells; facing is one of four compass directions; the 3D camera **yaw** matches facing. **Strafe** moves one cell **left or right relative to facing** without rotating (**A** / **D**). **W** / **S** move **forward** / **backward** along facing.
+- **Keyboard** (see `GameApp.tsx`): **W** / **S** (and **↑** / **↓**) forward/back; **A** / **D** strafe left/right; **Q** / **E** turn left/right. **F2** toggles the debug panel.
+- **HUD**: the NAVIGA panel repeats bindings and offers on-screen step, strafe, and turn buttons.
+- **Viewport**: clicking a **door** attempts a **forward** step into that cell (open normal door or try key on locked door).
+- **While a move/turn animation is playing**, new step, strafe, and turn input is ignored so the player resolves one grid action at a time.
+- **Audio**: a successful step or strafe plays a short **step** SFX; walking into a solid tile uses a distinct **bump** SFX (with existing toast + shake).
 
 ## 7) Systems
 ### 7.1 Party & characters
@@ -61,10 +69,11 @@ The party has **up to 4** character portrait slots.
   - Base: `Content/boblin_base.png`
   - Eyes: `Content/boblin_eyes_open.png`
   - Mouth: `Content/boblin_mouth_open.png`
+  - Idle overlay: `Content/boblin_idle.png` (briefly shown on top at a **lower frequency** than blinking)
 - **Portrait blinking**: the eyes layer is **occasionally hidden briefly** to simulate blinking.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
-- **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, global `ui.shake` (camera + overlay), and a brief **munch** SFX on successful feeding.
-- **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed).
+- **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, and a brief **munch** SFX on successful feeding. **No** `ui.shake` (3D view or empty HUD overlay) for portrait inspect/feed—only `ui.portraitShake` on the relevant slot.
+- **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed), likewise without 3D shake.
 - Portrait interactive middle third is split into:
   - **Eyes area (top)** → inspect drop target
   - **Mouth area (bottom)** → feed drop target
@@ -233,7 +242,6 @@ Asset types:
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).
 
 ## 15) Open questions (to resolve)
-- **Movement input**: keys / mouse look? (prototype uses WASD + turn/strafe; confirm desired final mapping)
 - **Inventory pickup rules**: can you pick up world items directly (click) or only via interaction UI?
 - **Combat UI**: fully diegetic in HUD vs modal encounter panel; how much player agency per turn?
 - **Crafting UI**: where does recipe discovery feedback live (log, tooltip, modal)?

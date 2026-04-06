@@ -287,6 +287,23 @@ Audio tuning now includes `munchTremDepth` and `munchTremHz`, which should be pe
 
 ---
 
+## ADR-0023 — Bandpass munch noise (thump bypass)
+Date: 2026-04-06
+
+### Decision
+The munch SFX **noise** component runs through **highpass + lowpass** (effective bandpass). The **thump** oscillator mixes in **after** that chain so low-frequency “jaw” energy is not removed by the highpass.
+
+### Rationale
+A lowpass-only crunch lets sub-bass and very low noise mud through; bandpassing the noise tightens the bite while keeping the existing sweep and debug tunables meaningful.
+
+### Consequences
+Munch timbre shifts slightly vs pure lowpass; saved `munchCutoffHz` / `munchCutoffEndHz` still drive the lowpass sweep, with a derived highpass corner from the lower sweep bound.
+
+### Update (same ADR)
+`munchHighpassHz`, `munchHighpassQ`, and `munchLowpassQ` are exposed in F2 audio tuning (and persisted like other audio keys); the engine still clamps HP below the lowpass sweep minimum so the band stays valid.
+
+---
+
 ## ADR-0020 — Dither post-process applies to HUD UI
 Date: 2026-04-06
 
@@ -334,7 +351,7 @@ UI-only shake helps, but a small camera-space response makes interactions (espec
 Date: 2026-04-06
 
 ### Decision
-Add `ui.portraitShake` (`characterId`, `untilMs`, `magnitude`) cleared on `time/tick`, set from `inspectCharacter` and `feedCharacter`. Apply the same transform math as the feedback overlay shake to the **portrait container** in `PortraitPanel` when `characterId` matches.
+Add `ui.portraitShake` (`characterId`, `startedAtMs`, `untilMs`, `magnitude`) cleared on `time/tick`, set from `inspectCharacter` and `feedCharacter`. Apply the same transform math as the feedback overlay shake to the **portrait container** in `PortraitPanel` when `characterId` matches.
 
 ### Rationale
 Global `ui.shake` drives the 3D camera but does not visibly move HUD portraits; inspect had no motion feedback. Scoping shake to the interacted character keeps multi-portrait layouts readable.
@@ -342,3 +359,94 @@ Global `ui.shake` drives the 3D camera but does not visibly move HUD portraits; 
 ### Consequences
 - Portrait interaction code must set `portraitShake` when adding haptics; tick must expire it like `portraitMouth`.
 - Shared helper: `web/src/ui/feedback/shakeTransform.ts`.
+
+---
+
+## ADR-0025 — Grid movement polish: regen camera sync, input gate, step/bump SFX
+Date: 2026-04-06
+
+### Decision
+- On **`floor/regen`**, snap **`view`** (`camPos`, `camYaw`, clear `anim`) to the new spawn cell and facing so the minimap and 3D view stay aligned.
+- While **`view.anim`** is active (move/turn lerp), ignore new **`player/step`** and **`player/turn`** actions (one grid resolution at a time).
+- Add dedicated **`step`** and **`bump`** UI SFX kinds; play **step** on successful forward/back cell move, **bump** on blocked step (walls/out of bounds), keeping **reject** for other refusals.
+- Document movement in **DESIGN §6.4**; replace the obsolete open question about “strafe”; NAVIGA panel shows real controls plus on-screen buttons.
+
+### Rationale
+Regen without view reset left the camera wrong until the next move. Chaining steps during the lerp felt mushy for a grid crawler. Distinct footstep vs wall feedback reads better than reusing generic reject for bumps.
+
+### Consequences
+- Door clicks and keyboard step/turn respect the same animation gate.
+- `SfxEngine` and `UiState.sfxQueue` kinds must stay in sync when adding movement audio variants.
+
+---
+
+## ADR-0026 — Separate shake length and decay (F2 sliders + shared envelope)
+Date: 2026-04-06
+
+### Decision
+Add **`camShakeLengthMs`** (hold at full envelope) and keep **`camShakeDecayMs`** (fade tail). Implement **`shakeEnvelopeFactor`** in `web/src/game/shakeEnvelope.ts` and use it for 3D camera shake, `FeedbackLayer`, and `PortraitPanel`. When length is 0, decay alone preserves the prior `min(1, remaining/decay)` behavior. Add **`startedAtMs`** on `ui.shake` and `ui.portraitShake` so the envelope is keyed to real event start time.
+
+### Rationale
+A single “decay” knob conflated total feel with tail shape; separating hold vs fade gives tunable control without rewriting every interaction’s authored `untilMs`.
+
+### Consequences
+- Every code path that sets `ui.shake` or `ui.portraitShake` must include `startedAtMs`.
+- `clampRenderTuning` must default missing `camShakeLengthMs` from older JSON to 0.
+
+---
+
+## ADR-0027 — No 3D (or global `ui.shake`) for portrait inspect/feed
+Date: 2026-04-06
+
+### Decision
+`inspectCharacter` and `feedCharacter` must **not** set `ui.shake`. Portrait resolutions use **`ui.portraitShake`** (and mouth/toast/SFX as before) only.
+
+### Rationale
+Shaking the first-person view on HUD-only portrait drops felt disconnected; keeping haptics on the portrait keeps feedback local and readable.
+
+### Consequences
+- Re-add `ui.shake` from portrait flows only if a future design explicitly wants world-linked impact (e.g. “party-wide stagger”).
+
+---
+
+## ADR-0028 — WASD + Q/E grid navigation (strafe on A/D)
+Date: 2026-04-06
+
+### Decision
+Keyboard layout: **W/S** (and arrow up/down) forward/back along facing; **A/D** **strafe** one cell left/right relative to facing (no turn); **Q/E** turn left/right. Remove **←/→** as turn keys so **A/D** are unambiguous. **`player/strafe`** reuses the same grid resolution path as **`player/step`** (doors, POIs, NPCs, step SFX, bump).
+
+### Rationale
+Matches a familiar FPS-style layout on letter keys while staying on a discrete grid; lateral motion without spinning makes corridor navigation faster.
+
+### Consequences
+- NAVIGA on-screen pad gains strafe buttons; DESIGN §6.4 documents strafe.
+- Door click remains **forward** step only.
+
+---
+
+## ADR-0029 — Igor portrait idle sprite flash (low frequency)
+Date: 2026-04-06
+
+### Decision
+For **Igor** layered portraits, add **`Content/boblin_idle.png`** as a **topmost stack layer** that becomes visible **briefly** on a **slower random schedule** than blinking (~8–18s between flashes, ~120–350ms on), implemented in `web/src/ui/portraits/PortraitPanel.tsx`. Serve the asset from `web/public/content/boblin_idle.png` like other portrait art.
+
+### Rationale
+Adds occasional “fidget” / life to the portrait without replacing the layered base/eyes/mouth setup; lower frequency than blinks keeps it subtle.
+
+### Consequences
+- `PortraitSprites` may include optional `idleSrc`; species without it skip the effect.
+- DESIGN §7.1 documents the idle overlay alongside Boblin sources.
+
+---
+
+## ADR-0030 — Debug-tunable Igor portrait idle flash timing
+Date: 2026-04-06
+
+### Decision
+Expose **portrait idle** timing in **F2 Debug** as `RenderTuning`: `portraitIdleGapMinMs`, `portraitIdleGapMaxMs`, `portraitIdleFlashMinMs`, `portraitIdleFlashMaxMs` (uniform random in each range). `PortraitPanel` reads `state.render` for the idle timer; values clamp in `clampRenderTuning` and persist via `debug-settings.json` like other render sliders.
+
+### Rationale
+Lets designers tune how often the idle pose reads without code changes.
+
+### Consequences
+- `DEFAULT_RENDER` and partial JSON loads must stay compatible (missing keys keep defaults after merge + clamp).

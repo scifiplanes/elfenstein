@@ -76,7 +76,7 @@ export function maybeFinishCrafting(state: GameState): GameState {
           ...next.ui,
           toast: { id: `t_${state.nowMs}`, text: 'Craft failed. Something broke.', untilMs: state.nowMs + 1200 },
           sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]),
-          shake: { untilMs: state.nowMs + 180, magnitude: 0.35 },
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 180, magnitude: 0.35 },
         },
       }
     }

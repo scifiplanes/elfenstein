@@ -24,7 +24,16 @@ export function FeedbackLayer(props: { state: GameState; dispatch: Dispatch<Acti
   }, [state.ui.sfxQueue, engine, dispatch, state.nowMs])
 
   const shake = state.ui.shake
-  const transform = shake ? shakeTransform(state.nowMs, shake.untilMs, shake.magnitude) : 'none'
+  const transform = shake
+    ? shakeTransform(
+        state.nowMs,
+        shake.startedAtMs ?? shake.untilMs - 160,
+        shake.untilMs,
+        shake.magnitude,
+        state.render.camShakeLengthMs,
+        state.render.camShakeDecayMs,
+      )
+    : 'none'
 
   return (
     <div className={styles.layer}>

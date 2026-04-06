@@ -38,14 +38,24 @@ export function GameApp() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'ArrowLeft' || e.key === 'q' || e.key === 'Q') {
+      if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         dispatch({ type: 'player/turn', dir: -1 })
         return
       }
-      if (e.key === 'ArrowRight' || e.key === 'e' || e.key === 'E') {
+      if (e.key === 'e' || e.key === 'E') {
         e.preventDefault()
         dispatch({ type: 'player/turn', dir: 1 })
+        return
+      }
+      if (e.key === 'a' || e.key === 'A') {
+        e.preventDefault()
+        dispatch({ type: 'player/strafe', side: -1 })
+        return
+      }
+      if (e.key === 'd' || e.key === 'D') {
+        e.preventDefault()
+        dispatch({ type: 'player/strafe', side: 1 })
         return
       }
       if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {

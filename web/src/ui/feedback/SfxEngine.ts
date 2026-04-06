@@ -1,9 +1,12 @@
-type SfxKind = 'ui' | 'hit' | 'reject' | 'pickup' | 'munch'
+type SfxKind = 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump'
 type SfxTuning = {
   masterSfx: number
   munchVol: number
   munchCutoffHz: number
   munchCutoffEndHz: number
+  munchHighpassHz: number
+  munchHighpassQ: number
+  munchLowpassQ: number
   munchDurSec: number
   munchThumpHz: number
   munchTremDepth: number
@@ -30,17 +33,31 @@ export class SfxEngine {
         const tremDepth = Math.max(0, Math.min(1, tuning?.munchTremDepth ?? 0.35))
         const tremHz = Math.max(0.5, Math.min(60, tuning?.munchTremHz ?? 18))
 
-        // Short “munch” made from filtered noise + a low thump.
+        // Short “munch”: bandpassed noise + a low thump (thump bypasses HP so the jaw hit stays felt).
         const g = ctx.createGain()
         g.gain.setValueAtTime(0.0001, now)
         g.gain.exponentialRampToValueAtTime(0.06 * masterSfx * munchVol, now + 0.008)
         g.gain.exponentialRampToValueAtTime(0.0001, now + dur)
 
-        const filter = ctx.createBiquadFilter()
-        filter.type = 'lowpass'
-        filter.frequency.setValueAtTime(Math.max(80, cutoffHz), now)
-        filter.frequency.exponentialRampToValueAtTime(Math.max(80, cutoffEndHz), now + Math.min(dur, 0.2))
-        filter.Q.setValueAtTime(0.8, now)
+        const fStart = Math.max(80, cutoffHz)
+        const fEnd = Math.max(80, cutoffEndHz)
+        const lpMin = Math.min(fStart, fEnd)
+        const hpDerived = Math.max(80, Math.min(lpMin * 0.42, lpMin * 0.75))
+        const hpTuned = tuning?.munchHighpassHz ?? hpDerived
+        const hpFreq = Math.max(80, Math.min(hpTuned, lpMin * 0.98))
+        const hpQ = Math.max(0.1, Math.min(18, tuning?.munchHighpassQ ?? 0.707))
+        const lpQ = Math.max(0.1, Math.min(18, tuning?.munchLowpassQ ?? 0.8))
+
+        const hp = ctx.createBiquadFilter()
+        hp.type = 'highpass'
+        hp.frequency.setValueAtTime(hpFreq, now)
+        hp.Q.setValueAtTime(hpQ, now)
+
+        const lp = ctx.createBiquadFilter()
+        lp.type = 'lowpass'
+        lp.frequency.setValueAtTime(fStart, now)
+        lp.frequency.exponentialRampToValueAtTime(fEnd, now + Math.min(dur, 0.2))
+        lp.Q.setValueAtTime(lpQ, now)
 
         const noiseBuf = ctx.createBuffer(1, Math.floor(ctx.sampleRate * dur), ctx.sampleRate)
         const data = noiseBuf.getChannelData(0)
@@ -57,10 +74,11 @@ export class SfxEngine {
         og.gain.exponentialRampToValueAtTime(0.05 * masterSfx * munchVol, now + 0.006)
         og.gain.exponentialRampToValueAtTime(0.0001, now + Math.min(dur, 0.11))
 
-        noise.connect(filter)
+        noise.connect(hp)
+        hp.connect(lp)
+        lp.connect(g)
         o.connect(og)
-        og.connect(filter)
-        filter.connect(g)
+        og.connect(g)
 
         // Square LFO tremolo on the final output gain:
         // gain(t) = env(t) * (1 - depth + depth * square(t)) where square∈{0,1}
@@ -108,14 +126,25 @@ export class SfxEngine {
       } else {
         const o = ctx.createOscillator()
         const g = ctx.createGain()
-        o.type = kind === 'reject' ? 'sawtooth' : 'triangle'
+        const masterSfx = tuning?.masterSfx ?? 1
 
-        const base = kind === 'hit' ? 120 : kind === 'pickup' ? 520 : kind === 'reject' ? 160 : 420
+        let base: number
+        let vol: number
+        if (kind === 'step') {
+          o.type = 'sine'
+          base = 240
+          vol = 0.035 * masterSfx
+        } else if (kind === 'bump') {
+          o.type = 'sawtooth'
+          base = 95
+          vol = 0.055 * masterSfx
+        } else {
+          o.type = kind === 'reject' ? 'sawtooth' : 'triangle'
+          base = kind === 'hit' ? 120 : kind === 'pickup' ? 520 : kind === 'reject' ? 160 : 420
+          vol = (kind === 'hit' ? 0.08 : kind === 'reject' ? 0.06 : 0.04) * masterSfx
+        }
         o.frequency.setValueAtTime(base, now)
         o.frequency.exponentialRampToValueAtTime(base * 0.75, now + 0.08)
-
-        const masterSfx = tuning?.masterSfx ?? 1
-        const vol = (kind === 'hit' ? 0.08 : kind === 'reject' ? 0.06 : 0.04) * masterSfx
         g.gain.setValueAtTime(0.0001, now)
         g.gain.exponentialRampToValueAtTime(vol, now + 0.01)
         g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12)

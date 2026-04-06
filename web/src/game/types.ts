@@ -75,12 +75,12 @@ export type UiState = {
   paperdollFor?: CharacterId
   npcDialogFor?: Id
   toast?: { id: Id; text: string; untilMs: number }
-  shake?: { untilMs: number; magnitude: number }
-  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' }>
+  shake?: { untilMs: number; magnitude: number; startedAtMs: number }
+  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }>
   /** Short-lived portrait “mouth visible” interaction cue. */
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
   /** Short-lived portrait frame shake (inspect/feed resolution). */
-  portraitShake?: { characterId: CharacterId; untilMs: number; magnitude: number }
+  portraitShake?: { characterId: CharacterId; untilMs: number; magnitude: number; startedAtMs: number }
   crafting?: {
     startedAtMs: number
     endsAtMs: number
@@ -121,7 +121,12 @@ export type RenderTuning = {
   camShakeRollDeg: number
   /** Camera shake oscillation frequency (Hz). */
   camShakeHz: number
-  /** Camera shake envelope duration (ms) for tapering to zero. */
+  /**
+   * Hold at full shake strength (ms) before fade. 0 = no hold; envelope uses remaining/decay ramp only (legacy).
+   * Applies to 3D camera, HUD overlay, and portrait CSS shake.
+   */
+  camShakeLengthMs: number
+  /** Linear fade duration (ms) after hold; with length 0, scales as min(1, remaining/decay). */
   camShakeDecayMs: number
   /** Scales camera shake strength relative to `ui.shake.magnitude`. */
   camShakeUiMix: number
@@ -131,6 +136,14 @@ export type RenderTuning = {
   ditherLevels: number
   ditherMatrixSize: 2 | 4 | 8
   ditherPalette: 0 | 1 | 2 | 3 | 4
+  /** Min time (ms) between Igor portrait idle flashes; actual gap is uniform up to max. */
+  portraitIdleGapMinMs: number
+  /** Max time (ms) between idle flashes (inclusive upper bound of uniform range with min). */
+  portraitIdleGapMaxMs: number
+  /** Min visible duration (ms) of one idle flash. */
+  portraitIdleFlashMinMs: number
+  /** Max visible duration (ms) of one idle flash. */
+  portraitIdleFlashMaxMs: number
 }
 
 export type AudioTuning = {
@@ -143,9 +156,15 @@ export type AudioTuning = {
 
   /** Munch SFX master scalar (before masterSfx). */
   munchVol: number
-  /** Lowpass cutoff start/end for munch noise component. */
+  /** Munch noise band: lowpass sweep between these Hz (noise only; thump bypasses HP). */
   munchCutoffHz: number
   munchCutoffEndHz: number
+  /** Highpass corner (Hz) on munch noise; clamped below the lowpass sweep so the band stays valid. */
+  munchHighpassHz: number
+  /** Biquad Q for munch noise highpass. */
+  munchHighpassQ: number
+  /** Biquad Q for munch noise lowpass. */
+  munchLowpassQ: number
   /** Duration of munch envelope (seconds). */
   munchDurSec: number
   /** Thump oscillator frequency for “jaw” feel. */

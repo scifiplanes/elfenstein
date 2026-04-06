@@ -22,6 +22,7 @@ export const DEFAULT_RENDER: RenderTuning = {
   camShakePosAmp: 0.02,
   camShakeRollDeg: 0.3,
   camShakeHz: 10,
+  camShakeLengthMs: 0,
   camShakeDecayMs: 220,
   camShakeUiMix: 0.22,
   ditherStrength: 0.55,
@@ -30,6 +31,10 @@ export const DEFAULT_RENDER: RenderTuning = {
   ditherLevels: 10,
   ditherMatrixSize: 4,
   ditherPalette: 4,
+  portraitIdleGapMinMs: 8000,
+  portraitIdleGapMaxMs: 18000,
+  portraitIdleFlashMinMs: 120,
+  portraitIdleFlashMaxMs: 350,
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {
@@ -42,6 +47,9 @@ export const DEFAULT_AUDIO: AudioTuning = {
   munchVol: 1.0,
   munchCutoffHz: 900,
   munchCutoffEndHz: 420,
+  munchHighpassHz: 176,
+  munchHighpassQ: 0.707,
+  munchLowpassQ: 0.8,
   munchDurSec: 0.18,
   munchThumpHz: 90,
   munchTremDepth: 0.35,
