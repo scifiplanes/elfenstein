@@ -1,0 +1,12 @@
+.layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1500;
+}
+
+.shake {
+  position: absolute;
+  inset: 0;
+}
+

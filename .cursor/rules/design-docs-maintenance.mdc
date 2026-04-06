@@ -1,0 +1,19 @@
+---
+description: Keep DESIGN.md + DECISIONS.md updated with all project edits
+alwaysApply: true
+---
+
+# Maintain project design docs
+
+Whenever you change **game behavior or scope** (UX, controls, inventory/crafting, NPCs, combat, dungeon generation, rendering/audio, content lists, debug tooling, multiplayer assumptions):
+
+- **Update `DESIGN.md`** so it reflects the *current truth* (spec, taxonomy, rules, constraints).
+- **Append an entry to `DECISIONS.md`** (ADR-style):
+  - new ID `ADR-000X`, today’s date
+  - decision + short rationale + consequences
+
+Guidelines:
+- `DESIGN.md` is **present tense** and should not contain historical debate.
+- `DECISIONS.md` is **change-log + intent** (why we picked/changed something).
+- If a change is tiny (typo/format only), skip ADR.
+

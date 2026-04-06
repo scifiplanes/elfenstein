@@ -1,0 +1,40 @@
+.root {
+  display: grid;
+  place-items: center;
+  height: 100%;
+}
+
+.map {
+  display: grid;
+  grid-template-columns: repeat(13, 10px);
+  grid-template-rows: repeat(13, 10px);
+  gap: 2px;
+}
+
+.cell {
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.4);
+}
+
+.cell[data-kind='floor'] {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.cell[data-kind='player'] {
+  background: rgba(255, 230, 130, 0.9);
+}
+
+.cell[data-kind='poi'] {
+  background: rgba(130, 200, 255, 0.9);
+}
+
+.cell[data-kind='door'] {
+  background: rgba(200, 184, 154, 0.65);
+}
+
+.cell[data-kind='lockedDoor'] {
+  background: rgba(200, 57, 43, 0.75);
+}
+
