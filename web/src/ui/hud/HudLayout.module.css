@@ -2,6 +2,7 @@
   position: fixed;
   inset: 0;
   display: grid;
+  isolation: isolate;
   /* Navigation pad at 50% of native footprint: (3×177 + 2×6) × 0.5 = 271.5px. */
   grid-template-columns: 220px 120px 1fr 120px calc(543px * 0.5);
   grid-template-rows: 1fr 1fr 260px;
@@ -13,6 +14,19 @@
   padding: 12px;
 }
 
+/* Full HUD chrome: `Content/ui/hud/ui_hud_background.png` → `/content/ui/hud/…` for Vite. */
+.root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-image: url('/content/ui/hud/ui_hud_background.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: contain;
+}
+
 .root[data-capture='true'] {
   /* The capture HUD is placed inside an offscreen wrapper.
      Use absolute so `position: fixed` doesn't pin it back onto the viewport. */
@@ -20,11 +34,12 @@
 }
 
 .panel {
-  background: var(--panel);
-  border: 1px solid var(--panelBorder);
-  box-shadow: 0 12px 30px var(--shadow);
-  backdrop-filter: blur(8px);
-  border-radius: 10px;
+  z-index: 1;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  backdrop-filter: none;
+  border-radius: 0;
   overflow: hidden;
   position: relative;
   user-select: none;
@@ -33,7 +48,7 @@
 .game {
   grid-area: game;
   padding: 0;
-  border-radius: 14px;
+  border-radius: 0;
   background: transparent;
 }
 
@@ -92,6 +107,7 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   margin: 0 0 8px;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 .toast {

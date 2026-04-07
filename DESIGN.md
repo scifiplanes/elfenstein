@@ -250,8 +250,9 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 - **Frame presentation pipeline**:
   - The 3D world is rendered offscreen into a **render target** sized to match the on-screen **game viewport rect** (the HUD “game” panel), not necessarily the full window.
   - The HUD exists as HTML/CSS twice:
-    - an **interactive HUD** (visible, handles pointer input)
+    - an **interactive HUD** (`opacity: 0` over the final canvas but above the WebGL presenter, handles pointer input)
     - a **capture HUD** (offscreen, non-interactive) that is rasterized into a canvas texture
+  - **HUD shell art**: a single transparent **`ui_hud_background.png`** (`Content/ui/hud/`, mirrored to `web/public/content/ui/hud/`) is drawn full-bleed behind the HUD grid in `HudLayout` (CSS `::before`, `background-size: contain`, centered). Existing widgets stay in the current CSS grid; opaque “glass” panel styling is removed so content sits on the artwork (fine-tune slot positions vs the art next).
   - Presenter sizing is derived from the **viewport CSS size** (prefer `visualViewport.width/height`, else `documentElement.clientWidth/clientHeight`) rather than measuring the presenter canvas element, to avoid resize feedback loops caused by renderers writing inline canvas CSS sizes.
   - A presenter compositor shader places the scene render target into the frame **only inside** the game viewport rect and overlays the captured HUD everywhere else (and over the scene where UI alpha exists).
   - The final composite then runs through the ordered-dither post-process so the **same dithering/pixelation** applies to both 3D and HUD.
@@ -273,6 +274,7 @@ Asset types:
 - Portrait
 - Mouth PNG (transparent)
 - Eyes PNG (transparent)
+- HUD shell PNG (transparent): `Content/ui/hud/ui_hud_background.png`
 
 ## 14) “Not now” ideas (parked)
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).

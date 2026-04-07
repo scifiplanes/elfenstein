@@ -628,3 +628,19 @@ The portrait art is the primary information in the character panel; dedicating a
 ### Consequences
 - Portraits get more vertical space across all party slots.
 - Status detail is de-emphasized (ellipsis truncation) but remains accessible via tooltip/title on hover.
+
+---
+
+## ADR-0044 — Full-viewport HUD background plate (`ui_hud_background.png`)
+Date: 2026-04-07
+
+### Decision
+Add **`Content/ui/hud/ui_hud_background.png`** (transparent PNG) as the primary HUD chrome: `HudLayout` paints it via a **`::before`** layer (`background-size: contain`, centered) behind the existing grid. **Panel** cards lose blur/border/fill so widgets read on top of the art; section titles gain a light **text-shadow** for contrast. Mirror the file to **`web/public/content/ui/hud/`** for the dev server.
+
+### Rationale
+Art-directed layout replaces ad-hoc “glass” rectangles; one plate establishes the frame while we keep the current grid until widgets are positioned deliberately against the artwork.
+
+### Consequences
+- Transparent areas in the plate reveal the composited scene (and any bleed outside the game viewport rect).
+- `html2canvas` must include the pseudo-element (supported); if capture regressions appear, switch to a real backdrop `<div>`.
+- Slot alignment vs the PNG may need iterative CSS tuning (`grid-template-*`, padding, or future absolute placement).
