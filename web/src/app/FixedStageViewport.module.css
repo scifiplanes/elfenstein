@@ -1,0 +1,26 @@
+.shell {
+  width: 100%;
+  min-height: 100%;
+  min-height: 100dvh;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.clip {
+  position: relative;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.stage {
+  transform-origin: top left;
+  position: absolute;
+  left: 0;
+  top: 0;
+  /* Descendants must not use 100vw/100vh (browser viewport); use these for max sizes. */
+  --stage-w: 1920px; /* keep in sync with stageDesign.ts */
+  --stage-h: 1080px;
+}

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react'
+import { Fragment, useEffect, useMemo, useReducer, useState } from 'react'
 import { CursorLayer } from '../ui/cursor/CursorLayer'
 import { CursorProvider } from '../ui/cursor/CursorProvider'
 import { DebugPanel } from '../ui/debug/DebugPanel'
@@ -9,6 +9,7 @@ import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
 import { loadDebugSettingsFromProject, saveDebugSettingsToProject } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
+import { FixedStageViewport } from './FixedStageViewport'
 
 export function GameApp() {
   const content = useMemo(() => ContentDB.createDefault(), [])
@@ -90,12 +91,16 @@ export function GameApp() {
 
   return (
     <CursorProvider>
-      <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-      <MusicLayer state={state} src="/sounds/dungeon_bg_music.mp3" />
-      <SpatialAudioLayer state={state} />
-      <FeedbackLayer state={state} dispatch={dispatch} />
-      <CursorLayer state={state} content={content} />
-      <DebugPanel state={state} dispatch={dispatch} />
+      <Fragment>
+        <FixedStageViewport>
+          <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
+          <MusicLayer state={state} src="/sounds/dungeon_bg_music.mp3" />
+          <SpatialAudioLayer state={state} />
+          <FeedbackLayer state={state} dispatch={dispatch} />
+          <DebugPanel state={state} dispatch={dispatch} />
+        </FixedStageViewport>
+        <CursorLayer state={state} content={content} />
+      </Fragment>
     </CursorProvider>
   )
 }
