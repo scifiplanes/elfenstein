@@ -880,3 +880,17 @@ Without the **`1`** cap, **`s`** exceeds **1** on large windows and the **1920×
 ### Consequences
 - **Supersedes** the “large viewports scale the stage up to fill” outcome described under **ADR-0056**; **downscale-only** past **1:1** on small windows is unchanged.
 - If OS / browser **CSS viewport** is still **≤ 1920×1080** at “4K” (display scaling), **`s`** stays **1** and margins may not appear—that is driven by **reported layout pixels**, not physical panel resolution.
+
+---
+
+## ADR-0061 — `CursorLayer` outside `FixedStageViewport`
+Date: 2026-04-07
+
+### Decision
+Render **`CursorLayer`** as a **sibling** of **`FixedStageViewport`** in **`GameApp`** (still under **`CursorProvider`**), not inside the scaled stage.
+
+### Rationale
+The stage uses **`transform: scale`**, which makes **`position: fixed`** descendants use that ancestor as the containing block. **`CursorLayer`** positions the hand with **`clientX`/`clientY`** (viewport space), so it appeared **offset** / “double cursor” vs the system pointer.
+
+### Consequences
+- **`FeedbackLayer`** / **`DebugPanel`** remain inside the stage; if similar misalignment is noticed, apply the same pattern or convert coordinates.

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useReducer, useState } from 'react'
+import { Fragment, useEffect, useMemo, useReducer, useState } from 'react'
 import { CursorLayer } from '../ui/cursor/CursorLayer'
 import { CursorProvider } from '../ui/cursor/CursorProvider'
 import { DebugPanel } from '../ui/debug/DebugPanel'
@@ -91,14 +91,16 @@ export function GameApp() {
 
   return (
     <CursorProvider>
-      <FixedStageViewport>
-        <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-        <MusicLayer state={state} src="/sounds/dungeon_bg_music.mp3" />
-        <SpatialAudioLayer state={state} />
-        <FeedbackLayer state={state} dispatch={dispatch} />
+      <Fragment>
+        <FixedStageViewport>
+          <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
+          <MusicLayer state={state} src="/sounds/dungeon_bg_music.mp3" />
+          <SpatialAudioLayer state={state} />
+          <FeedbackLayer state={state} dispatch={dispatch} />
+          <DebugPanel state={state} dispatch={dispatch} />
+        </FixedStageViewport>
         <CursorLayer state={state} content={content} />
-        <DebugPanel state={state} dispatch={dispatch} />
-      </FixedStageViewport>
+      </Fragment>
     </CursorProvider>
   )
 }
