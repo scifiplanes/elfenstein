@@ -94,7 +94,7 @@ export function GameApp() {
       <Fragment>
         <FixedStageViewport>
           <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-          <MusicLayer state={state} src="/sounds/dungeon_bg_music.mp3" />
+          <MusicLayer state={state} src="/sounds/music/dungeon_bg_music.mp3" />
           <SpatialAudioLayer state={state} />
           <FeedbackLayer state={state} dispatch={dispatch} />
           <DebugPanel state={state} dispatch={dispatch} />

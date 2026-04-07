@@ -14,7 +14,7 @@ export class MusicPlayer {
 
   ensure() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+      this.ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
       this.gainNode = this.ctx.createGain()
       this.gainNode.connect(this.ctx.destination)
     }
