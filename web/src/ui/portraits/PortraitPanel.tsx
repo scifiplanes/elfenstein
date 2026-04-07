@@ -246,6 +246,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     <div
       className={styles.root}
       onPointerMove={cursor.onPointerMove}
+      onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })

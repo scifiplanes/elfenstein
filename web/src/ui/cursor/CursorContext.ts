@@ -19,6 +19,7 @@ export type CursorApi = {
   onPointerMove(e: React.PointerEvent): void
   setVirtualHover(target: DragTarget | null, rect: CursorState['hoverRect']): void
   endPointerUp(e: React.PointerEvent): { payload: DragPayload; target: DragTarget } | null
+  cancelDrag(): void
 }
 
 export const CursorContext = createContext<CursorApi | null>(null)

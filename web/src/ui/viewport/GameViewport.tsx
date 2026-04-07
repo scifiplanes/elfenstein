@@ -104,6 +104,7 @@ export function GameViewport(props: {
         if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, hoverRect)
         if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, hoverRect)
       }}
+      onPointerCancel={cursor.cancelDrag}
       onClick={(e) => {
         // Avoid firing click actions after a press+hold drag gesture begins.
         if (cursor.state.dragging?.started || cursor.state.isPointerDown) return

@@ -130,6 +130,25 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
+  const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+    () => [
+      { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
+      { key: 'npcGroundY_Bobr', label: 'Bobr groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSize_Bobr', label: 'Bobr size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSizeRand_Bobr', label: 'Bobr size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
+      { key: 'npcGroundY_Skeleton', label: 'Skeleton groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSize_Skeleton', label: 'Skeleton size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSizeRand_Skeleton', label: 'Skeleton size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
+      { key: 'npcGroundY_Catoctopus', label: 'Catoctopus groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSize_Catoctopus', label: 'Catoctopus size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'npcSizeRand_Catoctopus', label: 'Catoctopus size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
+    ],
+    [],
+  )
+
   if (!state.ui.debugOpen) return null
 
   const q = query.trim().toLowerCase()
@@ -137,12 +156,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const visiblePortrait = q ? portraitSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : portraitSliders
   const visibleRender = q ? renderSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : renderSliders
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
+  const visibleNpc = q ? npcSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : npcSliders
 
   return (
     <div
       className={styles.root}
       onPointerMove={cursor.onPointerMove}
       onPointerUp={cursor.endPointerUp}
+      onPointerCancel={cursor.cancelDrag}
     >
       <div className={styles.header}>
         <div className={styles.title}>Debug (F2)</div>
@@ -216,7 +237,41 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Rendering</div>
+        {(!q || 'fog enabled fogenabled fog'.includes(q)) && (
+          <div className={styles.row}>
+            <div className={styles.label}>Fog enabled</div>
+            <div className={styles.value}>{state.render.fogEnabled > 0 ? 'On' : 'Off'}</div>
+            <input
+              className={styles.slider}
+              type="checkbox"
+              checked={state.render.fogEnabled > 0}
+              onChange={(e) => dispatch({ type: 'render/set', key: 'fogEnabled', value: e.target.checked ? 1 : 0 })}
+            />
+          </div>
+        )}
         {visibleRender.map((s) => {
+          const v = state.render[s.key]
+          return (
+            <div key={s.key} className={styles.row}>
+              <div className={styles.label}>{s.label}</div>
+              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <input
+                className={styles.slider}
+                type="range"
+                min={s.min}
+                max={s.max}
+                step={s.step}
+                value={v}
+                onChange={(e) => dispatch({ type: 'render/set', key: s.key, value: Number(e.target.value) })}
+              />
+            </div>
+          )
+        })}
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>NPCs</div>
+        {visibleNpc.map((s) => {
           const v = state.render[s.key]
           return (
             <div key={s.key} className={styles.row}>

@@ -56,7 +56,7 @@ Interactions should resolve with:
 ### 6.4 Grid movement (first-person)
 - **Model**: discrete cells; facing is one of four compass directions; the 3D camera **yaw** matches facing. **Strafe** moves one cell **left or right relative to facing** without rotating (**A** / **D**). **W** / **S** move **forward** / **backward** along facing.
 - **Keyboard** (see `GameApp.tsx`): **W** / **S** (and **↑** / **↓**) forward/back; **A** / **D** strafe left/right; **Q** / **E** turn left/right. **F2** toggles the debug panel.
-- **HUD**: the **navigation** panel is a **3×2** image pad (sources under `Content/ui/navigation/`, mirrored to `web/public/content/ui/navigation/` for the dev server): each **cell is drawn at 50% of the bezel PNG native size** (**88.5×88.5 px** from 177×177 sources), **square** corners (no radius on the cells); on press it shows **ui_navigationbutton_pushed** for **0.5 seconds**, then returns to default. Direction glyphs are separate overlays (**arrow up/down/left/right**, **turn left/right** icons). Layout row 1: turn left, forward, turn right; row 2: strafe left, back, strafe right. The HUD grid’s trailing column is **271.5 px** wide at current scale (three cells + gaps). Tooltips still echo keyboard shortcuts (§6.4). **Note**: the on-screen HUD is composited from an offscreen **capture** DOM (`HudLayout` with `captureForPostprocess`); the **interactive** HUD is pointer-transparent (`opacity: 0`). Navigation “pushed” bezel state therefore lives in `DitheredFrameRoot` and is passed into **both** trees so `html2canvas` sees **`ui_navigationbutton_pushed.png`** on the cell you pressed.
+- **HUD**: the bottom grid row (minimap + inventory + navigation) has a shared row height of **400 px**. **Left and right** HUD columns are **518 px** wide each: **CHAR2/CHAR1 + minimap** on the left, **CHAR4/CHAR3 + navigation** on the right. The **center** is **120 px** statue strips + **1fr** viewport + **120 px** statue strips; **inventory** spans that full center band (it is **narrower in absolute pixels** when the window is fixed size because the outer columns widened from the previous layout). The **navigation** panel is a **3×2** image pad (sources under `Content/ui/navigation/`, mirrored to `web/public/content/ui/navigation/` for the dev server): each **cell is drawn at 50% of the bezel PNG native size** (**88.5×88.5 px** from 177×177 sources), **square** corners (no radius on the cells); on press it shows **ui_navigationbutton_pushed** for **0.5 seconds**, then returns to default. Direction glyphs are separate overlays (**arrow up/down/left/right**, **turn left/right** icons). Layout row 1: turn left, forward, turn right; row 2: strafe left, back, strafe right. The pad’s intrinsic width is **~271.5 px** (three cells + gaps); it is **centered** in the **518 px** column. Tooltips still echo keyboard shortcuts (§6.4). **Note**: the on-screen HUD is composited from an offscreen **capture** DOM (`HudLayout` with `captureForPostprocess`); the **interactive** HUD is pointer-transparent (`opacity: 0`). Navigation “pushed” bezel state therefore lives in `DitheredFrameRoot` and is passed into **both** trees so `html2canvas` sees **`ui_navigationbutton_pushed.png`** on the cell you pressed.
 - **Viewport**: clicking a **door** attempts a **forward** step into that cell (open normal door or try key on locked door).
 - **While a move/turn animation is playing**, new step, strafe, and turn input is ignored so the player resolves one grid action at a time.
 - **Audio**: a successful step or strafe plays a short **step** SFX; walking into a solid tile uses a distinct **bump** SFX (with existing toast + shake).
@@ -160,6 +160,12 @@ The party has **up to 4** character portrait slots.
 - Interaction:
   - drag weapon onto NPC → attack with that weapon
   - click or walk into NPC → contextual interaction based on status
+- Rendering:
+  - In-world NPCs are rendered as **2D sprite billboards** in the 3D scene (per NPC kind), and are still pickable/clickable/drag-targetable.
+  - NPC billboards **preserve the sprite PNG aspect ratio** (no squashing); sprite **height** is set by per-kind tuning and width is derived from the texture aspect.
+  - F2 Debug exposes per-kind **NPC size (height)** and deterministic **±% size variation**; values persist via `web/public/debug-settings.json`.
+  - NPC sprite placement aligns the **feet/ground point** with the **floor surface** so NPCs appear grounded. F2 Debug exposes a small global lift (`npcFootLift`) plus per-kind ground pivot offsets (`npcGroundY_*`) to compensate for transparent padding differences across NPC art.
+  - The NPC dialog shows a small matching sprite next to the NPC’s name.
 
 **Statuses**: Aggressive, Neutral, Friendly
 
@@ -239,7 +245,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - torch flicker via per-torch sine intensity
   - shadow mapping enabled; lantern lights cast shadows; dungeon geometry receives them
   - low emissive lift on dungeon materials; the lantern is the primary visibility driver
-  - `FogExp2` for depth falloff
+  - `FogExp2` is **optional** for depth falloff; **disabled by default** (can be enabled in F2 debug)
 - Post-process: ordered dithering as shader pass (EffectComposer), controls:
   - Strength
   - Colour preserve

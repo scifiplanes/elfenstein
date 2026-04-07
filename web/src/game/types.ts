@@ -23,6 +23,7 @@ export type StatusEffectId =
   | 'Starving'
   | 'Dehydrated'
 export type NpcLanguage = 'DeepGnome' | 'Zalgo' | 'Mojibake'
+export type NpcKind = 'Wurglepup' | 'Bobr' | 'Skeleton' | 'Catoctopus'
 
 export type EquipmentSlot =
   | 'head'
@@ -109,6 +110,8 @@ export type RenderTuning = {
   lanternBeamPenumbra: number
   torchIntensity: number
   torchDistance: number
+  /** 0/1: fog is fully disabled unless explicitly enabled (debug). */
+  fogEnabled: number
   fogDensity: number
   /** First-person eye height in world units (matches camera Y on flat floor). */
   camEyeHeight: number
@@ -169,6 +172,31 @@ export type RenderTuning = {
   portraitShakeMagnitudeScale: number
   /** Portrait interaction shake oscillation frequency (Hz). */
   portraitShakeHz: number
+
+  /**
+   * NPC billboard sizing (world units).
+   * Size is interpreted as sprite HEIGHT; width is derived from the sprite texture aspect ratio.
+   * Randomization is deterministic per-NPC id as ±% around the base size.
+   */
+  npcFootLift: number
+  /**
+   * NPC sprite “ground point” within the sprite’s height (in sprite-height units from the bottom).
+   * 0.0 means use the bottom edge of the image rectangle (legacy).\n
+   * Positive values move the sprite down (as if the feet are higher in the image);
+   * negative values move the sprite up (as if the feet are lower than the image bottom).
+   */
+  npcGroundY_Wurglepup: number
+  npcGroundY_Bobr: number
+  npcGroundY_Skeleton: number
+  npcGroundY_Catoctopus: number
+  npcSize_Wurglepup: number
+  npcSizeRand_Wurglepup: number
+  npcSize_Bobr: number
+  npcSizeRand_Bobr: number
+  npcSize_Skeleton: number
+  npcSizeRand_Skeleton: number
+  npcSize_Catoctopus: number
+  npcSizeRand_Catoctopus: number
 }
 
 export type AudioTuning = {
@@ -229,6 +257,7 @@ export type GameState = {
     itemsOnFloor: Array<{ id: ItemId; pos: Vec2; jitter: { x: number; z: number } }>
     npcs: Array<{
       id: Id
+      kind: NpcKind
       name: string
       pos: Vec2
       status: 'hostile' | 'neutral' | 'friendly'

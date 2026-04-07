@@ -19,6 +19,7 @@ export function InventoryPanel(props: { state: GameState; dispatch: Dispatch<Act
       style={{ ['--inv-cols' as any]: inv.cols }}
       data-drop-kind="floorDrop"
       onPointerMove={cursor.onPointerMove}
+      onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
@@ -44,6 +45,7 @@ export function InventoryPanel(props: { state: GameState; dispatch: Dispatch<Act
                     cursor.beginPointerDown({ itemId: item.id, source: { kind: 'inventorySlot', slotIndex: idx, itemId: item.id } }, e)
                   }}
                   onPointerMove={cursor.onPointerMove}
+                  onPointerCancel={cursor.cancelDrag}
                   onPointerUp={(e) => {
                     const result = cursor.endPointerUp(e)
                     if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
