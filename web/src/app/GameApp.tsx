@@ -6,6 +6,7 @@ import { initialState, reduce } from '../game/reducer'
 import { ContentDB } from '../game/content/contentDb'
 import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
+import { MusicLayer } from '../ui/audio/MusicLayer'
 import { loadDebugSettingsFromProject, saveDebugSettingsToProject } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 
@@ -90,6 +91,7 @@ export function GameApp() {
   return (
     <CursorProvider>
       <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
+      <MusicLayer state={state} src="/sounds/theme.mp3" />
       <SpatialAudioLayer state={state} />
       <FeedbackLayer state={state} dispatch={dispatch} />
       <CursorLayer state={state} content={content} />

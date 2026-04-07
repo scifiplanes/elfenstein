@@ -123,7 +123,7 @@ export type RenderTuning = {
   camShakeHz: number
   /**
    * Hold at full shake strength (ms) before fade. 0 = no hold; envelope uses remaining/decay ramp only (legacy).
-   * Applies to 3D camera, HUD overlay, and portrait CSS shake.
+   * Applies to 3D camera and HUD overlay CSS shake.
    */
   camShakeLengthMs: number
   /** Linear fade duration (ms) after hold; with length 0, scales as min(1, remaining/decay). */
@@ -144,10 +144,21 @@ export type RenderTuning = {
   portraitIdleFlashMinMs: number
   /** Max visible duration (ms) of one idle flash. */
   portraitIdleFlashMaxMs: number
+
+  /**
+   * Portrait interaction shake envelope: hold at full strength (ms) before fade.
+   * Used by `ui.portraitShake` (inspect/feed resolution).
+   */
+  portraitShakeLengthMs: number
+  /** Portrait interaction shake linear fade duration (ms) after hold. */
+  portraitShakeDecayMs: number
+  /** Multiplies `ui.portraitShake.magnitude` (0..n, debug-tunable). */
+  portraitShakeMagnitudeScale: number
 }
 
 export type AudioTuning = {
   masterSfx: number
+  masterMusic: number
   distanceMaxCells: number
   volumeNear: number
   volumeFar: number

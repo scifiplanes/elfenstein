@@ -1,6 +1,6 @@
 # Elfenstein — Design Document (living)
 
-Last updated: 2026-04-06
+Last updated: 2026-04-07
 
 ## 1) High concept
 **Elfenstein** is a web-based, grid-based dungeon crawler with a first-person **2.5D** view. Visuals combine **3D dungeon geometry** with **2D sprites** for characters/items, prioritizing a crunchy dithered/print look and a highly contextual, low-clutter UX.
@@ -14,7 +14,7 @@ Last updated: 2026-04-06
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes spatial emitter mix and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -49,6 +49,7 @@ Interactions should resolve with:
 - short relevant animation (e.g. eyes/mouth)
 - sound
 - subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera**, **HUD overlay shake**, and **portrait frame shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
+- subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera** and **HUD overlay shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
 - **Portrait frame shake** on portrait interaction resolution (inspect and feed), driven by `ui.portraitShake` on the matching character slot
 
 ### 6.4 Grid movement (first-person)
@@ -74,6 +75,9 @@ The party has **up to 4** character portrait slots.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
 - **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, and a brief **munch** SFX on successful feeding. **No** `ui.shake` (3D view or empty HUD overlay) for portrait inspect/feed—only `ui.portraitShake` on the relevant slot.
 - **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed), likewise without 3D shake.
+- **Portrait shake tuning**: portrait frame shake has its own envelope and amplitude tuning via `RenderTuning`:
+  - `portraitShakeLengthMs` / `portraitShakeDecayMs` (envelope)
+  - `portraitShakeMagnitudeScale` (amplitude multiplier applied to `ui.portraitShake.magnitude`)
 - Portrait interactive middle third is split into:
   - **Eyes area (top)** → inspect drop target
   - **Mouth area (bottom)** → feed drop target
@@ -197,8 +201,13 @@ Initial POIs:
 - **Bed**: restores full HP and Stamina
 
 ## 10) Audio
-- NPCs and POIs emit positional audio audible from a few cells away.
-- Attenuation uses both **lowpass** and **volume** with distance.
+Three audio layers run simultaneously via the Web Audio API:
+
+- **Background music** (`MusicPlayer` / `MusicLayer`): loads an audio file, loops it continuously, and applies a tunable master volume (`masterMusic`). Starts on first user interaction (browser autoplay policy). Currently plays `Assets/sounds/theme.mp3` (served from `public/sounds/`).
+- **Spatial ambient** (`SpatialAudio` / `SpatialAudioLayer`): NPCs and POIs emit continuous synthesized tones audible from a configurable number of cells away. Attenuation uses both **lowpass** and **volume** with distance (tunable in F2).
+- **Procedural SFX** (`SfxEngine` / `FeedbackLayer`): discrete one-shot sounds generated from scratch using oscillators, noise, envelopes, and filters. Triggered via `ui.sfxQueue`. Kinds: `ui`, `hit`, `reject`, `pickup`, `munch`, `step`, `bump`.
+
+Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are both in `AudioTuning` and adjustable in F2.
 
 ## 11) Graphics & rendering spec
 - Three.js WebGL with `MeshStandardMaterial` on dungeon geometry.
