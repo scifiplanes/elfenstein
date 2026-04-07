@@ -15,6 +15,7 @@
     "torchDistance": 10,
     "fogDensity": 0.247,
     "camEyeHeight": 0.43,
+    "camForwardOffset": 0,
     "camFov": 34,
     "camPitchDeg": 0,
     "camShakePosAmp": 0.12,
@@ -29,6 +30,8 @@
     "ditherLevels": 10,
     "ditherMatrixSize": 4,
     "ditherPalette": 4,
+    "dropAheadCells": 1.2,
+    "dropJitterRadius": 0.31,
     "portraitIdleGapMinMs": 8000,
     "portraitIdleGapMaxMs": 18000,
     "portraitIdleFlashMinMs": 120,
@@ -40,11 +43,12 @@
     "portraitShakeMagnitudeScale": 3.31,
     "portraitShakeHz": 33.5,
     "ambientIntensity": 0,
-    "sunIntensity": 0
+    "sunIntensity": 0,
+    "dropRangeCells": 8
   },
   "audio": {
     "masterSfx": 1,
-    "masterMusic": 0.44,
+    "masterMusic": 0,
     "distanceMaxCells": 7,
     "volumeNear": 0,
     "volumeFar": 0,

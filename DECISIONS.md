@@ -644,3 +644,39 @@ Art-directed layout replaces ad-hoc “glass” rectangles; one plate establishe
 - Transparent areas in the plate reveal the composited scene (and any bleed outside the game viewport rect).
 - `html2canvas` must include the pseudo-element (supported); if capture regressions appear, switch to a real backdrop `<div>`.
 - Slot alignment vs the PNG may need iterative CSS tuning (`grid-template-*`, padding, or future absolute placement).
+
+---
+
+## ADR-0045 — World items are draggable + interaction outcomes are content/seed driven
+Date: 2026-04-07
+
+### Decision
+- Allow **press+hold drag** directly from **world floor items** in the 3D view (not only from inventory).
+- Route key interaction checks (weapon/food/POI transforms) through **`ContentDB`** (tags + `feed` + `useOnPoi`) rather than hardcoded item id lists.
+- Replace time-based “randomness” in interaction outcomes (loot/skill checks/crafting) with **seeded, stable hashes** derived from `floor.seed` + stable ids.
+- Drop placement in the 3D view lands **ahead of the player** by a tunable distance so the item is immediately visible.
+- Add debug-tunable **camera forward/back offset** and **drop length** sliders.
+
+### Rationale
+This makes the 3D view a first-class interaction surface while keeping logic modular and extensible. Stable, seed-based outcomes are also a prerequisite for future host-authoritative multiplayer sync and reproducible debugging.
+
+### Consequences
+- Drag/drop flows must handle items whose source is the floor (detach/move/stow semantics) without duplicating or losing items.
+- Content expansion happens primarily by editing `ContentDB` definitions instead of adding new conditionals in reducers.
+- Interaction outcomes become reproducible per seed and object ids; “true randomness” should be introduced later via explicit RNG streams/events if needed.
+- Drops are biased to appear in front of the camera; blocked/out-of-bounds cases fall back to the player cell.
+
+---
+
+## ADR-0046 — Remove RT/UI debug overlays; keep F2 debug panel
+Date: 2026-04-07
+
+### Decision
+Remove the always-on on-screen **RT debug** and **UI debug** overlay readouts from the main frame (`DitheredFrameRoot`). Keep the existing **F2** debug panel for tuning.
+
+### Rationale
+The overlay text is visually noisy in normal play and doesn’t match the “low-clutter HUD” goal. The F2 panel remains the right place for tuning/debug controls.
+
+### Consequences
+- Runtime rendering diagnostics are no longer visible by default during gameplay.
+- If deeper renderer inspection is needed, it should be exposed explicitly (e.g., via query params or dev-only tooling), not as an always-present overlay.

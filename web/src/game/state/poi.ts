@@ -1,8 +1,10 @@
+import type { ContentDB } from '../content/contentDb'
 import type { GameState, ItemId } from '../types'
 import { removeStatus } from './status'
 import { consumeItem } from './inventory'
+import { makeDropJitter } from './dropJitter'
 
-export function usePoi(state: GameState, poiId: string): GameState {
+export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
   if (!poi) return state
 
@@ -40,11 +42,17 @@ export function usePoi(state: GameState, poiId: string): GameState {
       }
     }
 
-    const loot = pickChestLootDefId(state)
-    const newId = (`i_${loot}_${Math.floor(state.nowMs)}` as unknown) as ItemId
+    const loot = pickChestLootDefId(state, poiId)
+    const newId = (`i_${loot}_${state.floor.seed}_${poiId}` as unknown) as ItemId
 
     const items = { ...state.party.items, [newId]: { id: newId, defId: loot, qty: 1 } }
-    const itemsOnFloor = state.floor.itemsOnFloor.concat([{ id: newId, pos: { ...poi.pos } }])
+    const jitter = makeDropJitter({
+      floorSeed: state.floor.seed,
+      itemId: newId,
+      nonce: Math.floor(state.nowMs),
+      radius: state.render.dropJitterRadius ?? 0.28,
+    })
+    const itemsOnFloor = state.floor.itemsOnFloor.concat([{ id: newId, pos: { ...poi.pos }, jitter }])
     const pois = state.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
     const sfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }])
 
@@ -87,21 +95,22 @@ export function usePoi(state: GameState, poiId: string): GameState {
   return state
 }
 
-export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): GameState {
+export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: ItemId, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
   const item = state.party.items[itemId]
   if (!poi || !item) return state
 
   if (poi.kind === 'Well') {
-    if (item.defId === 'WaterbagEmpty') {
-      // transform to full
-      const nextItem = { ...item, defId: 'WaterbagFull' as const }
+    const def = content.item(item.defId)
+    const hook = def.useOnPoi?.Well
+    if (hook?.transformTo) {
+      const nextItem = { ...item, defId: hook.transformTo }
       return {
         ...state,
         party: { ...state.party, items: { ...state.party.items, [itemId]: nextItem } },
         ui: {
           ...state.ui,
-          toast: { id: `t_${state.nowMs}`, text: 'Filled the waterbag.', untilMs: state.nowMs + 1300 },
+          toast: { id: `t_${state.nowMs}`, text: hook.toast ?? 'Done.', untilMs: state.nowMs + 1300 },
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: 0.22 },
         },
       }
@@ -116,14 +125,14 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
     }
   }
 
-  if (poi.kind === 'Bed') return usePoi(state, poiId)
+  if (poi.kind === 'Bed') return applyPoiUse(state, content, poiId)
 
   if (poi.kind === 'Chest') {
     // Treat “item on chest” as “use chest”.
-    return usePoi(state, poiId)
+    return applyPoiUse(state, content, poiId)
   }
 
-  if (poi.kind === 'Shrine') return usePoi(state, poiId)
+  if (poi.kind === 'Shrine') return applyPoiUse(state, content, poiId)
 
   if (poi.kind === 'CrackedWall') {
     const okTool = item.defId === 'Chisel' || item.defId === 'StoneShard'
@@ -138,8 +147,7 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
       }
     }
 
-    // Deterministic-ish skill check; replace with RNG stream later.
-    const seed = (Math.floor(state.nowMs) ^ hashStr(poi.id) ^ (hashStr(item.id) * 31)) >>> 0
+    const seed = hashStr(`${state.floor.seed}:crackedWall:${poi.id}:${poi.pos.x},${poi.pos.y}:${item.defId}:${item.id}`)
     const roll = (seed % 100) + 1 // 1..100
     const success = roll > 35 // MVP: 65% base success
 
@@ -180,7 +188,7 @@ export function useItemOnPoi(state: GameState, itemId: ItemId, poiId: string): G
   return state
 }
 
-function pickChestLootDefId(state: GameState): string {
+function pickChestLootDefId(state: GameState, poiId: string): string {
   // MVP deterministic loot table; replace with content-driven tables later.
   const table = [
     'Stick',
@@ -192,7 +200,7 @@ function pickChestLootDefId(state: GameState): string {
     'HerbPoultice',
     'Chisel',
   ] as const
-  const seed = (Math.floor(state.nowMs) ^ hashStr('chest') ^ (state.floor.seed * 31)) >>> 0
+  const seed = hashStr(`${state.floor.seed}:chest:${poiId}`)
   return table[seed % table.length]
 }
 

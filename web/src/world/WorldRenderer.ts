@@ -161,6 +161,23 @@ export class WorldRenderer {
     return { x, y }
   }
 
+  /**
+   * Intersect the camera ray through a client pixel with the floor plane (y=0).
+   * This is used for cursor-aimed drop placement in the 3D viewport.
+   */
+  pickFloorPoint(gameRect: DOMRectReadOnly, clientX: number, clientY: number): null | THREE.Vector3 {
+    const x = ((clientX - gameRect.left) / gameRect.width) * 2 - 1
+    const y = -(((clientY - gameRect.top) / gameRect.height) * 2 - 1)
+    this.ndc.set(x, y)
+    this.raycaster.setFromCamera(this.ndc, this.camera)
+    const ray = this.raycaster.ray
+    const denom = ray.direction.y
+    if (Math.abs(denom) < 1e-6) return null
+    const t = (0 - ray.origin.y) / denom
+    if (t <= 0) return null
+    return ray.origin.clone().add(ray.direction.clone().multiplyScalar(t))
+  }
+
   private syncSize(w: number, h: number) {
     if (this.rt && w === this.lastSize.w && h === this.lastSize.h) return
 
@@ -182,7 +199,7 @@ export class WorldRenderer {
   }
 
   private syncScene(state: GameState) {
-    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y).join('|')}`
+    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}`
     if (key !== this.lastGeomKey) {
       this.lastGeomKey = key
       if (this.geoGroup) this.scene.remove(this.geoGroup)
@@ -208,6 +225,15 @@ export class WorldRenderer {
     let y = basePos.y
     let z = basePos.z
     let roll = 0
+
+    // Camera forward/back offset (feel/debug): move along facing without changing grid state.
+    const camForward = Number(state.render.camForwardOffset ?? 0)
+    if (camForward !== 0) {
+      const fx = Math.sin(yaw)
+      const fz = -Math.cos(yaw)
+      x += fx * camForward
+      z += fz * camForward
+    }
 
     if (hasShake) {
       const start = uiShake!.startedAtMs ?? uiShake!.untilMs - 160
@@ -319,48 +345,41 @@ export class WorldRenderer {
       }
     }
 
-    const torchGeo = new THREE.SphereGeometry(0.08, 10, 10)
-    const torchMat = new THREE.MeshStandardMaterial({ color: 0xffb066, emissive: 0xff7b2a, emissiveIntensity: 1.2, roughness: 0.4 })
+    const poiMat = makeBillboardMaterial('✦', '#ffd59a')
+    const npcMat = makeBillboardMaterial('☻', '#f070ff')
+    const itemMat = makeBillboardMaterial('◻', '#b6ff8b')
+
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
-      const m = new THREE.Mesh(torchGeo, torchMat)
-      m.position.set(x, 0.65, z)
-      m.castShadow = true
-      m.receiveShadow = true
-      m.userData = { kind: 'poi', id: p.id }
-      g.add(m)
-      this.pickables.push(m)
+      const s = new THREE.Sprite(poiMat)
+      s.position.set(x, 0.72, z)
+      s.scale.set(0.55, 0.55, 1)
+      s.userData = { kind: 'poi', id: p.id }
+      g.add(s)
+      this.pickables.push(s)
     })
 
-    // NPC markers (placeholder sprites to be swapped later).
-    const npcGeo = new THREE.SphereGeometry(0.22, 14, 14)
-    const npcMat = new THREE.MeshStandardMaterial({ color: 0xd24cff, roughness: 0.4, metalness: 0.0 })
     state.floor.npcs.forEach((n) => {
       const x = n.pos.x - w / 2
       const z = n.pos.y - h / 2
-      const m = new THREE.Mesh(npcGeo, npcMat)
-      m.position.set(x, 0.25, z)
-      m.castShadow = true
-      m.receiveShadow = true
-      m.userData = { kind: 'npc', id: n.id }
-      g.add(m)
-      this.pickables.push(m)
+      const s = new THREE.Sprite(npcMat)
+      s.position.set(x, 0.38, z)
+      s.scale.set(0.65, 0.65, 1)
+      s.userData = { kind: 'npc', id: n.id }
+      g.add(s)
+      this.pickables.push(s)
     })
 
-    // Dropped floor items (placeholder).
-    const itemGeo = new THREE.BoxGeometry(0.25, 0.12, 0.25)
-    const itemMat = new THREE.MeshStandardMaterial({ color: 0xb6ff8b, roughness: 0.6, metalness: 0.0 })
     state.floor.itemsOnFloor.forEach((it) => {
-      const x = it.pos.x - w / 2
-      const z = it.pos.y - h / 2
-      const m = new THREE.Mesh(itemGeo, itemMat)
-      m.position.set(x, 0.02, z)
-      m.castShadow = true
-      m.receiveShadow = true
-      m.userData = { kind: 'floorItem', id: it.id }
-      g.add(m)
-      this.pickables.push(m)
+      const x = it.pos.x - w / 2 + (it.jitter?.x ?? 0)
+      const z = it.pos.y - h / 2 + (it.jitter?.z ?? 0)
+      const s = new THREE.Sprite(itemMat)
+      s.position.set(x, 0.18, z)
+      s.scale.set(0.5, 0.5, 1)
+      s.userData = { kind: 'floorItem', id: it.id }
+      g.add(s)
+      this.pickables.push(s)
     })
 
     return g
@@ -419,5 +438,31 @@ export class WorldRenderer {
       this.torchLights[i].intensity = state.render.torchIntensity * flicker
     }
   }
+}
+
+function makeBillboardMaterial(glyph: string, color: string) {
+  const canvas = document.createElement('canvas')
+  canvas.width = 128
+  canvas.height = 128
+  const ctx = canvas.getContext('2d')
+  if (!ctx) throw new Error('2D canvas unavailable')
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height)
+  ctx.textAlign = 'center'
+  ctx.textBaseline = 'middle'
+  ctx.font = '96px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+  ctx.fillStyle = 'rgba(0,0,0,0.55)'
+  ctx.fillText(glyph, 64 + 4, 64 + 6)
+  ctx.fillStyle = color
+  ctx.fillText(glyph, 64, 64)
+
+  const tex = new THREE.CanvasTexture(canvas)
+  tex.colorSpace = THREE.SRGBColorSpace
+  tex.minFilter = THREE.LinearFilter
+  tex.magFilter = THREE.LinearFilter
+  tex.generateMipmaps = false
+
+  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+  return mat
 }
 

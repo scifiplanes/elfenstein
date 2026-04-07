@@ -20,10 +20,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureHudRef = useRef<HTMLDivElement | null>(null)
   const gameViewportRef = useRef<HTMLDivElement | null>(null)
   const [layoutTick, setLayoutTick] = useState(0)
-  const [sceneDebug, setSceneDebug] = useState<string>('')
-  const sceneDebugRef = useRef<string>('')
-  const [uiDebug, setUiDebug] = useState<string>('')
-  const uiDebugRef = useRef<string>('')
 
   const [world, setWorld] = useState<WorldRenderer | null>(null)
   const [webglError, setWebglError] = useState<string | null>(null)
@@ -168,15 +164,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     if (world) {
       world.syncViewportRect(gameRect)
       world.renderFrame(latestStateRef.current)
-
-      const sz = world.getRenderTargetSize()
-      const center = sz ? world.readRenderTargetPixel(sz.w * 0.5, sz.h * 0.5) : null
-      const sceneTexOk = !!world.getRenderTargetTexture()
-      const s = `sceneTex=${sceneTexOk ? 'yes' : 'no'} rt=${sz ? `${sz.w}x${sz.h}` : 'null'} center=${center ? `${center[0]},${center[1]},${center[2]},${center[3]}` : 'null'}`
-      if (s !== sceneDebugRef.current) {
-        sceneDebugRef.current = s
-        window.requestAnimationFrame(() => setSceneDebug(sceneDebugRef.current))
-      }
     }
 
     // If the presenter size changed, the last UI capture is the wrong resolution and will smear.
@@ -242,14 +229,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       })
         .then((canvas) => {
           lastCaptureMsRef.current = performance.now()
-          const capPortrait = captureEl.querySelector('[data-portrait-box="true"]') as HTMLElement | null
-          const capPortraitRect = capPortrait?.getBoundingClientRect()
-          const capP = capPortraitRect ? `${Math.round(capPortraitRect.width)}x${Math.round(capPortraitRect.height)}` : 'null'
-          const dbg = `uiCanvas=${canvas.width}x${canvas.height} presentCss=${w}x${h} capPortraitCss=${capP}`
-          if (dbg !== uiDebugRef.current) {
-            uiDebugRef.current = dbg
-            window.requestAnimationFrame(() => setUiDebug(uiDebugRef.current))
-          }
           if (!uiTexRef.current) {
             const tex = new THREE.CanvasTexture(canvas)
             tex.colorSpace = THREE.SRGBColorSpace
@@ -317,8 +296,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
 
       {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
-      {sceneDebug ? <div style={{ position: 'fixed', left: 12, top: webglError ? 52 : 12, padding: '8px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.9)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>RT debug: {sceneDebug}</div> : null}
-      {uiDebug ? <div style={{ position: 'fixed', left: 12, top: webglError ? 92 : 52, padding: '8px 10px', borderRadius: 12, background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(255,255,255,0.10)', color: 'rgba(255,255,255,0.9)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>UI debug: {uiDebug}</div> : null}
 
       <div className={styles.interactiveHud}>
         <HudLayout

@@ -1,14 +1,17 @@
-import type { ContentDB } from './content/contentDb'
+import { ContentDB } from './content/contentDb'
 import type { DragPayload, DragTarget, EquipmentSlot, GameState, ItemId, RenderTuning } from './types'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
 import { feedCharacter, inspectCharacter } from './state/interactions'
-import { useItemOnPoi, usePoi } from './state/poi'
+import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
+import { makeDropJitter } from './state/dropJitter'
 import { generateDungeon } from '../procgen/generateDungeon'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe, maybeFinishCrafting, startCrafting } from './state/crafting'
+
+const CONTENT = ContentDB.createDefault()
 
 export type Action =
   | { type: 'ui/toggleDebug' }
@@ -192,7 +195,7 @@ export function reduce(state: GameState, action: Action): GameState {
       return attemptMoveTo(state, nx, ny)
     }
     case 'poi/use': {
-      return usePoi(state, action.poiId)
+      return applyPoiUse(state, CONTENT, action.poiId)
     }
     case 'floor/pickup':
       return pickupFloorItem(state, action.itemId)
@@ -221,7 +224,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'floorDrop') {
-        return dropItemToFloor(state, itemId)
+        return dropItemToFloor(state, itemId, target.dropPos)
       }
 
       if (target.kind === 'floorItem') {
@@ -230,12 +233,12 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'portrait') {
-        if (target.target === 'eyes') return inspectCharacter(state, target.characterId, itemId)
-        return feedCharacter(state, target.characterId, itemId)
+        if (target.target === 'eyes') return inspectCharacter(state, CONTENT, target.characterId, itemId)
+        return feedCharacter(state, CONTENT, target.characterId, itemId)
       }
 
       if (target.kind === 'poi') {
-        return useItemOnPoi(state, itemId, target.poiId)
+        return applyItemOnPoi(state, CONTENT, itemId, target.poiId)
       }
 
       if (target.kind === 'equipmentSlot') {
@@ -283,11 +286,17 @@ export function reduce(state: GameState, action: Action): GameState {
       if (died) {
         const lootDef = pickNpcLootDefId(nextState, npc.id)
         if (lootDef) {
-          const lootId = `i_${lootDef}_${Math.floor(nextState.nowMs)}`
+          const lootId = `i_${lootDef}_${nextState.floor.seed}_${npc.id}`
+          const jitter = makeDropJitter({
+            floorSeed: nextState.floor.seed,
+            itemId: lootId,
+            nonce: Math.floor(nextState.nowMs),
+            radius: nextState.render.dropJitterRadius ?? 0.28,
+          })
           nextState = {
             ...nextState,
             party: { ...nextState.party, items: { ...nextState.party.items, [lootId]: { id: lootId, defId: lootDef, qty: 1 } } },
-            floor: { ...nextState.floor, itemsOnFloor: nextState.floor.itemsOnFloor.concat([{ id: lootId, pos: { ...npc.pos } }]) },
+            floor: { ...nextState.floor, itemsOnFloor: nextState.floor.itemsOnFloor.concat([{ id: lootId, pos: { ...npc.pos }, jitter }]) },
           }
         }
       }
@@ -384,6 +393,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   if (portraitIdleFlashMaxMs < portraitIdleFlashMinMs) portraitIdleFlashMaxMs = portraitIdleFlashMinMs
   const portraitMouthFlickerHz = Math.max(0, Math.min(40, Number(r.portraitMouthFlickerHz ?? 18)))
   const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(r.portraitMouthFlickerAmount ?? 8))))
+  const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(r.dropRangeCells ?? 5))))
   return {
     ...r,
     ditherMatrixSize,
@@ -413,6 +423,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     portraitIdleFlashMaxMs,
     portraitMouthFlickerHz,
     portraitMouthFlickerAmount,
+    dropRangeCells,
   }
 }
 

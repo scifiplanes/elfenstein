@@ -14,7 +14,7 @@ Last updated: 2026-04-07
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -35,10 +35,10 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 
 ### 6.2 Interaction rules (mouse-first)
 - **Click**: attempt to use/interact with target (object/NPC/POI/UI element).
-- **Press + hold**: pick up/drag items (primarily from inventory; optionally from world if supported).
+- **Press + hold**: pick up/drag items from **inventory** and from **world floor items** in the 3D view.
 - **Drop**:
   - Onto **inventory**: store item
-  - Onto **empty 3D view**: drop item into the dungeon cell
+  - Onto **empty 3D view**: drop item **a short distance ahead of the player** (tunable) so it is immediately visible; if blocked/out of bounds, it falls back to the player’s cell
   - Onto **another item**: attempt crafting / recipe discovery (see §7.3)
   - Onto **NPC**: use item on NPC (may be rejected/consumed/apply status/attack)
   - Onto **portrait eye**: inspect interaction
@@ -280,7 +280,7 @@ Asset types:
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).
 
 ## 15) Open questions (to resolve)
-- **Inventory pickup rules**: can you pick up world items directly (click) or only via interaction UI?
+- **Inventory pickup rules**: can you pick up world items directly (click) or only via interaction UI? (Currently: click-pickup + press/hold drag from world items are supported.)
 - **Combat UI**: fully diegetic in HUD vs modal encounter panel; how much player agency per turn?
 - **Crafting UI**: where does recipe discovery feedback live (log, tooltip, modal)?
 - **NPC language system**: how messages map to item concepts; how to keep learnable but not trivial?

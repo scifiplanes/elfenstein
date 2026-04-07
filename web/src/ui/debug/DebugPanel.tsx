@@ -21,6 +21,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const cameraSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
       { key: 'camEyeHeight', label: 'Eye height', min: 0.2, max: 2.2, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'camForwardOffset', label: 'Camera forward/back offset', min: -1.2, max: 1.2, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'camFov', label: 'FOV', min: 20, max: 110, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'camPitchDeg', label: 'Pitch (debug)', min: -30, max: 30, step: 1, format: (v) => `${Math.round(v)}°` },
       { key: 'camShakePosAmp', label: 'Shake pos amp', min: 0, max: 0.12, step: 0.002, format: (v) => v.toFixed(3) },
@@ -80,6 +81,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const renderSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
       { key: 'baseEmissive', label: 'Base emissive lift', min: 0, max: 0.4, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'dropAheadCells', label: 'Drop length (cells ahead)', min: 0, max: 2.5, step: 0.05, format: (v) => v.toFixed(2) },
+      { key: 'dropRangeCells', label: 'Drop range (Manhattan cells)', min: 0, max: 20, step: 1, format: (v) => String(Math.round(v)) },
+      { key: 'dropJitterRadius', label: 'Drop jitter radius', min: 0, max: 0.45, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'lanternIntensity', label: 'Lantern intensity', min: 0, max: 40, step: 0.01 },
       { key: 'lanternDistance', label: 'Lantern distance', min: 2, max: 80, step: 0.5, format: (v) => v.toFixed(1) },
       { key: 'lanternForwardOffset', label: 'Lantern forward offset', min: 0, max: 0.8, step: 0.01, format: (v) => v.toFixed(2) },
