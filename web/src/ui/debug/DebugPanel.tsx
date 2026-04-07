@@ -99,6 +99,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const audioSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['audio'] }> = useMemo(
     () => [
+      { key: 'masterMusic', label: 'Master Music', min: 0, max: 1, step: 0.01 },
       { key: 'masterSfx', label: 'Master SFX', min: 0, max: 1, step: 0.01 },
       { key: 'distanceMaxCells', label: 'Distance max (cells)', min: 1, max: 14, step: 1 },
       { key: 'volumeNear', label: 'Emitter volume (near)', min: 0, max: 0.2, step: 0.005, format: (v) => v.toFixed(3) },

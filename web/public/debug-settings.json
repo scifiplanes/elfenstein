@@ -29,11 +29,16 @@
     "ditherLevels": 10,
     "ditherMatrixSize": 4,
     "ditherPalette": 4,
+    "portraitIdleGapMinMs": 8000,
+    "portraitIdleGapMaxMs": 18000,
+    "portraitIdleFlashMinMs": 120,
+    "portraitIdleFlashMaxMs": 350,
     "ambientIntensity": 0,
     "sunIntensity": 0
   },
   "audio": {
-    "masterSfx": 0.6,
+    "masterSfx": 1,
+    "masterMusic": 0.44,
     "distanceMaxCells": 7,
     "volumeNear": 0,
     "volumeFar": 0,

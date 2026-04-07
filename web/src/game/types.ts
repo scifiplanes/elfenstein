@@ -148,6 +148,7 @@ export type RenderTuning = {
 
 export type AudioTuning = {
   masterSfx: number
+  masterMusic: number
   distanceMaxCells: number
   volumeNear: number
   volumeFar: number

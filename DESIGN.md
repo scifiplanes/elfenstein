@@ -1,6 +1,6 @@
 # Elfenstein — Design Document (living)
 
-Last updated: 2026-04-06
+Last updated: 2026-04-07
 
 ## 1) High concept
 **Elfenstein** is a web-based, grid-based dungeon crawler with a first-person **2.5D** view. Visuals combine **3D dungeon geometry** with **2D sprites** for characters/items, prioritizing a crunchy dithered/print look and a highly contextual, low-clutter UX.
@@ -14,7 +14,7 @@ Last updated: 2026-04-06
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes spatial emitter mix and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -197,8 +197,13 @@ Initial POIs:
 - **Bed**: restores full HP and Stamina
 
 ## 10) Audio
-- NPCs and POIs emit positional audio audible from a few cells away.
-- Attenuation uses both **lowpass** and **volume** with distance.
+Three audio layers run simultaneously via the Web Audio API:
+
+- **Background music** (`MusicPlayer` / `MusicLayer`): loads an audio file, loops it continuously, and applies a tunable master volume (`masterMusic`). Starts on first user interaction (browser autoplay policy). Currently plays `Assets/sounds/theme.mp3` (served from `public/sounds/`).
+- **Spatial ambient** (`SpatialAudio` / `SpatialAudioLayer`): NPCs and POIs emit continuous synthesized tones audible from a configurable number of cells away. Attenuation uses both **lowpass** and **volume** with distance (tunable in F2).
+- **Procedural SFX** (`SfxEngine` / `FeedbackLayer`): discrete one-shot sounds generated from scratch using oscillators, noise, envelopes, and filters. Triggered via `ui.sfxQueue`. Kinds: `ui`, `hit`, `reject`, `pickup`, `munch`, `step`, `bump`.
+
+Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are both in `AudioTuning` and adjustable in F2.
 
 ## 11) Graphics & rendering spec
 - Three.js WebGL with `MeshStandardMaterial` on dungeon geometry.

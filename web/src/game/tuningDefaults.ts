@@ -39,6 +39,7 @@ export const DEFAULT_RENDER: RenderTuning = {
 
 export const DEFAULT_AUDIO: AudioTuning = {
   masterSfx: 0.6,
+  masterMusic: 0.4,
   distanceMaxCells: 7,
   volumeNear: 0.06,
   volumeFar: 0.0,

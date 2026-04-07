@@ -450,3 +450,19 @@ Lets designers tune how often the idle pose reads without code changes.
 
 ### Consequences
 - `DEFAULT_RENDER` and partial JSON loads must stay compatible (missing keys keep defaults after merge + clamp).
+
+---
+
+## ADR-0031 — Add file-based background music (looping)
+Date: 2026-04-07
+
+### Decision
+Add a `MusicPlayer` class and `MusicLayer` React component that load an audio file via `fetch` + `decodeAudioData`, play it as a continuously looping `AudioBufferSourceNode`, and expose volume through a new `masterMusic` field in `AudioTuning`. Mount `MusicLayer` in `GameApp` alongside the existing audio layers. Start with `Assets/sounds/theme.mp3` (copied to `public/sounds/theme.mp3` so Vite can serve it). Add a **Master Music** slider to the F2 Debug panel.
+
+### Rationale
+The game had only procedural SFX and synthesized spatial audio — no background music. File-based playback is needed for composed music tracks. The Web Audio API (`AudioBufferSourceNode.loop = true`) avoids gaps inherent in HTML `<audio>` element looping.
+
+### Consequences
+- `AudioTuning` gains `masterMusic: number` (default `0.4`); old persisted `debug-settings.json` without the key falls back to the default via the existing spread-merge in `debug/loadTuning`.
+- Additional music tracks can be swapped by changing the `src` prop on `MusicLayer` or mounting multiple instances.
+- Browser autoplay policy applies; audio starts after first user interaction (same pattern as `SpatialAudio.ensure()`).
