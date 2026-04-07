@@ -530,6 +530,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcGroundY_Skeleton = clampNpcGroundY(r.npcGroundY_Skeleton ?? 0)
   const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
   const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
+  const poiGroundY_Chest = clampNpcGroundY(r.poiGroundY_Chest ?? 0)
 
   const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
   const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
@@ -584,6 +585,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcGroundY_Skeleton,
     npcGroundY_Catoctopus,
     poiGroundY_Well,
+    poiGroundY_Chest,
     npcSize_Wurglepup,
     npcSizeRand_Wurglepup,
     npcSize_Bobr,

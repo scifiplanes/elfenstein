@@ -8,7 +8,13 @@ import {
   DUNGEON_WALL_TEXTURE_SRC,
 } from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
-import { POI_SPRITE_SRC, POI_WELL_DRAINED_SRC, POI_WELL_GLOW_SRC, POI_WELL_SPARKLE_FRAMES } from '../game/poi/poiDefs'
+import {
+  POI_CHEST_OPEN_SRC,
+  POI_SPRITE_SRC,
+  POI_WELL_DRAINED_SRC,
+  POI_WELL_GLOW_SRC,
+  POI_WELL_SPARKLE_FRAMES,
+} from '../game/poi/poiDefs'
 
 const TAU = Math.PI * 2
 
@@ -81,6 +87,7 @@ export class WorldRenderer {
   private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
 
   private wellDrainedMat: THREE.SpriteMaterial | null = null
+  private chestOpenMat: THREE.SpriteMaterial | null = null
   private wellGlowMat: THREE.SpriteMaterial | null = null
   private wellSparkleMat: THREE.SpriteMaterial | null = null
   private wellSparkleTextures: THREE.Texture[] = []
@@ -144,6 +151,11 @@ export class WorldRenderer {
       this.wellDrainedMat.map?.dispose()
       this.wellDrainedMat.dispose()
       this.wellDrainedMat = null
+    }
+    if (this.chestOpenMat) {
+      this.chestOpenMat.map?.dispose()
+      this.chestOpenMat.dispose()
+      this.chestOpenMat = null
     }
     if (this.wellGlowMat) {
       this.wellGlowMat.map?.dispose()
@@ -223,6 +235,26 @@ export class WorldRenderer {
     return out
   }
 
+  /**
+   * Ray hits are distance-sorted (closest first). Prefer the nearest floor item on the ray so POI
+   * billboards (e.g. chests) do not block click/hover/drag on loot behind them.
+   */
+  private resolvePickHit(hits: THREE.Intersection[]): THREE.Intersection | null {
+    let firstOther: THREE.Intersection | null = null
+    for (let i = 0; i < hits.length; i++) {
+      const hit = hits[i]!
+      const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
+      const kind = String(ud.kind ?? '')
+      const id = ud.id == null ? '' : String(ud.id)
+      if (!id) continue
+      if (kind === 'floorItem') return hit
+      if (kind === 'poi' || kind === 'npc' || kind === 'door') {
+        if (!firstOther) firstOther = hit
+      }
+    }
+    return firstOther
+  }
+
   pickTarget(
     gameRect: DOMRectReadOnly,
     clientX: number,
@@ -234,7 +266,7 @@ export class WorldRenderer {
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
-    const hit = hits[0]
+    const hit = this.resolvePickHit(hits)
     if (!hit) return null
     const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
     const kind = String(ud.kind ?? '')
@@ -258,7 +290,7 @@ export class WorldRenderer {
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
-    const hit = hits[0]
+    const hit = this.resolvePickHit(hits)
     if (!hit) return null
     const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
     const kind = String(ud.kind ?? '')
@@ -521,7 +553,11 @@ export class WorldRenderer {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
       const mat =
-        p.kind === 'Well' && p.drained ? this.getWellDrainedMat() : this.getPoiSpriteMat(p.kind)
+        p.kind === 'Well' && p.drained
+          ? this.getWellDrainedMat()
+          : p.kind === 'Chest' && p.opened
+            ? this.getChestOpenMat()
+            : this.getPoiSpriteMat(p.kind)
       const s = new THREE.Sprite(mat)
       s.position.set(x, 0, z)
       // Scale and floor grounding are applied in `syncTuning()` (same center-pivot math as NPCs).
@@ -683,6 +719,22 @@ export class WorldRenderer {
     return this.wellDrainedMat
   }
 
+  private getChestOpenMat(): THREE.SpriteMaterial {
+    if (this.chestOpenMat) return this.chestOpenMat
+    const tex = this.textureLoader.load(POI_CHEST_OPEN_SRC, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const iw = img && typeof img.width === 'number' ? img.width : 0
+      const ih = img && typeof img.height === 'number' ? img.height : 0
+      if (iw > 0 && ih > 0) this.poiSpriteAspects.Chest = iw / ih
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.chestOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    return this.chestOpenMat
+  }
+
   private getWellGlowMat(): THREE.SpriteMaterial {
     if (this.wellGlowMat) return this.wellGlowMat
     const tex = this.textureLoader.load(POI_WELL_GLOW_SRC)
@@ -774,7 +826,7 @@ export class WorldRenderer {
   /** Normalized pivot from bottom of texture (same convention as `npcGroundY_*`). */
   private getPoiGroundYForKind(state: GameState, kind: PoiKind) {
     if (kind === 'Well') return state.render.poiGroundY_Well
-    // Chest/Bed/Shrine/CrackedWall use the same placeholder PNG as Wurglepup today.
+    if (kind === 'Chest') return state.render.poiGroundY_Chest
     return state.render.npcGroundY_Wurglepup
   }
 

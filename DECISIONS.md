@@ -1629,3 +1629,45 @@ Delivers the roadmap’s first tunable pacing knob without flipping to geometry-
 
 ### Consequences
 Dump JSON and **`layoutScore`** selection change vs **`genVersion` 4** for the same seed when **`difficulty` ≠ 1**. Consumers of **`floor.gen`** should tolerate **`meta.difficulty`** and **`genVersion` 5**.
+
+---
+
+## ADR-0106 — Chest POI uses closed/open PNG billboards
+Date: 2026-04-08
+
+### Decision
+Wire **Chest** POIs to **`Content/chest_closed.png`** (default) and **`Content/chest_open.png`** when **`opened`**, mirroring **`Content/`** → **`web/public/content/`** and the same Well drained-style alternate material path in **`WorldRenderer`**.
+
+### Rationale
+Dedicated chest art exists; the game already tracks **`opened`** and rebuilds POI geometry when POI state changes.
+
+### Consequences
+**`poiDefs`** exports stable **`/content/…`** URLs; **`DESIGN.md`** §9 reflects chest art vs placeholders for Bed/Shrine/CrackedWall.
+
+---
+
+## ADR-0107 — POI Chest billboard `poiGroundY_Chest`
+Date: 2026-04-08
+
+### Decision
+Stop reusing **`npcGroundY_Wurglepup`** for **Chest** POIs; add **`poiGroundY_Chest`** to **`RenderTuning`** (default **0.04**, F2 **POI Chest groundY**), persisted like other render sliders.
+
+### Rationale
+**`chest_closed.png` / `chest_open.png`** place opaque pixels within **~3%** of the texture bottom, while Wurglepup tuning (**0.15** in saved debug settings) treated the floor contact **15%** up—too high—so the chest sank into the floor visually.
+
+### Consequences
+**`WorldRenderer.getPoiGroundYForKind`** maps **Chest** → **`poiGroundY_Chest`**; Bed/Shrine/CrackedWall remain on **`npcGroundY_Wurglepup`**.
+
+---
+
+## ADR-0108 — 3D pick: floor items over POIs on the same ray
+Date: 2026-04-08
+
+### Decision
+**`WorldRenderer.resolvePickHit`**: after **`Raycaster.intersectObjects`**, if any hit is a **`floorItem`**, use the **nearest** such hit (first in distance-sorted results); otherwise use the first **`poi` / `npc` / `door`** hit as before. Applied in **`pickTarget`** and **`pickObject`** so click, hover, and drag-start stay aligned.
+
+### Rationale
+POI sprites (especially chests) are large billboards; strict “closest mesh wins” left floor loot **behind** the billboard unreachable by pointer.
+
+### Consequences
+Click/hover/drag on a stack along one ray favors the **floor item**; NPCs and doors only win when **no** floor item is intersected on that ray. Grid **step-into-tile** resolution (**`attemptMoveTo`**) is unchanged (POI use still runs before NPC dialogue when walking onto a POI cell).

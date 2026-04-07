@@ -217,6 +217,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     () => [
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Chest', label: 'POI Chest groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },

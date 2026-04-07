@@ -37,6 +37,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 
 ### 6.2 Interaction rules (mouse-first)
 - **Click**: attempt to use/interact with target (object/NPC/POI/UI element).
+- **3D viewport ray pick**: when several pickables lie on the same camera ray, **floor items take priority** over POIs (and over NPCs/doors on that ray) so loot is not blocked by large POI billboards (e.g. a chest in front of a dropped item).
 - **Press + hold**: pick up/drag items from **inventory** and from **world floor items** in the 3D view.
 - **Drop**:
   - Onto **inventory**: store item
@@ -248,7 +249,7 @@ See `Dungeon_generation_plan_summary.md` for an expanded phased pipeline (missio
 ## 9) Points of interest (POIs)
 Static interactables, triggered by dragging items onto them, clicking, or walking into them.
 
-- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest**, **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** has its own **`poiGroundY_Well`** in F2, while placeholder POI kinds follow **`npcGroundY_Wurglepup`** (matching the shared placeholder texture).
+- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest (closed)** uses **`chest_closed.png`**; **Chest (opened)** uses **`chest_open.png`**. **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** uses **`poiGroundY_Well`** and **Chest** uses **`poiGroundY_Chest`** in F2 (chest art sits near the texture bottom; placeholders still use **`npcGroundY_Wurglepup`**).
 
 Initial POIs:
 - **Well**: save point (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); save still works when drained

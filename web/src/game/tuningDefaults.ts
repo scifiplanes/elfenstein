@@ -62,6 +62,8 @@ export const DEFAULT_RENDER: RenderTuning = {
   npcGroundY_Skeleton: 0.0,
   npcGroundY_Catoctopus: 0.0,
   poiGroundY_Well: 0.0,
+  /** ~opaque bottom of `chest_closed.png` / `chest_open.png` (~3% from texture bottom). */
+  poiGroundY_Chest: 0.04,
   npcSize_Wurglepup: 0.65,
   npcSizeRand_Wurglepup: 0.0,
   npcSize_Bobr: 0.65,

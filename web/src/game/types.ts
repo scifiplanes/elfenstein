@@ -217,6 +217,8 @@ export type RenderTuning = {
   npcGroundY_Catoctopus: number
   /** POI Well billboard ground pivot (same units as `npcGroundY_*`). */
   poiGroundY_Well: number
+  /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
+  poiGroundY_Chest: number
   npcSize_Wurglepup: number
   npcSizeRand_Wurglepup: number
   npcSize_Bobr: number
