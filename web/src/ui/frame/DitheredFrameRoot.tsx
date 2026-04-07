@@ -8,11 +8,17 @@ import type { GameState } from '../../game/types'
 import { HudLayout } from '../hud/HudLayout'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
+import { useFixedStageOuterScale } from '../../app/FixedStageContext'
+import { STAGE_CSS_HEIGHT, STAGE_CSS_WIDTH } from '../../app/stageDesign'
 import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
 
 export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
   const { state, dispatch, content } = props
+
+  const fixedStageOuterScale = useFixedStageOuterScale()
+  const fixedStageOuterScaleRef = useRef(1)
+  fixedStageOuterScaleRef.current = fixedStageOuterScale
 
   const presentCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const interactiveHudRef = useRef<HTMLDivElement | null>(null)
@@ -128,24 +134,17 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
   }, [])
 
-  const getViewportCssSize = () => {
-    // IMPORTANT: don't measure the presenter canvas rect. FramePresenter.syncSize() uses
-    // THREE.WebGLRenderer.setSize(w, h, true) which writes inline CSS width/height.
-    // Measuring the canvas creates a feedback loop where future resizes stop affecting `w,h`.
-    const vv = window.visualViewport
-    const w = Math.max(1, Math.floor(vv?.width ?? document.documentElement.clientWidth ?? window.innerWidth))
-    const h = Math.max(1, Math.floor(vv?.height ?? document.documentElement.clientHeight ?? window.innerHeight))
-    return { w, h }
-  }
-
   const renderOnce = () => {
     const presenter = presenterRef.current
     if (!presenter) return false
 
     const gameEl = gameViewportRef.current
     if (!gameEl) return false
-    const gameRect = gameEl.getBoundingClientRect()
-    if (gameRect.width < 1 || gameRect.height < 1) return false
+    const gameCssW = gameEl.clientWidth
+    const gameCssH = gameEl.clientHeight
+    if (gameCssW < 1 || gameCssH < 1) return false
+
+    const outerS = Math.max(1e-6, fixedStageOuterScaleRef.current)
 
     const qs = new URLSearchParams(window.location.search)
     const debugSceneMode = qs.get('debugScene') === '2' ? 2 : qs.get('debugScene') === '1' ? 1 : 0
@@ -153,7 +152,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
     const presentEl = presentCanvasRef.current
     const pr = presentEl?.getBoundingClientRect()
-    const { w, h } = getViewportCssSize()
+    // Match `FixedStageViewport` / HUD layout (CSS px). Do not use the browser viewport here:
+    // `syncSize` sets canvas CSS pixels; window-sized values overflow the 1920×1080 stage and look "zoomed".
+    const w = STAGE_CSS_WIDTH
+    const h = STAGE_CSS_HEIGHT
     presenter.syncSize(w, h)
     presenter.syncDither(latestStateRef.current.render)
     presenter.setDebug({ sceneMode: debugSceneMode as 0 | 1 | 2, sceneFlipY: debugSceneFlipY })
@@ -162,7 +164,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const inResizeBurst = now < renderBurstUntilMsRef.current
 
     if (world) {
-      world.syncViewportRect(gameRect)
+      world.syncViewportRect(gameCssW, gameCssH)
       world.renderFrame(latestStateRef.current)
     }
 
@@ -249,15 +251,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         })
     }
 
+    const gr = gameEl.getBoundingClientRect()
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
       uiTex: uiTexRef.current,
-      // Convert viewport rect into presenter-local CSS coords (canvas is the origin for gl_FragCoord mapping).
+      // `getBoundingClientRect` includes `FixedStageViewport` scale; compositor uniforms expect **layout** CSS px (1920×1080 stage).
       gameRectPx: {
-        left: gameRect.left - (pr?.left ?? 0),
-        top: gameRect.top - (pr?.top ?? 0),
-        width: gameRect.width,
-        height: gameRect.height,
+        left: (gr.left - (pr?.left ?? 0)) / outerS,
+        top: (gr.top - (pr?.top ?? 0)) / outerS,
+        width: gr.width / outerS,
+        height: gr.height / outerS,
       },
     })
     presenter.render()

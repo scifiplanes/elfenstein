@@ -83,11 +83,11 @@ export class WorldRenderer {
     this.lastSize = { w: 0, h: 0 }
   }
 
-  /** Ensure the offscreen buffer matches the on-screen game rect size. */
-  syncViewportRect(rect: DOMRectReadOnly) {
+  /** Ensure the offscreen buffer matches the game viewport in layout CSS px (ignores ancestor `transform: scale`). */
+  syncViewportRect(cssLayoutWidth: number, cssLayoutHeight: number) {
     const capped = Math.min(window.devicePixelRatio || 1, 1.5)
-    const w = Math.max(1, Math.floor(rect.width * capped))
-    const h = Math.max(1, Math.floor(rect.height * capped))
+    const w = Math.max(1, Math.floor(cssLayoutWidth * capped))
+    const h = Math.max(1, Math.floor(cssLayoutHeight * capped))
     this.syncSize(w, h)
   }
 

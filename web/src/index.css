@@ -18,7 +18,7 @@
   text-rendering: geometricPrecision;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
-  background: radial-gradient(1200px 900px at 50% 20%, #151a2a 0%, var(--bg0) 55%);
+  background: #000;
   color: var(--text0);
 }
 
@@ -31,6 +31,7 @@ body,
 body {
   margin: 0;
   overflow: hidden;
+  background: #000;
 }
 
 * {

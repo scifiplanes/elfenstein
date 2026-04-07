@@ -774,3 +774,109 @@ Centered sprites “float” or sink when their height changes (per-kind tuning 
 - NPC sprite `position.y` is derived from its computed height and a tunable ground pivot: \(y = floorTop + npcFootLift + height*(0.5 - npcGroundY_kind)\).
 - `npcFootLift` and per-kind `npcGroundY_*` are exposed in F2 Debug and persisted via `web/public/debug-settings.json`.
 - Changing NPC size/variation (or lift/groundY) updates both sprite scale and vertical placement.
+
+---
+
+## ADR-0054 — HUD outer rails fluid (map/nav/portraits scale with viewport)
+Date: 2026-04-07
+
+### Decision
+Replace fixed **518px** outer `grid-template-columns` tracks with **`minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr)`** so left and right rails (portraits + minimap / portraits + navigation) **grow and shrink** with the window while keeping roughly the same **side : game-column** proportion as before (~**518** : ~**580** at a typical width).
+
+### Rationale
+User request: map and navigation (and their columns) should not be locked to a fixed pixel width; they should **always occupy** the bottom corner **areas** at any resolution, aligned like the reference layout.
+
+### Consequences
+- **Minimap** and **navigation** panel elements still use **fixed pixel** inner content (tile size, button art); the **grid cells** widen/narrow so panels **fill** the rail; extra space shows as centered margin inside the cell.
+- **`ui_hud_background.png`** alignment is resolution-dependent; may need a future pass if the plate assumed fixed outer widths.
+- Supersedes the fixed-width aspect of **ADR-0048** for column sizing; center band structure (**120 + flex + 120**) is unchanged aside from **1fr → 1.12fr** on the viewport track to preserve the old ratio.
+
+---
+
+## ADR-0055 — Centered 1920×1080 stage, black margin, no upscale
+Date: 2026-04-07
+
+### Decision
+Wrap play-mode UI in **`FixedStageViewport`**: inner layout **1920×1080** CSS px, uniform **`transform: scale(s)`** with **`s = min(1, innerWidth/1920, innerHeight/1080)`**, centered on a **#000** shell. Page chrome (**`:root` / `body`**) is **solid black** (replacing the prior radial gradient).
+
+### Rationale
+User mockup: on a **3840×2160** canvas, **1920×1080** “content” sits **centered** with **black** on all sides — i.e. **do not** scale the UI up to fill a larger window. An earlier attempt used **`s = min(w/1920, h/1080)`** without a **`1`** cap, which **upscales** on large viewports and removes the margin; that did not match the reference.
+
+### Consequences
+- **`position: fixed`** layers stay inside the transformed stage so hit-testing and overlays align with the scaled HUD.
+- **High-DPI / OS scaling**: margins appear when the **CSS layout viewport** exceeds **1920×1080**; if the OS reports a smaller CSS viewport at “4K”, behavior follows that viewport.
+- Smaller windows still **shrink** the whole stage so nothing clips.
+
+---
+
+## ADR-0056 — Viewport-fit stage scale + stage-sized max dimensions
+Date: 2026-04-07
+
+### Decision
+Change **`FixedStageViewport`** scale to **`s = min(viewportW/1920, viewportH/1080)`** with **no `1` cap**, preferring **`window.visualViewport`** width/height (plus **`resize`/`scroll`** listeners) so the **full** design rectangle **always fits** the visible viewport. Expose **`--stage-w` / `--stage-h`** (**1920px / 1080px**) on the stage and replace in-game uses of **`100vw` / `100vh`** for max sizing (**F2** panel, NPC/paperdoll modals, HUD toast) with **`var(--stage-*)`** so layout does not spill past the **1920×1080** box.
+
+### Rationale
+User request: content must **fit** the **1920×1080** design and **scale down** (and generally **scale to fit**) so **everything stays visible**; **`vh`/`vw`** were tied to the **browser** viewport and could exceed the stage when the window was taller/wider than the scaled island.
+
+### Consequences
+- **Supersedes** the “no upscale” aspect of **ADR-0055**; large CSS viewports **scale the stage up** to fill (black bars only when aspect ≠ **16:9**).
+- Offscreen HUD capture must **not** be clipped by **`overflow: hidden`** on the stage (keeps **`left: -10000px`** capture path valid).
+
+---
+
+## ADR-0057 — Frame presenter + UI capture sized to stage, not browser viewport
+Date: 2026-04-07
+
+### Decision
+Drive **`FramePresenter.syncSize`** and **`html2canvas`** width/height using **`STAGE_CSS_WIDTH` / `STAGE_CSS_HEIGHT`** from **`web/src/app/stageDesign.ts`** instead of **`visualViewport` / `documentElement`** dimensions. **`FixedStageViewport`** imports the same constants for layout size.
+
+### Rationale
+Sizing the WebGL presenter and UI capture to the **full window** while the HUD lives in a **1920×1080** scaled stage made the composite layer **larger than the stage**—a mask effect where content appeared huge inside the layout box.
+
+### Consequences
+- Compositor resolution tracks the **authoring** stage; browser size only affects **`FixedStageViewport`**’s outer uniform scale.
+- If the authoring size changes, update **`stageDesign.ts`** (and **`--stage-*`** in CSS) together.
+
+---
+
+## ADR-0058 — Compensate FixedStage outer `scale` in compositor + 3D viewport
+Date: 2026-04-07
+
+### Decision
+Expose **`FixedStageViewport`**’s uniform scale via **`FixedStageOuterScaleContext`**. In **`DitheredFrameRoot.renderOnce`**, pass **`gameEl.clientWidth` / `clientHeight`** into **`WorldRenderer.syncViewportRect`** (layout CSS px). Build **`gameRectPx`** from **`getBoundingClientRect()`** deltas and sizes **divided by** that scale so **`CompositeShader`** receives **stage-local** 1920×1080 coordinates.
+
+### Rationale
+**`getBoundingClientRect()`** returns **post-transform** (on-screen) pixels. The stage applies **`transform: scale(s)`**, so rects were **`s`× too large** and the 3D target was sized for **screen** pixels—wrong vs the **1920×1080** layout box—making the composite look **zoomed / masked**.
+
+### Consequences
+- **`DitheredFrameRoot`** must stay under **`FixedStageOuterScaleContext`** (default **`1`** if the provider is absent).
+- Pointer code that should stay in **screen** space must keep using **unscaled** DOM APIs for events; only **internal** compositor sizing changes here.
+
+---
+
+## ADR-0059 — White frame on the fixed stage
+Date: 2026-04-07
+
+### Decision
+**`.clip`** size is **`1920 × scale` × `1080 × scale`**. **`computeScale`** uses **1920×1080** only. The **`.stage`** is **`1920×1080`** at **`left/top: 0`** with **`transform: scale`**. The white frame is **`outline`** on **`.clip`** with negative **`outline-offset`** (inset stroke), not a larger clip / stage inset.
+
+### Rationale
+User request: the **content box** must be **1920×1080** CSS px while keeping a visible frame; expanded clip + outline outside the stage was removed.
+
+### Consequences
+Purely visual chrome; compositor and capture unchanged (**1920×1080**).
+
+---
+
+## ADR-0060 — Cap stage scale at 1 (1080p-sized box on large monitors)
+Date: 2026-04-07
+
+### Decision
+**`FixedStageViewport.computeScale`** uses **`s = min(1, viewportW/1920, viewportH/1080)`** again (with **`visualViewport`** when present).
+
+### Rationale
+Without the **`1`** cap, **`s`** exceeds **1** on large windows and the **1920×1080** layout is **upscaled** to fill the browser—users on **high-resolution** desktops expect a **fixed 1920×1080 CSS px** game+HUD island and **black** surround (per earlier mockup intent).
+
+### Consequences
+- **Supersedes** the “large viewports scale the stage up to fill” outcome described under **ADR-0056**; **downscale-only** past **1:1** on small windows is unchanged.
+- If OS / browser **CSS viewport** is still **≤ 1920×1080** at “4K” (display scaling), **`s`** stays **1** and margins may not appear—that is driven by **reported layout pixels**, not physical panel resolution.

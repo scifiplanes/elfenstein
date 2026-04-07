@@ -3,8 +3,8 @@
   inset: 0;
   display: grid;
   isolation: isolate;
-  /* Outer columns 518px: portraits + minimap (left) / portraits + nav (right). Center: statue + viewport + statue (inventory spans these three). */
-  grid-template-columns: 518px 120px 1fr 120px 518px;
+  /* Outer columns flex equally; center viewport track ~1.12× one outer side (matches former ~518px : ~580px split at typical widths). Map/nav cells fill their rail. */
+  grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr);
   grid-template-rows: 1fr 1fr 400px;
   grid-template-areas:
     "char2 statueL game statueR char4"
@@ -125,7 +125,7 @@
   font-size: 12px;
   pointer-events: none;
   white-space: nowrap;
-  max-width: min(90vw, 920px);
+  max-width: min(calc(var(--stage-w, 1920px) * 0.9), 920px);
   overflow: hidden;
   text-overflow: ellipsis;
 }
