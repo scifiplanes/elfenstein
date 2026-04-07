@@ -2,6 +2,7 @@ import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 import type { Dispatch } from 'react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
@@ -26,6 +27,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureHudRef = useRef<HTMLDivElement | null>(null)
   const gameViewportRef = useRef<HTMLDivElement | null>(null)
   const [layoutTick, setLayoutTick] = useState(0)
+
+  const [captureMountEl, setCaptureMountEl] = useState<HTMLElement | null>(null)
 
   const [world, setWorld] = useState<WorldRenderer | null>(null)
   const [webglError, setWebglError] = useState<string | null>(null)
@@ -108,6 +111,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   }, [])
 
   useEffect(() => {
+    // Capture HUD must not live under a transformed ancestor; portal it to <body>
+    // so html2canvas rasterizes stable stage coordinates regardless of stage scaling.
+    setCaptureMountEl(document.body)
+  }, [])
+
+  useEffect(() => {
     if (!presentCanvasRef.current) return
     let w: WorldRenderer | null = null
     try {
@@ -149,6 +158,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const qs = new URLSearchParams(window.location.search)
     const debugSceneMode = qs.get('debugScene') === '2' ? 2 : qs.get('debugScene') === '1' ? 1 : 0
     const debugSceneFlipY = qs.get('debugFlipY') === '0' ? false : true
+    const debugRect = qs.get('debugRect') === '1'
 
     const presentEl = presentCanvasRef.current
     const pr = presentEl?.getBoundingClientRect()
@@ -159,6 +169,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     presenter.syncSize(w, h)
     presenter.syncDither(latestStateRef.current.render)
     presenter.setDebug({ sceneMode: debugSceneMode as 0 | 1 | 2, sceneFlipY: debugSceneFlipY })
+    presenter.setRectDebug(debugRect)
 
     const now = performance.now()
     const inResizeBurst = now < renderBurstUntilMsRef.current
@@ -210,7 +221,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       captureInFlightRef.current = true
       // Keep capture scale stable to prevent transient full-screen resampling artifacts
       // when the UI texture resolution changes mid-frame.
-      const captureScale = Math.min(window.devicePixelRatio || 1, 1.5)
+      const vvScale = window.visualViewport?.scale || 1
+      const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
+      const captureScale = Math.min(effectiveDpr, 1.5)
       const prevScale = lastUiCaptureScaleRef.current
       if (prevScale == null || Math.abs(prevScale - captureScale) > 1e-6) {
         lastUiCaptureScaleRef.current = captureScale
@@ -227,6 +240,33 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         height: h,
         windowWidth: w,
         windowHeight: h,
+        onclone: (doc) => {
+          // The capture HUD is rendered offscreen in the real document.
+          // In the cloned document used by html2canvas, snap it to (0,0) so the
+          // rasterized UI texture matches the 1920×1080 stage coordinate system.
+          const wrap = doc.querySelector('[data-capture-wrap="true"]') as HTMLElement | null
+          if (wrap) {
+            wrap.style.position = 'fixed'
+            wrap.style.left = '0px'
+            wrap.style.top = '0px'
+            wrap.style.width = `${w}px`
+            wrap.style.height = `${h}px`
+            wrap.style.transform = 'none'
+          }
+
+          const root = doc.querySelector('[data-capture-root="true"]') as HTMLElement | null
+          if (root) {
+            root.style.position = 'absolute'
+            root.style.left = '0px'
+            root.style.top = '0px'
+            root.style.width = '100%'
+            root.style.height = '100%'
+            root.style.transform = 'none'
+          }
+          // Ensure no default margins shift the cloned layout.
+          doc.documentElement.style.margin = '0'
+          doc.body.style.margin = '0'
+        },
         useCORS: true,
       })
         .then((canvas) => {
@@ -252,13 +292,17 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
 
     const gr = gameEl.getBoundingClientRect()
+    // Use the interactive HUD root as the coordinate origin for the game viewport rect.
+    // This keeps the scene placement stable even if the presenter canvas and HUD end up
+    // with slightly different screen-space bounding rects under stage scaling/letterboxing.
+    const hr = interactiveHudRef.current?.getBoundingClientRect() ?? pr
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
       uiTex: uiTexRef.current,
       // `getBoundingClientRect` includes `FixedStageViewport` scale; compositor uniforms expect **layout** CSS px (1920×1080 stage).
       gameRectPx: {
-        left: (gr.left - (pr?.left ?? 0)) / outerS,
-        top: (gr.top - (pr?.top ?? 0)) / outerS,
+        left: (gr.left - (hr?.left ?? 0)) / outerS,
+        top: (gr.top - (hr?.top ?? 0)) / outerS,
         width: gr.width / outerS,
         height: gr.height / outerS,
       },
@@ -316,20 +360,32 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         />
       </div>
 
-      <div className={styles.captureHud} ref={captureWrapperRef}>
-        <HudLayout
-          state={state}
-          dispatch={noopDispatch}
-          content={content}
-          interactive={false}
-          captureForPostprocess={true}
-          world={null}
-          rootRef={captureHudRef}
-          webglError={null}
-          navPadPressedId={navPadPressedId}
-          onNavPadVisualPress={onNavPadVisualPress}
-        />
-      </div>
+      {captureMountEl
+        ? createPortal(
+            <div
+              className={styles.captureHud}
+              ref={captureWrapperRef}
+              data-capture-wrap="true"
+              style={{ width: STAGE_CSS_WIDTH, height: STAGE_CSS_HEIGHT }}
+            >
+              <div data-capture-root="true" style={{ width: '100%', height: '100%' }}>
+                <HudLayout
+                  state={state}
+                  dispatch={noopDispatch}
+                  content={content}
+                  interactive={false}
+                  captureForPostprocess={true}
+                  world={null}
+                  rootRef={captureHudRef}
+                  webglError={null}
+                  navPadPressedId={navPadPressedId}
+                  onNavPadVisualPress={onNavPadVisualPress}
+                />
+              </div>
+            </div>,
+            captureMountEl,
+          )
+        : null}
     </div>
   )
 }

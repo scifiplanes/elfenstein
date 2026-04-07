@@ -1,8 +1,9 @@
 .root {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: grid;
   isolation: isolate;
+  touch-action: none;
   /* Outer columns flex equally; center viewport track ~1.12× one outer side (matches former ~518px : ~580px split at typical widths). Map/nav cells fill their rail. */
   grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr);
   grid-template-rows: 1fr 1fr 285px;

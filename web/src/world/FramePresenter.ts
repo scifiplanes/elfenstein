@@ -48,7 +48,11 @@ export class FramePresenter {
   }
 
   syncSize(w: number, h: number) {
-    const capped = Math.min(window.devicePixelRatio || 1, 1.5)
+    // Browser zoom changes `devicePixelRatio`; compensate using `visualViewport.scale` so
+    // compositor pixel math stays stable across zoom levels.
+    const vvScale = window.visualViewport?.scale || 1
+    const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
+    const capped = Math.min(effectiveDpr, 1.5)
     if (w === this.lastSize.w && h === this.lastSize.h && capped === this.lastDpr) return
     this.lastSize = { w, h }
     this.lastDpr = capped
@@ -82,6 +86,7 @@ export class FramePresenter {
       tScene: { value: THREE.Texture | null }
       tUi: { value: THREE.Texture | null }
       gameRectPx: { value: { x: number; y: number; z: number; w: number } }
+      debugRect?: { value: number }
       debugSceneMode?: { value: number }
       debugSceneFlipY?: { value: number }
     }
@@ -103,6 +108,11 @@ export class FramePresenter {
     }
     if (u.debugSceneMode) u.debugSceneMode.value = args.sceneMode ?? 0
     if (u.debugSceneFlipY) u.debugSceneFlipY.value = args.sceneFlipY === false ? 0 : 1
+  }
+
+  setRectDebug(enabled: boolean) {
+    const u = this.compositePass.uniforms as unknown as { debugRect?: { value: number } }
+    if (u.debugRect) u.debugRect.value = enabled ? 1 : 0
   }
 
   syncDither(t: RenderTuning) {

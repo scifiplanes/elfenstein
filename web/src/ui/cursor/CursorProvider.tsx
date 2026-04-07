@@ -63,6 +63,10 @@ export function CursorProvider(props: PropsWithChildren) {
   }, [])
 
   const beginPointerDown = useCallback((payload: DragPayload, e: React.PointerEvent) => {
+    // Prevent default browser behaviors (text selection, scroll/pan gestures, etc.)
+    // from cancelling the pointer stream before our hold-to-drag timer fires.
+    e.preventDefault()
+    e.stopPropagation()
     clearHoldTimer()
     pendingPayload.current = payload
     const { clientX: x, clientY: y } = e

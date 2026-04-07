@@ -978,3 +978,37 @@ User request: no titles; center minimap and nav pad in their cells.
 
 ### Consequences
 - **`INVENTORY`** title unchanged.
+
+---
+
+## ADR-0068 — Make HUD + presenter stage-relative (avoid fixed-offset drift)
+Date: 2026-04-07
+
+### Decision
+Inside the 1920×1080 `FixedStageViewport` stage, position the compositor and HUD layers **relative to the stage** (use stage-relative absolute positioning), not browser-viewport fixed positioning:
+- `DitheredFrameRoot` presenter canvas and HUD wrappers are stage-relative.
+- `HudLayout` root is stage-relative (capture HUD stays stage-relative as well).
+
+Portrait sprite layers inside the portrait frame use **fit/contain** sizing (`object-fit: contain`) so sprites remain horizontally centered within their frame.
+
+### Rationale
+With a centered, downscale-only stage (black margins on large screens), `position: fixed` elements inside the stage pin to the **browser viewport** rather than the **centered stage**, causing visible drift: the 3D viewport rectangle offsets relative to the HUD chrome, and portrait sprite layers can appear shifted.
+
+### Consequences
+- Stage-internal layers align consistently regardless of letterboxing/margins.
+- The only intentionally viewport-fixed UI is `CursorLayer` (rendered outside the stage) so `clientX/clientY` pointer tracking remains correct.
+
+---
+
+## ADR-0069 — Portrait sprites preserve aspect without `object-fit` (html2canvas-safe)
+Date: 2026-04-07
+
+### Decision
+In the party HUD portrait renderer (`web/src/ui/portraits/PortraitPanel`), stop relying on `object-fit: contain` for the layered `<img>` sprites. Instead, center each sprite and preserve aspect ratio using intrinsic sizing (`height: 100%`, `width: auto`, `max-width/max-height: 100%`).
+
+### Rationale
+The visible HUD is composited from an offscreen capture DOM via `html2canvas`. After the latest pull, party portraits appeared horizontally stretched in the final composite even though the live DOM CSS was correct. This is consistent with `html2canvas` rendering limitations around `object-fit` for absolutely positioned, full-bleed `<img>` layers.
+
+### Consequences
+- Party portraits respect the original PNG aspect ratio in the captured HUD texture (and therefore in the final WebGL-presented frame) across browsers.
+- Portrait layering remains unchanged (same assets, z-order, blink/idle logic); only the sizing primitive differs.
