@@ -20,6 +20,7 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
       className={styles.backdrop}
       onClick={() => dispatch({ type: 'ui/closePaperdoll' })}
       onPointerMove={cursor.onPointerMove}
+      onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
@@ -59,6 +60,7 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
                       )
                     }}
                     onPointerMove={cursor.onPointerMove}
+                    onPointerCancel={cursor.cancelDrag}
                     onPointerUp={(e) => {
                       const result = cursor.endPointerUp(e)
                       if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })

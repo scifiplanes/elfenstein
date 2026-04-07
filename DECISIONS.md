@@ -259,6 +259,21 @@ Feeding now triggers a brief UI-only animation state; it should stay short and n
 
 ---
 
+## ADR-0050 — Disable fog by default; debug toggle to re-enable
+Date: 2026-04-07
+
+### Decision
+Disable scene fog entirely by default (no `scene.fog`), and add an F2 debug toggle to enable/disable fog while keeping `FogExp2 density` available for tuning when enabled.
+
+### Rationale
+Fog strongly affects readability and lighting feel; making it opt-in gives a clearer baseline for iterating on emissive + lantern/beam + torches without an always-on atmospheric layer.
+
+### Consequences
+- Default visuals are “no fog” unless debug tuning enables it.
+- Fog density tuning only applies when fog is enabled (otherwise the scene fog is `null`).
+
+---
+
 ## ADR-0019 — Add “munch” sound on successful feed
 Date: 2026-04-06
 
@@ -711,3 +726,51 @@ User request: match map and navigation widget width to portrait column width; **
 - On typical desktop widths the **1fr** viewport/inventory center is narrower than the original **220 + ~271.5** layout (**518 + 518** consumes more horizontal space).
 - Navigation pad art stays the same pixel size; extra column width is **empty margin** unless new chrome is added.
 - `ui_hud_background` alignment likely needs a future pass.
+
+---
+
+## ADR-0051 — Render NPCs as sprite billboards + show in dialog
+Date: 2026-04-07
+
+### Decision
+Replace the generic in-world NPC glyph (☻) with **per-NPC sprite billboards** (textured `THREE.Sprite` materials), and show the same sprite in the **NPC dialog** header.
+
+### Rationale
+NPCs should be visually identifiable at a glance in the 3D view, and the dialog should reinforce identity without adding extra UI chrome.
+
+### Consequences
+- NPC state carries an explicit `kind` used to choose sprite sources.
+- NPC sprites are served from `web/public/content/` via `/content/*` paths until an automated asset pipeline exists.
+
+---
+
+## ADR-0052 — Preserve NPC sprite aspect ratio + per-kind size tuning (F2)
+Date: 2026-04-07
+
+### Decision
+- NPC billboards in the Three.js world renderer must **preserve their sprite PNG aspect ratio** (no forced square scaling).
+- Add F2 Debug tuning for **per-NPC-kind size (height in world units)** and deterministic **±% size variation**, persisted in `web/public/debug-settings.json`.
+
+### Rationale
+NPC art was being distorted by uniform X/Y scaling, which hurts readability and makes sprite iteration harder. Per-kind size plus stable per-instance variation lets us tune silhouettes quickly without touching art or code.
+
+### Consequences
+- `RenderTuning` gains new keys: `npcSize_*` and `npcSizeRand_*` for each `NpcKind`.
+- `WorldRenderer` scales sprites as \(width = height * aspect\) and applies a deterministic variation derived from `floor.seed` + `npc.id`.
+- `web/public/debug-settings.json` schema expands to include the new fields.
+
+---
+
+## ADR-0053 — Ground NPC sprites to the floor plane
+Date: 2026-04-07
+
+### Decision
+Position NPC billboards so the **bottom edge** of each sprite aligns with the **floor surface** (with a tiny vertical lift).
+
+### Rationale
+Centered sprites “float” or sink when their height changes (per-kind tuning and randomization). Grounding by height makes NPCs feel physically present and keeps silhouettes consistent across sizes.
+
+### Consequences
+- NPC sprite `position.y` is derived from its computed height and a tunable ground pivot: \(y = floorTop + npcFootLift + height*(0.5 - npcGroundY_kind)\).
+- `npcFootLift` and per-kind `npcGroundY_*` are exposed in F2 Debug and persisted via `web/public/debug-settings.json`.
+- Changing NPC size/variation (or lift/groundY) updates both sprite scale and vertical placement.

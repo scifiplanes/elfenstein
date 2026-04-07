@@ -1,6 +1,7 @@
 import type { Dispatch } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import { toGibberish } from '../../game/npc/gibberish'
+import { NPC_SPRITE_SRC } from '../../game/npc/npcDefs'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
@@ -23,6 +24,7 @@ export function NpcDialogModal(props: { state: GameState; dispatch: Dispatch<Act
       className={styles.backdrop}
       onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}
       onPointerMove={cursor.onPointerMove}
+      onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
@@ -35,8 +37,11 @@ export function NpcDialogModal(props: { state: GameState; dispatch: Dispatch<Act
         onClick={(e) => e.stopPropagation()}
       >
         <div className={styles.header}>
-          <div className={styles.title}>
-            {npc.name} · {npc.status} · {npc.language}
+          <div className={styles.titleRow}>
+            <img className={styles.portrait} src={NPC_SPRITE_SRC[npc.kind]} alt="" draggable={false} />
+            <div className={styles.title}>
+              {npc.name} · {npc.status} · {npc.language}
+            </div>
           </div>
           <button className={styles.close} type="button" onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}>
             Close

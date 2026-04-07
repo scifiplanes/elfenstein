@@ -160,6 +160,12 @@ The party has **up to 4** character portrait slots.
 - Interaction:
   - drag weapon onto NPC → attack with that weapon
   - click or walk into NPC → contextual interaction based on status
+- Rendering:
+  - In-world NPCs are rendered as **2D sprite billboards** in the 3D scene (per NPC kind), and are still pickable/clickable/drag-targetable.
+  - NPC billboards **preserve the sprite PNG aspect ratio** (no squashing); sprite **height** is set by per-kind tuning and width is derived from the texture aspect.
+  - F2 Debug exposes per-kind **NPC size (height)** and deterministic **±% size variation**; values persist via `web/public/debug-settings.json`.
+  - NPC sprite placement aligns the **feet/ground point** with the **floor surface** so NPCs appear grounded. F2 Debug exposes a small global lift (`npcFootLift`) plus per-kind ground pivot offsets (`npcGroundY_*`) to compensate for transparent padding differences across NPC art.
+  - The NPC dialog shows a small matching sprite next to the NPC’s name.
 
 **Statuses**: Aggressive, Neutral, Friendly
 
@@ -239,7 +245,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - torch flicker via per-torch sine intensity
   - shadow mapping enabled; lantern lights cast shadows; dungeon geometry receives them
   - low emissive lift on dungeon materials; the lantern is the primary visibility driver
-  - `FogExp2` for depth falloff
+  - `FogExp2` is **optional** for depth falloff; **disabled by default** (can be enabled in F2 debug)
 - Post-process: ordered dithering as shader pass (EffectComposer), controls:
   - Strength
   - Colour preserve

@@ -1,4 +1,4 @@
-import { type PropsWithChildren, useCallback, useMemo, useRef, useState } from 'react'
+import { type PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragPayload, DragTarget } from '../../game/types'
 import { CursorContext, type CursorApi, type CursorState } from './CursorContext'
 
@@ -44,6 +44,7 @@ export function CursorProvider(props: PropsWithChildren) {
   const holdTimer = useRef<number | null>(null)
   const pendingPayload = useRef<DragPayload | null>(null)
   const virtualHover = useRef<{ target: DragTarget | null; rect: CursorState['hoverRect'] } | null>(null)
+  const capture = useRef<{ el: Element; pointerId: number } | null>(null)
 
   const [state, setState] = useState<CursorState>(() => ({
     pointer: { x: 0, y: 0 },
@@ -65,6 +66,16 @@ export function CursorProvider(props: PropsWithChildren) {
     clearHoldTimer()
     pendingPayload.current = payload
     const { clientX: x, clientY: y } = e
+    try {
+      // Ensure `pointerup` comes back to the drag origin even if we drag over other UI/canvas.
+      if (e.currentTarget && 'setPointerCapture' in e.currentTarget) {
+        ;(e.currentTarget as Element as any).setPointerCapture?.(e.pointerId)
+        capture.current = { el: e.currentTarget as unknown as Element, pointerId: e.pointerId }
+      }
+    } catch {
+      // Best-effort only; we also handle pointer cancel / focus loss elsewhere.
+      capture.current = null
+    }
     setState((s) => ({ ...s, pointer: { x, y }, isPointerDown: true, dragging: { payload, started: false } }))
     holdTimer.current = window.setTimeout(() => {
       setState((s) => (s.dragging ? { ...s, dragging: { ...s.dragging, started: true } } : s))
@@ -89,6 +100,23 @@ export function CursorProvider(props: PropsWithChildren) {
     }))
   }, [])
 
+  const cancelDrag = useCallback(() => {
+    clearHoldTimer()
+    pendingPayload.current = null
+    virtualHover.current = null
+    try {
+      const c = capture.current
+      if (c?.el && 'releasePointerCapture' in c.el) {
+        ;(c.el as any).releasePointerCapture?.(c.pointerId)
+      }
+    } catch {
+      // ignore
+    } finally {
+      capture.current = null
+    }
+    setState((s) => ({ ...s, isPointerDown: false, dragging: null, affordance: null, hoverTarget: null, hoverRect: null }))
+  }, [clearHoldTimer])
+
   const setVirtualHover = useCallback((target: DragTarget | null, rect: CursorState['hoverRect']) => {
     virtualHover.current = { target, rect }
     setState((s) => ({
@@ -108,6 +136,16 @@ export function CursorProvider(props: PropsWithChildren) {
     virtualHover.current = null
     const payload = pendingPayload.current
     pendingPayload.current = null
+    try {
+      const c = capture.current
+      if (c?.el && 'releasePointerCapture' in c.el) {
+        ;(c.el as any).releasePointerCapture?.(c.pointerId)
+      }
+    } catch {
+      // ignore
+    } finally {
+      capture.current = null
+    }
 
     const result =
       payload && state.dragging?.started && target
@@ -118,6 +156,19 @@ export function CursorProvider(props: PropsWithChildren) {
     return result
   }, [clearHoldTimer, state.dragging?.started])
 
+  useEffect(() => {
+    const onBlur = () => cancelDrag()
+    const onVisibility = () => {
+      if (document.visibilityState !== 'visible') cancelDrag()
+    }
+    window.addEventListener('blur', onBlur)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('blur', onBlur)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [cancelDrag])
+
   const api: CursorApi = useMemo(
     () => ({
       state,
@@ -125,8 +176,9 @@ export function CursorProvider(props: PropsWithChildren) {
       onPointerMove,
       setVirtualHover,
       endPointerUp,
+      cancelDrag,
     }),
-    [state, beginPointerDown, onPointerMove, setVirtualHover, endPointerUp],
+    [state, beginPointerDown, onPointerMove, setVirtualHover, endPointerUp, cancelDrag],
   )
 
   return <CursorContext.Provider value={api}>{props.children}</CursorContext.Provider>

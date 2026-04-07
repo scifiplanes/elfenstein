@@ -2,6 +2,7 @@ import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
 import type { GameState } from '../game/types'
 import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
+import { NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 
 export class WorldRenderer {
   private readonly renderer: THREE.WebGLRenderer
@@ -24,6 +25,11 @@ export class WorldRenderer {
   private floorMat: THREE.MeshStandardMaterial | null = null
   private wallMat: THREE.MeshStandardMaterial | null = null
   private ceilMat: THREE.MeshStandardMaterial | null = null
+
+  private readonly textureLoader = new THREE.TextureLoader()
+  private readonly npcSpriteMats: Partial<Record<GameState['floor']['npcs'][number]['kind'], THREE.SpriteMaterial>> = {}
+  private readonly npcSpriteAspects: Partial<Record<GameState['floor']['npcs'][number]['kind'], number>> = {}
+  private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: GameState['floor']['npcs'][number]['kind'] }> = []
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -60,6 +66,11 @@ export class WorldRenderer {
   }
 
   dispose() {
+    for (const m of Object.values(this.npcSpriteMats)) {
+      if (!m) continue
+      m.map?.dispose()
+      m.dispose()
+    }
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
       if (mesh.geometry) mesh.geometry.dispose?.()
@@ -276,6 +287,7 @@ export class WorldRenderer {
   private buildGeometry(state: GameState) {
     const g = new THREE.Group()
     this.pickables = []
+    this.npcSprites = []
 
     const wallTex = makeWallTexture(state.floor.seed ^ 0x111)
     const floorTex = makeFloorTexture(state.floor.seed ^ 0x222)
@@ -346,7 +358,6 @@ export class WorldRenderer {
     }
 
     const poiMat = makeBillboardMaterial('✦', '#ffd59a')
-    const npcMat = makeBillboardMaterial('☻', '#f070ff')
     const itemMat = makeBillboardMaterial('◻', '#b6ff8b')
 
     state.floor.pois.forEach((p) => {
@@ -363,12 +374,13 @@ export class WorldRenderer {
     state.floor.npcs.forEach((n) => {
       const x = n.pos.x - w / 2
       const z = n.pos.y - h / 2
-      const s = new THREE.Sprite(npcMat)
+      const s = new THREE.Sprite(this.getNpcSpriteMat(n.kind))
       s.position.set(x, 0.38, z)
-      s.scale.set(0.65, 0.65, 1)
+      // Scale is applied in `syncTuning()` so it can react to debug tuning and texture load (aspect).
       s.userData = { kind: 'npc', id: n.id }
       g.add(s)
       this.pickables.push(s)
+      this.npcSprites.push({ sprite: s, id: n.id, kind: n.kind })
     })
 
     state.floor.itemsOnFloor.forEach((it) => {
@@ -386,7 +398,11 @@ export class WorldRenderer {
   }
 
   private syncTuning(state: GameState) {
-    this.scene.fog = new THREE.FogExp2(0x050508, state.render.fogDensity)
+    if (state.render.fogEnabled > 0) {
+      this.scene.fog = new THREE.FogExp2(0x050508, Math.max(0, state.render.fogDensity))
+    } else {
+      this.scene.fog = null
+    }
 
     if (state.render.camFov !== this.lastCamFov) {
       this.lastCamFov = state.render.camFov
@@ -437,7 +453,93 @@ export class WorldRenderer {
       this.torchLights[i].distance = state.render.torchDistance
       this.torchLights[i].intensity = state.render.torchIntensity * flicker
     }
+
+    this.syncNpcSpriteScales(state)
   }
+
+  private getNpcSpriteMat(kind: GameState['floor']['npcs'][number]['kind']): THREE.SpriteMaterial {
+    const cached = this.npcSpriteMats[kind]
+    if (cached) return cached
+
+    const src = NPC_SPRITE_SRC[kind]
+    const tex = this.textureLoader.load(src, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const w = img && typeof img.width === 'number' ? img.width : 0
+      const h = img && typeof img.height === 'number' ? img.height : 0
+      if (w > 0 && h > 0) this.npcSpriteAspects[kind] = w / h
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.npcSpriteMats[kind] = mat
+    return mat
+  }
+
+  private syncNpcSpriteScales(state: GameState) {
+    if (!this.npcSprites.length) return
+
+    for (const n of this.npcSprites) {
+      const size = this.getNpcSizeForKind(state, n.kind, n.id)
+      const aspect = this.npcSpriteAspects[n.kind] ?? 1.0
+      const width = size * aspect
+      n.sprite.scale.set(width, size, 1)
+
+      // Align the bottom of the sprite with the floor surface.
+      // Floor top is y=0 (floor boxes are centered at y=-0.05 with height 0.1).
+      const floorTopY = 0
+      const lift = Number(state.render.npcFootLift ?? 0)
+      const groundY = this.getNpcGroundYForKind(state, n.kind)
+      n.sprite.position.y = floorTopY + lift + size * (0.5 - groundY)
+    }
+  }
+
+  private getNpcGroundYForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+    if (kind === 'Wurglepup') return state.render.npcGroundY_Wurglepup
+    if (kind === 'Bobr') return state.render.npcGroundY_Bobr
+    if (kind === 'Skeleton') return state.render.npcGroundY_Skeleton
+    return state.render.npcGroundY_Catoctopus
+  }
+
+  private getNpcSizeForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind'], npcId: string) {
+    const base = this.getNpcBaseSizeForKind(state, kind)
+    const randPct = this.getNpcSizeRandForKind(state, kind)
+    const signed = this.signedUnitFromStr(`npcSize:${state.floor.seed}:${kind}:${npcId}`)
+    const factor = 1 + signed * randPct
+    return Math.max(0.05, base * factor)
+  }
+
+  private getNpcBaseSizeForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+    if (kind === 'Wurglepup') return state.render.npcSize_Wurglepup
+    if (kind === 'Bobr') return state.render.npcSize_Bobr
+    if (kind === 'Skeleton') return state.render.npcSize_Skeleton
+    return state.render.npcSize_Catoctopus
+  }
+
+  private getNpcSizeRandForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+    if (kind === 'Wurglepup') return state.render.npcSizeRand_Wurglepup
+    if (kind === 'Bobr') return state.render.npcSizeRand_Bobr
+    if (kind === 'Skeleton') return state.render.npcSizeRand_Skeleton
+    return state.render.npcSizeRand_Catoctopus
+  }
+
+  private signedUnitFromStr(s: string) {
+    // Deterministic in [-1, 1], stable across reloads for the same input string.
+    const u01 = (this.hashStr(s) >>> 0) / 0x1_0000_0000
+    return u01 * 2 - 1
+  }
+
+  private hashStr(s: string) {
+    let h = 2166136261 >>> 0
+    for (let i = 0; i < s.length; i++) {
+      h ^= s.charCodeAt(i)
+      h = Math.imul(h, 16777619)
+    }
+    return h >>> 0
+  }
+
 }
 
 function makeBillboardMaterial(glyph: string, color: string) {

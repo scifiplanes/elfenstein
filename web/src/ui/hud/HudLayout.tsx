@@ -48,6 +48,7 @@ export function HudLayout(props: {
       data-capture={captureForPostprocess ? 'true' : 'false'}
       ref={rootRef}
       onPointerMove={interactive ? cursor.onPointerMove : undefined}
+      onPointerCancel={interactive ? cursor.cancelDrag : undefined}
       onPointerUp={
         interactive
           ? (e) => {

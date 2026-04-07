@@ -366,6 +366,8 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const m = Math.round(r.ditherMatrixSize)
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
   const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
+  const fogEnabled = Number(r.fogEnabled ?? 0) > 0 ? 1 : 0
+  const fogDensity = Math.max(0, Math.min(0.3, Number(r.fogDensity ?? 0)))
   const lanternBeamPenumbra = Math.max(0, Math.min(1, r.lanternBeamPenumbra))
   const lanternBeamAngleDeg = Math.max(1, Math.min(80, r.lanternBeamAngleDeg))
   const lanternBeamDistanceScale = Math.max(0.1, Math.min(6, r.lanternBeamDistanceScale))
@@ -394,10 +396,30 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const portraitMouthFlickerHz = Math.max(0, Math.min(40, Number(r.portraitMouthFlickerHz ?? 18)))
   const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(r.portraitMouthFlickerAmount ?? 8))))
   const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(r.dropRangeCells ?? 5))))
+
+  const clampNpcSize = (v: number) => Math.max(0.1, Math.min(2.5, Number(v)))
+  const clampNpcRand = (v: number) => Math.max(0, Math.min(1, Number(v)))
+  const npcFootLift = Math.max(-0.2, Math.min(0.5, Number(r.npcFootLift ?? 0.02)))
+  const clampNpcGroundY = (v: number) => Math.max(-0.75, Math.min(1.25, Number(v)))
+  const npcGroundY_Wurglepup = clampNpcGroundY(r.npcGroundY_Wurglepup ?? 0)
+  const npcGroundY_Bobr = clampNpcGroundY(r.npcGroundY_Bobr ?? 0)
+  const npcGroundY_Skeleton = clampNpcGroundY(r.npcGroundY_Skeleton ?? 0)
+  const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
+
+  const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
+  const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
+  const npcSize_Bobr = clampNpcSize(r.npcSize_Bobr ?? 0.65)
+  const npcSizeRand_Bobr = clampNpcRand(r.npcSizeRand_Bobr ?? 0)
+  const npcSize_Skeleton = clampNpcSize(r.npcSize_Skeleton ?? 0.65)
+  const npcSizeRand_Skeleton = clampNpcRand(r.npcSizeRand_Skeleton ?? 0)
+  const npcSize_Catoctopus = clampNpcSize(r.npcSize_Catoctopus ?? 0.65)
+  const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
   return {
     ...r,
     ditherMatrixSize,
     ditherPalette: p as RenderTuning['ditherPalette'],
+    fogEnabled,
+    fogDensity,
     lanternBeamPenumbra,
     lanternBeamAngleDeg,
     lanternBeamDistanceScale,
@@ -424,6 +446,20 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     portraitMouthFlickerHz,
     portraitMouthFlickerAmount,
     dropRangeCells,
+
+    npcFootLift,
+    npcGroundY_Wurglepup,
+    npcGroundY_Bobr,
+    npcGroundY_Skeleton,
+    npcGroundY_Catoctopus,
+    npcSize_Wurglepup,
+    npcSizeRand_Wurglepup,
+    npcSize_Bobr,
+    npcSizeRand_Bobr,
+    npcSize_Skeleton,
+    npcSizeRand_Skeleton,
+    npcSize_Catoctopus,
+    npcSizeRand_Catoctopus,
   }
 }
 

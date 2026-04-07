@@ -15,6 +15,7 @@ export const DEFAULT_RENDER: RenderTuning = {
   lanternBeamPenumbra: 0.7,
   torchIntensity: 1.0,
   torchDistance: 6,
+  fogEnabled: 0,
   fogDensity: 0.0,
   camEyeHeight: 1.15,
   camForwardOffset: 0.0,
@@ -46,6 +47,22 @@ export const DEFAULT_RENDER: RenderTuning = {
   portraitShakeDecayMs: 220,
   portraitShakeMagnitudeScale: 1.0,
   portraitShakeHz: 11,
+
+  // NPC billboard sizing (height in world units; width derived from texture aspect).
+  // Defaults chosen to roughly match the prior hardcoded 0.65 scale used for all NPCs.
+  npcFootLift: 0.02,
+  npcGroundY_Wurglepup: 0.0,
+  npcGroundY_Bobr: 0.0,
+  npcGroundY_Skeleton: 0.0,
+  npcGroundY_Catoctopus: 0.0,
+  npcSize_Wurglepup: 0.65,
+  npcSizeRand_Wurglepup: 0.0,
+  npcSize_Bobr: 0.65,
+  npcSizeRand_Bobr: 0.0,
+  npcSize_Skeleton: 0.65,
+  npcSizeRand_Skeleton: 0.0,
+  npcSize_Catoctopus: 0.65,
+  npcSizeRand_Catoctopus: 0.0,
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {
