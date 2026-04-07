@@ -27,6 +27,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 
 ## 6) Controls & interaction model
 ### 6.1 Cursor (hand) states
+- **OS cursor**: hidden globally (`cursor: none` on `document.body`); interactive HUD widgets also set **`cursor: none`** so controls (e.g. navigation buttons) never revert to the system pointer—only the **`CursorLayer`** hand sprite is visible.
 - **Default**: `Hand_Point`
 - **Holding/dragging**: `Hand_Hold` (held item sprite follows pointer)
 - **Hover active**: `Hand_Active` when pointing at an interactable

@@ -28,7 +28,8 @@
   height: var(--nav-btn-px);
   box-sizing: border-box;
   flex-shrink: 0;
-  cursor: pointer;
+  /* Hide OS cursor; `CursorLayer` draws the hand over the whole HUD. */
+  cursor: none;
   background: transparent;
   border-radius: 0;
   overflow: visible;
@@ -50,7 +51,7 @@
 
 .navBtn:disabled {
   opacity: 0.42;
-  cursor: not-allowed;
+  cursor: none;
   filter: none;
 }
 
