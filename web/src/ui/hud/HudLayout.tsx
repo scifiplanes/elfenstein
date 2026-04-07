@@ -87,29 +87,29 @@ export function HudLayout(props: {
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[0].id} />
       </section>
 
-      <section className={`${styles.panel} ${styles.map}`}>
-        <h3 className={styles.title}>MAP</h3>
-        <MinimapPanel state={state} />
-      </section>
-
-      <section className={`${styles.panel} ${styles.navigation}`}>
-        <h3 className={styles.title}>NAVIGATION</h3>
-        <NavigationPanel
-          state={state}
-          dispatch={dispatch}
-          pressedButtonId={navPadPressedId}
-          onNavPadVisualPress={onNavPadVisualPress}
-        />
-      </section>
-
       <section className={`${styles.panel} ${styles.char3}`}>
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[2].id} />
       </section>
 
-      <section className={`${styles.panel} ${styles.inventory}`}>
-        <h3 className={styles.title}>INVENTORY</h3>
-        <InventoryPanel state={state} dispatch={dispatch} content={content} />
-      </section>
+      <div className={styles.bottomRow}>
+        <section className={`${styles.panel} ${styles.map}`}>
+          <MinimapPanel state={state} />
+        </section>
+
+        <section className={`${styles.panel} ${styles.inventory}`}>
+          <h3 className={styles.title}>INVENTORY</h3>
+          <InventoryPanel state={state} dispatch={dispatch} content={content} />
+        </section>
+
+        <section className={`${styles.panel} ${styles.navigation}`}>
+          <NavigationPanel
+            state={state}
+            dispatch={dispatch}
+            pressedButtonId={navPadPressedId}
+            onNavPadVisualPress={onNavPadVisualPress}
+          />
+        </section>
+      </div>
 
       {interactive ? <PaperdollModal state={state} dispatch={dispatch} content={content} /> : null}
       {interactive ? <NpcDialogModal state={state} dispatch={dispatch} content={content} /> : null}

@@ -894,3 +894,87 @@ The stage uses **`transform: scale`**, which makes **`position: fixed`** descend
 
 ### Consequences
 - **`FeedbackLayer`** / **`DebugPanel`** remain inside the stage; if similar misalignment is noticed, apply the same pattern or convert coordinates.
+
+---
+
+## ADR-0062 — HUD bottom row 300px (map, inventory, navigation)
+Date: 2026-04-07
+
+### Decision
+Change **`HudLayout`** **`grid-template-rows`** third track from **400px** to **300px** (**25%** shorter). Row order unchanged (**`1fr` `1fr` fixed**), so the band stays **bottom-aligned**; upper rows absorb the extra space.
+
+### Rationale
+User request: shorter minimap, inventory, and navigation band while keeping bottom alignment.
+
+### Consequences
+- **Supersedes** the **400px** value in **ADR-0047** for the third row; **`ui_hud_background`** alignment may need a pass if the plate assumed the old band height.
+
+---
+
+## ADR-0063 — HUD bottom row 285px (further −5%)
+Date: 2026-04-07
+
+### Decision
+Change **`HudLayout`** **`grid-template-rows`** third track from **300px** to **285px** (**95%** of **300px**).
+
+### Rationale
+User request: additional **−5%** height on the minimap + inventory + navigation row; bottom alignment unchanged.
+
+### Consequences
+- **Supersedes** the third-row height in **ADR-0062**; background plate may need another alignment pass.
+
+---
+
+## ADR-0064 — Map + navigation rail width −25%, outer-aligned
+Date: 2026-04-07
+
+### Decision
+In **`HudLayout.module.css`**, **`.map`** and **`.navigation`** use **`width: 75%`**, **`justify-self: start`** and **`end`** respectively (**`max-width: 100%`**, **`min-width: 0`**).
+
+### Rationale
+User request: **−25%** width on minimap and navigation widgets; map **left-aligned**, navigation **right-aligned** in their **1fr** bottom-row cells.
+
+### Consequences
+- **`ui_hud_background`** may need adjustment if it assumed full-width map/nav cells.
+
+---
+
+## ADR-0065 — Wider inventory band + portraits 75% like map/nav
+Date: 2026-04-07
+
+### Decision
+Wrap map, inventory, and navigation in **`HudLayout`**’s **`.bottomRow`** (**`grid-area`** spanning the third row). Inside, **`grid-template-columns: minmax(0, 0.75fr) 120px minmax(0, 1.62fr) 120px minmax(0, 0.75fr)`** (fr total **3.12**, matching **`1 + 1.12 + 1`** above) so the **inventory** middle grows vs **ADR-0064**’s layout. **Portrait** `<section>`s (**`.char1`–`.char4`**) use **75%** width and **`justify-self: start`** / **`end`** to match map/nav alignment.
+
+### Rationale
+User request: inventory should **fill more space between** map and navigation; character widgets should be the **same width** relationship as map and nav (**75%** of rail, outer-pinned).
+
+### Consequences
+- **`ui_hud_background`** may need a pass for the wider bottom **inventory** column.
+
+---
+
+## ADR-0066 — Map/nav width match portraits without shrinking inventory
+Date: 2026-04-07
+
+### Decision
+Keep **`bottomRow`** **`0.75fr 120px 1.62fr 120px 0.75fr`**. Set **`.map`** and **`.navigation`** to **`width: 100%`** (full **0.75fr** tracks) instead of **75%**.
+
+### Rationale
+Portraits are **75% × 1fr = 0.75fr** wide; bottom side tracks are **0.75fr**, so **100%** fill matches portrait width while the **1.62fr** inventory band is unchanged vs **ADR-0065**.
+
+### Consequences
+- Map/nav cells span the full bottom outer column; inner minimap/nav art remains centered where applicable.
+
+---
+
+## ADR-0067 — No map/nav titles; flex-center content
+Date: 2026-04-07
+
+### Decision
+Remove **`MAP`** / **`NAVIGATION`** **`<h3>`** from **`HudLayout`**. Style **`.map`** / **`.navigation`** with **`display: flex`**, **`align-items`/`justify-content: center`**, and **`> * { flex: 0 1 auto; max-width/height: 100% }`**. **`MinimapPanel`** / **`NavigationPanel`** roots drop **`height: 100%`** in favor of **`max-height: 100%`** + intrinsic sizing so centering reads correctly.
+
+### Rationale
+User request: no titles; center minimap and nav pad in their cells.
+
+### Consequences
+- **`INVENTORY`** title unchanged.
