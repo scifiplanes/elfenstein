@@ -223,7 +223,13 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - Levels
   - Matrix (Bayer 2×2/4×4/8×8)
   - Palette (Dungeon warm, Cold crypt, Monochrome, Sepia print, No palette snap)
-- **UI compositing**: UI panels (HUD) are composited into the rendered frame before post-processing so the **same dithering/pixelation** applies to both the 3D view and the UI.
+- **Frame presentation pipeline**:
+  - The 3D world is rendered offscreen into a **render target** sized to match the on-screen **game viewport rect** (the HUD “game” panel), not necessarily the full window.
+  - The HUD exists as HTML/CSS twice:
+    - an **interactive HUD** (visible, handles pointer input)
+    - a **capture HUD** (offscreen, non-interactive) that is rasterized into a canvas texture
+  - A presenter compositor shader places the scene render target into the frame **only inside** the game viewport rect and overlays the captured HUD everywhere else (and over the scene where UI alpha exists).
+  - The final composite then runs through the ordered-dither post-process so the **same dithering/pixelation** applies to both 3D and HUD.
 
 ## 12) Debug menu
 - Accessible from main settings; scrollable; sections + search (expected to grow).

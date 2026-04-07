@@ -466,3 +466,18 @@ The game had only procedural SFX and synthesized spatial audio — no background
 - `AudioTuning` gains `masterMusic: number` (default `0.4`); old persisted `debug-settings.json` without the key falls back to the default via the existing spread-merge in `debug/loadTuning`.
 - Additional music tracks can be swapped by changing the `src` prop on `MusicLayer` or mounting multiple instances.
 - Browser autoplay policy applies; audio starts after first user interaction (same pattern as `SpatialAudio.ensure()`).
+## ADR-0031 — Present the frame via compositor + HUD capture
+Date: 2026-04-07
+
+### Decision
+Move final frame presentation to an explicit **presentation pipeline**:
+- Render the 3D world into an offscreen **render target** sized to the HUD “game viewport” rect.
+- Capture a non-interactive, offscreen copy of the HUD to a texture and **composite** it with the scene via a fullscreen shader.
+- Apply ordered dithering as the final pass over the composite so the UI and 3D share the same post-process.
+
+### Rationale
+The renderer needs the dither/pixelation to apply uniformly to UI + 3D, while keeping the HUD fully interactive (DOM/pointer events) and avoiding layout-dependent stretching artifacts during resize.
+
+### Consequences
+- The HUD is rendered twice (interactive + capture) and the capture path must be resilient to resize bursts.
+- Picking/projection in the 3D world uses the **game viewport rect** as its coordinate space (not the full window).

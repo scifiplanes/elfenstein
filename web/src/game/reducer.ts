@@ -369,7 +369,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const camShakePosAmp = Math.max(0, Math.min(0.25, r.camShakePosAmp))
   const camShakeRollDeg = Math.max(0, Math.min(12, r.camShakeRollDeg))
   const camShakeHz = Math.max(0, Math.min(40, r.camShakeHz))
-  const camShakeLengthMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeLengthMs ?? 0))))
+  const camShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(r.camShakeLengthMs ?? 0))))
   const camShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeDecayMs ?? 220))))
   const camShakeUiMix = Math.max(0, Math.min(3, r.camShakeUiMix))
   let portraitIdleGapMinMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMinMs ?? 8000))))

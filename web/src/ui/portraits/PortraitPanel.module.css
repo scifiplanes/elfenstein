@@ -1,14 +1,19 @@
 .root {
   display: grid;
-  grid-template-rows: auto 1fr auto;
+  grid-template-rows: auto minmax(0, 1fr) auto;
   gap: 8px;
   height: 100%;
+  min-height: 0;
 }
 
 .portrait {
   position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1;
+  /* Always fill the available portrait slot.
+     The sprite images themselves use object-fit: contain, so the portrait art keeps its own aspect ratio
+     without ever being cropped by layout constraints. */
+  width: 66%;
+  height: 100%;
+  margin: 0 auto;
   border-radius: 12px;
   background: radial-gradient(120px 120px at 50% 40%, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.2));
   border: 1px solid rgba(255, 255, 255, 0.12);

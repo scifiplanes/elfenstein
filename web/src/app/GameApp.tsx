@@ -1,7 +1,6 @@
 import { useEffect, useMemo, useReducer, useState } from 'react'
 import { CursorLayer } from '../ui/cursor/CursorLayer'
 import { CursorProvider } from '../ui/cursor/CursorProvider'
-import { HudLayout } from '../ui/hud/HudLayout'
 import { DebugPanel } from '../ui/debug/DebugPanel'
 import { initialState, reduce } from '../game/reducer'
 import { ContentDB } from '../game/content/contentDb'
@@ -9,6 +8,7 @@ import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
 import { loadDebugSettingsFromProject, saveDebugSettingsToProject } from './debugSettingsPersistence'
+import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 
 export function GameApp() {
   const content = useMemo(() => ContentDB.createDefault(), [])
@@ -90,6 +90,7 @@ export function GameApp() {
 
   return (
     <CursorProvider>
+      <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
       <HudLayout state={state} dispatch={dispatch} content={content} />
       <MusicLayer state={state} src="/sounds/theme.mp3" />
       <SpatialAudioLayer state={state} />
