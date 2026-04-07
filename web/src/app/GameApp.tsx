@@ -7,6 +7,7 @@ import { ContentDB } from '../game/content/contentDb'
 import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
+import { selectMusicTrack } from '../ui/audio/musicRules'
 import { loadDebugSettingsFromProject, saveDebugSettingsToProject } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
@@ -94,7 +95,7 @@ export function GameApp() {
       <Fragment>
         <FixedStageViewport>
           <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-          <MusicLayer state={state} src="/sounds/music/dungeon_bg_music.mp3" />
+          <MusicLayer state={state} track={selectMusicTrack(state)} />
           <SpatialAudioLayer state={state} />
           <FeedbackLayer state={state} dispatch={dispatch} />
           <DebugPanel state={state} dispatch={dispatch} />
