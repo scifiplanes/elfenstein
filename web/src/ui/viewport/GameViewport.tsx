@@ -1,70 +1,52 @@
 import type { Dispatch } from 'react'
-import { useEffect, useRef, useState } from 'react'
+import type { RefObject } from 'react'
+import { useRef } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import styles from './GameViewport.module.css'
-import { WorldRenderer } from '../../world/WorldRenderer'
+import type { WorldRenderer } from '../../world/WorldRenderer'
 
-export function GameViewport(props: { state: GameState; dispatch: Dispatch<Action> }) {
-  const { state, dispatch } = props
+export function GameViewport(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  world: WorldRenderer | null
+  viewportRef?: RefObject<HTMLDivElement | null>
+  webglError?: string | null
+}) {
+  const { state, dispatch, world, viewportRef, webglError } = props
   const cursor = useCursor()
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rendererRef = useRef<WorldRenderer | null>(null)
-  const [webglError, setWebglError] = useState<string | null>(null)
 
-  useEffect(() => {
-    if (!canvasRef.current) return
-    const canvas = canvasRef.current
-    const onLost = (e: Event) => {
-      e.preventDefault()
-      setWebglError('WebGL context lost. Try reloading the page.')
-    }
-    const onRestored = () => setWebglError(null)
-    canvas.addEventListener('webglcontextlost', onLost as any, { passive: false } as any)
-    canvas.addEventListener('webglcontextrestored', onRestored as any)
-
-    try {
-      const wr = new WorldRenderer(canvas)
-      rendererRef.current = wr
-    } catch (err) {
-      setWebglError('WebGL init failed. Your browser/GPU may be blocking WebGL.')
-    }
-    return () => {
-      rendererRef.current?.dispose()
-      rendererRef.current = null
-      canvas.removeEventListener('webglcontextlost', onLost as any)
-      canvas.removeEventListener('webglcontextrestored', onRestored as any)
-    }
-  }, [])
-
-  useEffect(() => {
-    rendererRef.current?.renderFrame(state)
-  }, [state])
+  const localRef = useRef<HTMLDivElement | null>(null)
+  const vpRef = viewportRef ?? localRef
+  const getRect = () => vpRef.current?.getBoundingClientRect() ?? null
 
   return (
     <div
       className={styles.root}
+      ref={vpRef}
       data-drop-kind="floorDrop"
       onPointerMove={(e) => {
         cursor.onPointerMove(e)
-        const wr = rendererRef.current
-        if (!wr) return
-        const pick = wr.pickObject(e.clientX, e.clientY)
+        if (!world) return
+        const rect = getRect()
+        if (!rect) return
+        const pick = world.pickObject(rect, e.clientX, e.clientY)
         if (!pick) {
           cursor.setVirtualHover(null, null)
           return
         }
-        const at = wr.projectWorldToClient(pick.worldPos)
-        const rect = { left: at.x, right: at.x, top: at.y, bottom: at.y }
-        if (pick.kind === 'poi') cursor.setVirtualHover({ kind: 'poi', poiId: pick.id }, rect)
-        if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, rect)
-        if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, rect)
+        const at = world.projectWorldToClient(rect, pick.worldPos)
+        const hoverRect = { left: at.x, right: at.x, top: at.y, bottom: at.y }
+        if (pick.kind === 'poi') cursor.setVirtualHover({ kind: 'poi', poiId: pick.id }, hoverRect)
+        if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, hoverRect)
+        if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, hoverRect)
       }}
       onClick={(e) => {
-        const wr = rendererRef.current
-        if (!wr) return
-        const pick = wr.pickTarget(e.clientX, e.clientY)
+        if (!world) return
+        const rect = getRect()
+        if (!rect) return
+        const pick = world.pickTarget(rect, e.clientX, e.clientY)
         if (!pick) return
         if (pick.kind === 'floorItem') {
           // Click-pickup convenience; drag-drop also works.
@@ -104,8 +86,6 @@ export function GameViewport(props: { state: GameState; dispatch: Dispatch<Actio
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
       }}
     >
-      <canvas className={styles.canvas} ref={canvasRef} />
-
       <div className={styles.overlay}>
         <div className={styles.poiRow} style={{ pointerEvents: 'none' }}>
           <div className={styles.poiBtn} style={{ pointerEvents: 'none', opacity: 0.75 }}>

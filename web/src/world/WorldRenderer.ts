@@ -1,23 +1,17 @@
 import * as THREE from 'three'
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
-import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js'
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
 import type { GameState } from '../game/types'
-import { DitherShader } from './DitherShader'
 import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
 
 export class WorldRenderer {
-  private readonly canvas: HTMLCanvasElement
   private readonly renderer: THREE.WebGLRenderer
-  private readonly composer: EffectComposer
+  private rt: THREE.WebGLRenderTarget | null = null
   private readonly scene: THREE.Scene
   private readonly camera: THREE.PerspectiveCamera
   private readonly lantern: THREE.PointLight
   private readonly lanternBeam: THREE.SpotLight
   private readonly lanternBeamTarget: THREE.Object3D
   private readonly torchLights: THREE.PointLight[] = []
-  private readonly ditherPass: ShaderPass
 
   private lastSize = { w: 0, h: 0 }
   private lastCamFov = NaN
@@ -31,14 +25,8 @@ export class WorldRenderer {
   private wallMat: THREE.MeshStandardMaterial | null = null
   private ceilMat: THREE.MeshStandardMaterial | null = null
 
-  constructor(canvas: HTMLCanvasElement) {
-    this.canvas = canvas
-    this.renderer = new THREE.WebGLRenderer({
-      canvas,
-      antialias: false,
-      alpha: false,
-      powerPreference: 'high-performance',
-    })
+  constructor(renderer: THREE.WebGLRenderer) {
+    this.renderer = renderer
     this.renderer.debug.checkShaderErrors = true
     this.renderer.setClearColor(new THREE.Color('#050508'), 1)
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
@@ -68,90 +56,129 @@ export class WorldRenderer {
     this.camera.add(this.lanternBeam)
     this.camera.add(this.lanternBeamTarget)
 
-    const renderPass = new RenderPass(this.scene, this.camera)
-    this.ditherPass = new ShaderPass(DitherShader)
-    this.composer = new EffectComposer(this.renderer)
-    this.composer.addPass(renderPass)
-    this.composer.addPass(this.ditherPass)
-
-    this.syncSize()
+    this.syncSize(1, 1)
   }
 
   dispose() {
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
       if (mesh.geometry) mesh.geometry.dispose?.()
-      const mat = mesh.material as any
-      if (mat?.dispose) mat.dispose()
+      const mat = mesh.material as unknown as { dispose?: () => void } | { dispose?: () => void }[]
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.())
+      else mat?.dispose?.()
     })
-    this.composer.dispose()
-    this.renderer.dispose()
+    this.rt?.dispose()
+    this.rt = null
+    this.lastSize = { w: 0, h: 0 }
+  }
+
+  /** Ensure the offscreen buffer matches the on-screen game rect size. */
+  syncViewportRect(rect: DOMRectReadOnly) {
+    const capped = Math.min(window.devicePixelRatio || 1, 1.5)
+    const w = Math.max(1, Math.floor(rect.width * capped))
+    const h = Math.max(1, Math.floor(rect.height * capped))
+    this.syncSize(w, h)
   }
 
   renderFrame(state: GameState) {
-    this.syncSize()
     this.syncScene(state)
     this.syncTuning(state)
-    this.composer.render()
+    this.renderer.setRenderTarget(this.rt)
+    this.renderer.render(this.scene, this.camera)
+    this.renderer.setRenderTarget(null)
   }
 
-  pickTarget(clientX: number, clientY: number): null | { kind: 'poi'; id: string } | { kind: 'npc'; id: string } | { kind: 'floorItem'; id: string } | { kind: 'door'; id: string } {
+  getRenderTargetTexture(): THREE.Texture | null {
+    return this.rt?.texture ?? null
+  }
+
+  getRenderTargetSize(): { w: number; h: number } | null {
+    if (!this.rt) return null
+    return { w: this.rt.width, h: this.rt.height }
+  }
+
+  /** Debug helper: read a single pixel from the render target (RGBA 0..255). */
+  readRenderTargetPixel(x: number, y: number): Uint8Array | null {
+    if (!this.rt) return null
+    const w = this.rt.width
+    const h = this.rt.height
+    const px = Math.max(0, Math.min(w - 1, Math.floor(x)))
+    const py = Math.max(0, Math.min(h - 1, Math.floor(y)))
+    const out = new Uint8Array(4)
+    this.renderer.readRenderTargetPixels(this.rt, px, py, 1, 1, out)
+    return out
+  }
+
+  pickTarget(
+    gameRect: DOMRectReadOnly,
+    clientX: number,
+    clientY: number,
+  ): null | { kind: 'poi'; id: string } | { kind: 'npc'; id: string } | { kind: 'floorItem'; id: string } | { kind: 'door'; id: string } {
     if (!this.pickables.length) return null
-    const rect = this.canvas.getBoundingClientRect()
-    const x = ((clientX - rect.left) / rect.width) * 2 - 1
-    const y = -(((clientY - rect.top) / rect.height) * 2 - 1)
+    const x = ((clientX - gameRect.left) / gameRect.width) * 2 - 1
+    const y = -(((clientY - gameRect.top) / gameRect.height) * 2 - 1)
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     const hit = hits[0]
     if (!hit) return null
-    const ud: any = (hit.object as any).userData
-    if (!ud?.kind || !ud?.id) return null
-    if (ud.kind === 'poi') return { kind: 'poi', id: String(ud.id) }
-    if (ud.kind === 'npc') return { kind: 'npc', id: String(ud.id) }
-    if (ud.kind === 'floorItem') return { kind: 'floorItem', id: String(ud.id) }
-    if (ud.kind === 'door') return { kind: 'door', id: String(ud.id) }
+    const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
+    const kind = String(ud.kind ?? '')
+    const id = ud.id == null ? '' : String(ud.id)
+    if (!id) return null
+    if (kind === 'poi') return { kind: 'poi', id }
+    if (kind === 'npc') return { kind: 'npc', id }
+    if (kind === 'floorItem') return { kind: 'floorItem', id }
+    if (kind === 'door') return { kind: 'door', id }
     return null
   }
 
-  pickObject(clientX: number, clientY: number): null | { kind: 'poi' | 'npc' | 'floorItem' | 'door'; id: string; worldPos: THREE.Vector3 } {
+  pickObject(
+    gameRect: DOMRectReadOnly,
+    clientX: number,
+    clientY: number,
+  ): null | { kind: 'poi' | 'npc' | 'floorItem' | 'door'; id: string; worldPos: THREE.Vector3 } {
     if (!this.pickables.length) return null
-    const rect = this.canvas.getBoundingClientRect()
-    const x = ((clientX - rect.left) / rect.width) * 2 - 1
-    const y = -(((clientY - rect.top) / rect.height) * 2 - 1)
+    const x = ((clientX - gameRect.left) / gameRect.width) * 2 - 1
+    const y = -(((clientY - gameRect.top) / gameRect.height) * 2 - 1)
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
     const hit = hits[0]
     if (!hit) return null
-    const ud: any = (hit.object as any).userData
-    if (!ud?.kind || !ud?.id) return null
-    const kind = String(ud.kind) as any
+    const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
+    const kind = String(ud.kind ?? '')
+    const id = ud.id == null ? '' : String(ud.id)
+    if (!id) return null
     if (kind !== 'poi' && kind !== 'npc' && kind !== 'floorItem' && kind !== 'door') return null
-    return { kind, id: String(ud.id), worldPos: hit.point.clone() }
+    return { kind, id, worldPos: hit.point.clone() }
   }
 
-  projectWorldToClient(pos: THREE.Vector3): { x: number; y: number } {
-    const rect = this.canvas.getBoundingClientRect()
+  projectWorldToClient(gameRect: DOMRectReadOnly, pos: THREE.Vector3): { x: number; y: number } {
     const v = pos.clone().project(this.camera)
-    const x = (v.x * 0.5 + 0.5) * rect.width + rect.left
-    const y = (-v.y * 0.5 + 0.5) * rect.height + rect.top
+    const x = (v.x * 0.5 + 0.5) * gameRect.width + gameRect.left
+    const y = (-v.y * 0.5 + 0.5) * gameRect.height + gameRect.top
     return { x, y }
   }
 
-  private syncSize() {
-    const rect = this.canvas.getBoundingClientRect()
-    const w = Math.max(1, Math.floor(rect.width))
-    const h = Math.max(1, Math.floor(rect.height))
-    if (w === this.lastSize.w && h === this.lastSize.h) return
+  private syncSize(w: number, h: number) {
+    if (this.rt && w === this.lastSize.w && h === this.lastSize.h) return
 
-    const capped = Math.min(window.devicePixelRatio || 1, 1.5)
-    this.renderer.setPixelRatio(capped)
-    this.renderer.setSize(w, h, false)
-    this.composer.setSize(w, h)
+    // Offscreen renderer: operate purely in framebuffer pixels.
+    // IMPORTANT: This renderer is shared with the presenter; don't mutate its canvas size here.
+    // We only need the camera aspect to match our RT, and we render to RT via setRenderTarget.
     this.camera.aspect = w / h
     this.camera.updateProjectionMatrix()
     this.lastSize = { w, h }
+
+    this.rt?.dispose()
+    this.rt = new THREE.WebGLRenderTarget(w, h, {
+      depthBuffer: true,
+      stencilBuffer: false,
+      samples: 0,
+      type: THREE.UnsignedByteType,
+    })
+    this.rt.texture.colorSpace = THREE.SRGBColorSpace
   }
 
   private syncScene(state: GameState) {
@@ -279,7 +306,7 @@ export class WorldRenderer {
           d.position.set(wx, 0.55, wz)
           d.castShadow = true
           d.receiveShadow = true
-          ;(d as any).userData = { kind: 'door', id: `${x},${y}` }
+          d.userData = { kind: 'door', id: `${x},${y}` }
           g.add(d)
           this.pickables.push(d)
         } else {
@@ -301,7 +328,7 @@ export class WorldRenderer {
       m.position.set(x, 0.65, z)
       m.castShadow = true
       m.receiveShadow = true
-      ;(m as any).userData = { kind: 'poi', id: p.id }
+      m.userData = { kind: 'poi', id: p.id }
       g.add(m)
       this.pickables.push(m)
     })
@@ -316,7 +343,7 @@ export class WorldRenderer {
       m.position.set(x, 0.25, z)
       m.castShadow = true
       m.receiveShadow = true
-      ;(m as any).userData = { kind: 'npc', id: n.id }
+      m.userData = { kind: 'npc', id: n.id }
       g.add(m)
       this.pickables.push(m)
     })
@@ -331,7 +358,7 @@ export class WorldRenderer {
       m.position.set(x, 0.02, z)
       m.castShadow = true
       m.receiveShadow = true
-      ;(m as any).userData = { kind: 'floorItem', id: it.id }
+      m.userData = { kind: 'floorItem', id: it.id }
       g.add(m)
       this.pickables.push(m)
     })
@@ -380,7 +407,7 @@ export class WorldRenderer {
     while (this.torchLights.length > desired) {
       const l = this.torchLights.pop()!
       this.scene.remove(l)
-      ;(l as any).dispose?.()
+      ;(l as unknown as { dispose?: () => void }).dispose?.()
     }
     for (let i = 0; i < desired; i++) {
       const p = state.floor.pois[i]
@@ -391,14 +418,6 @@ export class WorldRenderer {
       this.torchLights[i].distance = state.render.torchDistance
       this.torchLights[i].intensity = state.render.torchIntensity * flicker
     }
-
-    const u = this.ditherPass.uniforms as any
-    u.strength.value = state.render.ditherStrength
-    u.colourPreserve.value = state.render.ditherColourPreserve
-    u.pixelSize.value = state.render.ditherPixelSize
-    u.levels.value = state.render.ditherLevels
-    u.matrixSize.value = state.render.ditherMatrixSize
-    u.palette.value = state.render.ditherPalette
   }
 }
 

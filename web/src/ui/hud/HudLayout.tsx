@@ -1,4 +1,4 @@
-import type { Dispatch } from 'react'
+import type { Dispatch, RefObject } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { GameState } from '../../game/types'
 import type { Action } from '../../game/reducer'
@@ -12,19 +12,36 @@ import { StatuePanel } from '../statue/StatuePanel'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { NpcDialogModal } from '../npc/NpcDialogModal'
 import { useCursor } from '../cursor/useCursor'
+import type { WorldRenderer } from '../../world/WorldRenderer'
 
-export function HudLayout(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
-  const { state, dispatch, content } = props
+export function HudLayout(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  content: ContentDB
+  interactive?: boolean
+  captureForPostprocess?: boolean
+  world?: WorldRenderer | null
+  gameViewportRef?: RefObject<HTMLDivElement | null>
+  rootRef?: RefObject<HTMLDivElement | null>
+  webglError?: string | null
+}) {
+  const { state, dispatch, content, interactive = true, captureForPostprocess = false, world = null, gameViewportRef, rootRef, webglError } = props
   const cursor = useCursor()
 
   return (
     <div
       className={styles.root}
-      onPointerMove={cursor.onPointerMove}
-      onPointerUp={(e) => {
-        const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
-      }}
+      data-capture={captureForPostprocess ? 'true' : 'false'}
+      ref={rootRef}
+      onPointerMove={interactive ? cursor.onPointerMove : undefined}
+      onPointerUp={
+        interactive
+          ? (e) => {
+              const result = cursor.endPointerUp(e)
+              if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
+            }
+          : undefined
+      }
     >
       <section className={`${styles.panel} ${styles.char2}`}>
         <h3 className={styles.title}>CHAR2</h3>
@@ -37,7 +54,9 @@ export function HudLayout(props: { state: GameState; dispatch: Dispatch<Action>;
       </section>
 
       <section className={`${styles.panel} ${styles.game}`}>
-        <GameViewport state={state} dispatch={dispatch} />
+        {captureForPostprocess ? null : (
+          <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
+        )}
         {state.ui.toast ? <div className={styles.toast}>{state.ui.toast.text}</div> : null}
       </section>
 
@@ -76,8 +95,8 @@ export function HudLayout(props: { state: GameState; dispatch: Dispatch<Action>;
         <InventoryPanel state={state} dispatch={dispatch} content={content} />
       </section>
 
-      <PaperdollModal state={state} dispatch={dispatch} content={content} />
-      <NpcDialogModal state={state} dispatch={dispatch} content={content} />
+      {interactive ? <PaperdollModal state={state} dispatch={dispatch} content={content} /> : null}
+      {interactive ? <NpcDialogModal state={state} dispatch={dispatch} content={content} /> : null}
     </div>
   )
 }
