@@ -7,6 +7,7 @@ import { feedCharacter, inspectCharacter } from './state/interactions'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
+import type { FloorType } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
@@ -54,6 +55,8 @@ export type Action =
   | { type: 'drag/drop'; payload: DragPayload; target: DragTarget; nowMs?: number }
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
+  /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
+  | { type: 'floor/debugCycleRealizer' }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'floor/toggleChest'; poiId: string }
@@ -185,11 +188,31 @@ export function reduce(state: GameState, action: Action): GameState {
       const nextPois = state.floor.pois.map((p) => (p.id === action.poiId ? { ...p, opened: !p.opened } : p))
       return { ...state, floor: { ...state.floor, pois: nextPois } }
     }
+    case 'floor/debugCycleRealizer': {
+      const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
+      const i = Math.max(0, order.indexOf(state.floor.floorType))
+      const next = order[(i + 1) % order.length]
+      return {
+        ...state,
+        floor: { ...state.floor, floorType: next },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor type: ${next}.`, untilMs: state.nowMs + 1400 },
+        },
+      }
+    }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
       const w = state.floor.w
       const h = state.floor.h
-      const gen = generateDungeon({ seed: nextSeed, w, h, floorType: 'Dungeon', floorProperties: [] })
+      const gen = generateDungeon({
+        seed: nextSeed,
+        w,
+        h,
+        floorIndex: state.floor.floorIndex,
+        floorType: state.floor.floorType,
+        floorProperties: state.floor.floorProperties,
+      })
       const playerPos = { ...gen.entrance }
       const playerDir = 0 as const
       const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
@@ -422,6 +445,13 @@ function pickNpcLootDefId(state: GameState, npcId: string): null | string {
   return table[(seed >>> 8) % table.length]
 }
 
+function clampShadowMapSize(n: number): RenderTuning['shadowMapSize'] {
+  const s = Math.round(Number(n))
+  if (s <= 192) return 128
+  if (s <= 384) return 256
+  return 512
+}
+
 function clampRenderTuning(r: RenderTuning): RenderTuning {
   const m = Math.round(r.ditherMatrixSize)
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
@@ -456,6 +486,11 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const portraitMouthFlickerHz = Math.max(0, Math.min(40, Number(r.portraitMouthFlickerHz ?? 18)))
   const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(r.portraitMouthFlickerAmount ?? 8))))
   const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(r.dropRangeCells ?? 5))))
+  const shadowLanternPoint = Number(r.shadowLanternPoint ?? 0) > 0 ? 1 : 0
+  const shadowLanternBeam = Number(r.shadowLanternBeam ?? 1) > 0 ? 1 : 0
+  const shadowMapSize = clampShadowMapSize(Number(r.shadowMapSize ?? 256))
+  const shadowFilter = Math.max(0, Math.min(2, Math.round(Number(r.shadowFilter ?? 2)))) as RenderTuning['shadowFilter']
+  const torchPoiLightMax = Math.max(0, Math.min(6, Math.round(Number(r.torchPoiLightMax ?? 3))))
 
   const clampNpcSize = (v: number) => Math.max(0.1, Math.min(2.5, Number(v)))
   const clampNpcRand = (v: number) => Math.max(0, Math.min(1, Number(v)))
@@ -507,6 +542,11 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     portraitMouthFlickerHz,
     portraitMouthFlickerAmount,
     dropRangeCells,
+    shadowLanternPoint,
+    shadowLanternBeam,
+    shadowMapSize,
+    shadowFilter,
+    torchPoiLightMax,
 
     npcFootLift,
     npcGroundY_Wurglepup,
@@ -645,14 +685,19 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
     return reduce(next, { type: 'ui/toast', text: 'The door creaks open.', ms: 900 })
   }
 
-  const hasKey = Object.values(state.party.items).some((it) => it.defId === 'IronKey' && it.qty > 0)
-  if (!hasKey) {
-    const withToast = reduce(state, { type: 'ui/toast', text: 'Locked. Need an iron key.', ms: 1100 })
+  const w = state.floor.w
+  const doorX = idx % w
+  const doorY = (idx / w) | 0
+  const doorSpec = state.floor.gen?.doors.find((d) => d.locked && d.pos.x === doorX && d.pos.y === doorY)
+  const needDefId = doorSpec?.keyDefId ?? 'IronKey'
+  const keyItem = Object.values(state.party.items).find((it) => it.defId === needDefId && it.qty > 0)
+  if (!keyItem) {
+    const label = needDefId === 'BrassKey' ? 'a brass key' : 'an iron key'
+    const withToast = reduce(state, { type: 'ui/toast', text: `Locked. Need ${label}.`, ms: 1100 })
     return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
   }
 
-  // Consume one key stack (prefer first found).
-  const keyId = Object.values(state.party.items).find((it) => it.defId === 'IronKey' && it.qty > 0)?.id
+  const keyId = keyItem.id
   const consumed = keyId ? consumeItem(state, keyId) : state
   const tiles = consumed.floor.tiles.slice()
   tiles[idx] = 'floor'

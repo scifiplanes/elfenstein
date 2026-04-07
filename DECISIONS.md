@@ -1403,3 +1403,74 @@ A fixed **`y = 0.72`** was left over from the old compact glyph POI marker; with
 
 ### Consequences
 F2 exposes **`poiGroundY_Well`** next to NPC ground pivots. **`debug-settings.json`** may persist it.
+
+---
+
+## ADR-0092 — Ship new Content NPC/Well art (slime Wurglepup, idles, well VFX)
+Date: 2026-04-07
+
+### Decision
+- Mirror **`Content/`** → **`web/public/content/`** (rsync) so Vite-served assets match the canonical art folder.
+- Point **`NPC_SPRITE_SRC.Wurglepup`** at **`/content/npc_slime.png`**. Add **`NPC_SPRITE_IDLE_SRC`** for **Catoctopus** and **Wurglepup**; **`WorldRenderer`** swaps **`SpriteMaterial.map`** between base and idle on a timer (shared per kind).
+- For **Well** POIs only, draw **`npc_well_glow.png`** and a small billboard that cycles **`npc_well_sparkle_1..3.png`** (not raycast pick targets). Paths live beside **`POI_SPRITE_SRC`** in **`poiDefs.ts`**.
+
+### Rationale
+New PNGs in **`Content/`** were not fully wired: Wurglepup still pointed at a duplicate **`npc_wurglepup.png`**, idle frames and well overlay art were unused, and runtime needed the updated files under **`public/`**.
+
+### Consequences
+**`npc_wurglepup.png`** in **`web/public/content/`** is no longer referenced by code (safe to delete later). Tuning **`npcGroundY_*` / sizes** may need a pass once slime/catoctopus idle framing is final. POIs other than Well remain on **`poi_placeholder.png`** until art exists.
+
+---
+
+## ADR-0093 — Expanded procgen: realizers, districts, multi-lock, mission graph, scoring
+Date: 2026-04-07
+
+### Decision
+- **`GameState.floor`** carries **`floorIndex`**, **`floorType`**, and **`floorProperties`**; **`generateDungeon`** receives them ( **`floorIndex`** mixed into the procgen seed via **`splitSeed`**; **`inputSeed`** in meta stays the user-facing floor seed).
+- **Geometry**: **`Dungeon`** keeps BSP + sibling corridors; add **`Cave`** (worm + widen + bbox room) and **`Ruins`** (macro 5×5 stamps + doorways), then shared repair + carve-only CA.
+- **Districts + tags**: Voronoi **`district`** on **`GenRoom`**; quota-style **`tagRoomsWithQuotas`** plus **`floorProperties`** rolls.
+- **Locks**: ordered **A/B** gates on the shortest path when path length allows, with **`IronKey` / `BrassKey`**, **`forLockId`** on floor items, **`keyDefId` + `orderOnPath`** on **`GenDoor`**; **`validateGen`** checks ordered reachability. Door use in **`tryOpenDoor`** resolves the required **`keyDefId`** from **`floor.gen.doors`**.
+- **Output**: **`floor.gen.genVersion` 2**, extra RNG streams (**`districts`**, **`score`**), optional **`layoutScore`**, embedded **`missionGraph`**. **`generateDungeon`** collects **valid** rerolls and returns the **highest-scoring** layout.
+- **Debug**: F2 **Procgen** section + **Cycle type** action (**Dungeon → Cave → Ruins**) for the next regen; dump JSON unchanged in spirit but richer payload.
+
+### Rationale
+Implements the documented roadmap toward taxonomy-driven floors, formal lock correctness, and debuggable progression graphs without breaking deterministic multiplayer prep.
+
+### Consequences
+- **`BrassKey`** added to **`ContentDB`** for the second lock tier.
+- Procgen split across **`layoutPasses`**, **`locks`**, **`districtsTags`**, **`population`**, **`missionGraph`**, **`scoreLayout`**, **`realizeDungeonBsp` / `realizeCave` / `realizeRuins`**, and a thin **`generateDungeon`** orchestrator.
+- Older **`floor.gen`** snapshots without new fields still parse as partial; gameplay assumes **`gen`** from current builds when opening doors.
+
+---
+
+## ADR-0094 — Well drained POI state + layered VFX rules
+Date: 2026-04-07
+
+### Decision
+- Add optional **`FloorPoi.drained`** (meaningful for **Well**). Default is filled (falsy).
+- When **`applyItemOnPoi`** applies a **`useOnPoi.Well`** **`transformTo`** (e.g. Waterbag empty → full), set **`drained: true`** on that POI.
+- **`WorldRenderer`** includes **`drained`** in the geometry rebuild key. Filled wells keep **`npc_well.png`** + **`npc_well_glow.png`** + cycling **`npc_well_sparkle_*`**; drained wells use **`npc_well_drained.png`** only (no glow/sparkle). **`poiDefs`** exports **`POI_WELL_FILLED_SRC`**, **`POI_WELL_DRAINED_SRC`**, plus existing glow/sparkle paths.
+
+### Rationale
+Separates “magic water” presentation from a dry well, ties the transition to the existing waterbag interaction, and avoids per-frame scene surgery by rebuilding when the flag flips.
+
+### Consequences
+Ship **`npc_well_drained.png`** under **`Content/`** and **`web/public/content/`** (placeholder may match filled art until final dry well sprite exists). Save-at-well behavior is unchanged when drained.
+
+---
+
+## ADR-0095 — 3D lighting perf: gated beam shadows, tunable shadows, fog reuse, nearest torches
+Date: 2026-04-07
+
+### Decision
+- **Beam / spot:** When effective beam intensity is zero (e.g. `lanternBeamIntensityScale` = 0), the **SpotLight** is **`visible = false`**, **`castShadow = false`**, and global shadow mapping can turn off if the point light also has shadows off — avoiding a shadow prepass for an invisible beam.
+- **Point lantern:** **`shadowLanternPoint`** (F2, default **off**) controls whether the lantern **PointLight** casts shadows (cube map; costly). **`shadowLanternBeam`** gates beam shadows when the beam is actually lit.
+- **Shadow quality:** F2 exposes **`shadowMapSize`** (128 / 256 / 512) and **`shadowFilter`** (basic / PCF / PCF soft), applied to lantern shadow lights.
+- **Torches:** POI torch count is **`torchPoiLightMax`** (default **3**), selecting the **nearest** POIs to the player by **Manhattan** distance (replacing “first N in list”).
+- **Fog:** Reuse a single **`FogExp2`** and update density instead of `new` every frame when fog is on.
+
+### Rationale
+In practice the beam is often off; previously the spot could still cast shadows and burn a shadow pass for no visible light. Point-light cube shadows dominate cost when enabled; defaults favor **performance** while preserving **quality** via F2. Nearest torches better match player-local lighting and cap work when many POIs exist.
+
+### Consequences
+Baseline look may lose **dynamic shadows** until the player enables **`shadowLanternPoint`** and/or a visible beam with **`shadowLanternBeam`**. **`DESIGN.md`** §11 and F2 copy reflect the new knobs. [ADR-0008](DECISIONS.md) / [ADR-0010](DECISIONS.md) remain historical; shadows are no longer “always both lantern lights.”

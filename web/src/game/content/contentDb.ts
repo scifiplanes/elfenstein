@@ -52,6 +52,7 @@ export class ContentDB {
         { id: 'Club', name: 'Club', icon: { kind: 'emoji', value: '🏏' }, tags: ['weapon'], equipSlots: ['handLeft', 'handRight'] },
         { id: 'Spear', name: 'Spear', icon: { kind: 'emoji', value: '🗡️' }, tags: ['weapon'], equipSlots: ['handLeft', 'handRight'] },
         { id: 'IronKey', name: 'Iron key', icon: { kind: 'emoji', value: '🗝️' }, tags: ['quest'] },
+        { id: 'BrassKey', name: 'Brass key', icon: { kind: 'emoji', value: '🗝️' }, tags: ['quest'] },
         { id: 'BandageStrip', name: 'Bandage strip', icon: { kind: 'emoji', value: '🩹' }, tags: ['food'] },
         { id: 'AntitoxinVial', name: 'Antitoxin vial', icon: { kind: 'emoji', value: '🧪' }, tags: ['food'] },
         { id: 'HerbPoultice', name: 'Herb poultice', icon: { kind: 'emoji', value: '🌿' }, tags: ['food'] },

@@ -1,9 +1,9 @@
 import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
-import type { GameState, PoiKind } from '../game/types'
+import type { GameState, NpcKind, PoiKind } from '../game/types'
 import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
-import { NPC_SPRITE_SRC } from '../game/npc/npcDefs'
-import { POI_SPRITE_SRC } from '../game/poi/poiDefs'
+import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
+import { POI_SPRITE_SRC, POI_WELL_DRAINED_SRC, POI_WELL_GLOW_SRC, POI_WELL_SPARKLE_FRAMES } from '../game/poi/poiDefs'
 
 const TAU = Math.PI * 2
 
@@ -18,6 +18,22 @@ function canonicalYawForDir(dir: 0 | 1 | 2 | 3) {
   return wrapPi((dir * Math.PI) / 2)
 }
 
+function nearestPoisByManhattan<T extends { pos: { x: number; y: number } }>(
+  pois: readonly T[],
+  px: number,
+  py: number,
+  max: number,
+): T[] {
+  if (max <= 0 || pois.length === 0) return []
+  const scored = pois.map((p) => ({
+    p,
+    d: Math.abs(p.pos.x - px) + Math.abs(p.pos.y - py),
+  }))
+  scored.sort((a, b) => a.d - b.d)
+  const n = Math.min(max, pois.length)
+  return scored.slice(0, n).map((x) => x.p)
+}
+
 export class WorldRenderer {
   private readonly renderer: THREE.WebGLRenderer
   private rt: THREE.WebGLRenderTarget | null = null
@@ -27,6 +43,10 @@ export class WorldRenderer {
   private readonly lanternBeam: THREE.SpotLight
   private readonly lanternBeamTarget: THREE.Object3D
   private readonly torchLights: THREE.PointLight[] = []
+
+  private expFog: THREE.FogExp2 | null = null
+  private lastShadowMapSize = 0
+  private lastShadowFilter: THREE.ShadowMapType | null = null
 
   private lastSize = { w: 0, h: 0 }
   private lastCamFov = NaN
@@ -41,13 +61,21 @@ export class WorldRenderer {
   private ceilMat: THREE.MeshStandardMaterial | null = null
 
   private readonly textureLoader = new THREE.TextureLoader()
-  private readonly npcSpriteMats: Partial<Record<GameState['floor']['npcs'][number]['kind'], THREE.SpriteMaterial>> = {}
-  private readonly npcSpriteAspects: Partial<Record<GameState['floor']['npcs'][number]['kind'], number>> = {}
-  private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: GameState['floor']['npcs'][number]['kind'] }> = []
+  private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
+  private readonly npcSpriteAspects: Partial<Record<NpcKind, number>> = {}
+  private readonly npcSpriteBaseTex: Partial<Record<NpcKind, THREE.Texture>> = {}
+  private readonly npcIdleTextures: Partial<Record<NpcKind, THREE.Texture>> = {}
+  private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: NpcKind }> = []
 
   private readonly poiSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
   private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
   private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
+
+  private wellDrainedMat: THREE.SpriteMaterial | null = null
+  private wellGlowMat: THREE.SpriteMaterial | null = null
+  private wellSparkleMat: THREE.SpriteMaterial | null = null
+  private wellSparkleTextures: THREE.Texture[] = []
+  private wellDecorSprites: Array<{ main: THREE.Sprite; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -84,9 +112,15 @@ export class WorldRenderer {
   }
 
   dispose() {
+    for (const t of Object.values(this.npcSpriteBaseTex)) {
+      t?.dispose()
+    }
+    for (const t of Object.values(this.npcIdleTextures)) {
+      t?.dispose()
+    }
     for (const m of Object.values(this.npcSpriteMats)) {
       if (!m) continue
-      m.map?.dispose()
+      m.map = null
       m.dispose()
     }
     for (const m of Object.values(this.poiSpriteMats)) {
@@ -94,6 +128,23 @@ export class WorldRenderer {
       m.map?.dispose()
       m.dispose()
     }
+    if (this.wellDrainedMat) {
+      this.wellDrainedMat.map?.dispose()
+      this.wellDrainedMat.dispose()
+      this.wellDrainedMat = null
+    }
+    if (this.wellGlowMat) {
+      this.wellGlowMat.map?.dispose()
+      this.wellGlowMat.dispose()
+      this.wellGlowMat = null
+    }
+    if (this.wellSparkleMat) {
+      this.wellSparkleMat.map = null
+      this.wellSparkleMat.dispose()
+      this.wellSparkleMat = null
+    }
+    for (const t of this.wellSparkleTextures) t.dispose()
+    this.wellSparkleTextures = []
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
       if (mesh.geometry) mesh.geometry.dispose?.()
@@ -237,7 +288,7 @@ export class WorldRenderer {
   }
 
   private syncScene(state: GameState) {
-    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}`
+    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')+','+(p.drained?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}`
     if (key !== this.lastGeomKey) {
       this.lastGeomKey = key
       if (this.geoGroup) this.scene.remove(this.geoGroup)
@@ -320,6 +371,7 @@ export class WorldRenderer {
     this.pickables = []
     this.npcSprites = []
     this.poiSprites = []
+    this.wellDecorSprites = []
 
     const wallTex = makeWallTexture(state.floor.seed ^ 0x111)
     const floorTex = makeFloorTexture(state.floor.seed ^ 0x222)
@@ -394,13 +446,27 @@ export class WorldRenderer {
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
-      const s = new THREE.Sprite(this.getPoiSpriteMat(p.kind))
+      const mat =
+        p.kind === 'Well' && p.drained ? this.getWellDrainedMat() : this.getPoiSpriteMat(p.kind)
+      const s = new THREE.Sprite(mat)
       s.position.set(x, 0, z)
       // Scale and floor grounding are applied in `syncTuning()` (same center-pivot math as NPCs).
       s.userData = { kind: 'poi', id: p.id }
       g.add(s)
       this.pickables.push(s)
       this.poiSprites.push({ sprite: s, id: p.id, kind: p.kind })
+
+      if (p.kind === 'Well' && !p.drained) {
+        const glow = new THREE.Sprite(this.getWellGlowMat())
+        glow.position.set(x, 0, z)
+        glow.renderOrder = s.renderOrder - 1
+        const sparkle = new THREE.Sprite(this.getWellSparkleMat())
+        sparkle.position.set(x, 0, z)
+        sparkle.renderOrder = s.renderOrder + 1
+        g.add(glow)
+        g.add(sparkle)
+        this.wellDecorSprites.push({ main: s, glow, sparkle })
+      }
     })
 
     state.floor.npcs.forEach((n) => {
@@ -431,7 +497,10 @@ export class WorldRenderer {
 
   private syncTuning(state: GameState) {
     if (state.render.fogEnabled > 0) {
-      this.scene.fog = new THREE.FogExp2(0x050508, Math.max(0, state.render.fogDensity))
+      if (!this.expFog) this.expFog = new THREE.FogExp2(0x050508, 0)
+      this.expFog.color.setHex(0x050508)
+      this.expFog.density = Math.max(0, state.render.fogDensity)
+      this.scene.fog = this.expFog
     } else {
       this.scene.fog = null
     }
@@ -458,14 +527,46 @@ export class WorldRenderer {
     this.lanternBeam.penumbra = Math.max(0, Math.min(1, state.render.lanternBeamPenumbra))
     this.lanternBeam.color.setHex(0xffd7a0)
 
+    const beamEff = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * flicker)
+    const beamLit = beamEff > 1e-4
+    this.lanternBeam.visible = beamLit
+
+    const mapSize = state.render.shadowMapSize
+    if (mapSize !== this.lastShadowMapSize) {
+      this.lastShadowMapSize = mapSize
+      this.lantern.shadow.mapSize.set(mapSize, mapSize)
+      this.lanternBeam.shadow.mapSize.set(mapSize, mapSize)
+      this.lantern.shadow.needsUpdate = true
+      this.lanternBeam.shadow.needsUpdate = true
+    }
+
+    const filterChoices = [THREE.BasicShadowMap, THREE.PCFShadowMap, THREE.PCFSoftShadowMap] as const
+    const nextFilter = filterChoices[state.render.shadowFilter] ?? THREE.PCFSoftShadowMap
+    if (this.lastShadowFilter !== nextFilter) {
+      this.lastShadowFilter = nextFilter
+      this.renderer.shadowMap.type = nextFilter
+      this.renderer.shadowMap.needsUpdate = true
+    }
+
+    const wantBeamShadow = beamLit && state.render.shadowLanternBeam > 0
+    const wantPointShadow = state.render.shadowLanternPoint > 0
+    this.lanternBeam.castShadow = wantBeamShadow
+    this.lantern.castShadow = wantPointShadow
+    this.renderer.shadowMap.enabled = wantBeamShadow || wantPointShadow
+
     // Apply base emissive lift without forcing a rebuild.
     const base = Math.max(0, state.render.baseEmissive)
     if (this.floorMat) this.floorMat.emissiveIntensity = base * 1.0
     if (this.wallMat) this.wallMat.emissiveIntensity = base * 0.8
     if (this.ceilMat) this.ceilMat.emissiveIntensity = base * 0.6
 
-    // Ensure up to 6 torch lights near POIs.
-    const desired = Math.min(6, state.floor.pois.length)
+    const torchPicked = nearestPoisByManhattan(
+      state.floor.pois,
+      state.floor.playerPos.x,
+      state.floor.playerPos.y,
+      state.render.torchPoiLightMax,
+    )
+    const desired = torchPicked.length
     while (this.torchLights.length < desired) {
       const l = new THREE.PointLight(0xff8a3d, 1.0, state.render.torchDistance, 2.0)
       this.torchLights.push(l)
@@ -477,17 +578,70 @@ export class WorldRenderer {
       ;(l as unknown as { dispose?: () => void }).dispose?.()
     }
     for (let i = 0; i < desired; i++) {
-      const p = state.floor.pois[i]
+      const p = torchPicked[i]!
       const x = p.pos.x - state.floor.w / 2
       const z = p.pos.y - state.floor.h / 2
-      const flicker = 0.85 + 0.15 * Math.sin(t * 7.0 + i * 1.7)
+      const tf = 0.85 + 0.15 * Math.sin(t * 7.0 + i * 1.7)
       this.torchLights[i].position.set(x, 0.9, z)
       this.torchLights[i].distance = state.render.torchDistance
-      this.torchLights[i].intensity = state.render.torchIntensity * flicker
+      this.torchLights[i].intensity = state.render.torchIntensity * tf
     }
 
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
+    this.syncNpcIdleFrames(state)
+    this.syncWellSparkleFrame(state)
+  }
+
+  private getWellDrainedMat(): THREE.SpriteMaterial {
+    if (this.wellDrainedMat) return this.wellDrainedMat
+    const tex = this.textureLoader.load(POI_WELL_DRAINED_SRC, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const iw = img && typeof img.width === 'number' ? img.width : 0
+      const ih = img && typeof img.height === 'number' ? img.height : 0
+      if (iw > 0 && ih > 0) this.poiSpriteAspects.Well = iw / ih
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.wellDrainedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    return this.wellDrainedMat
+  }
+
+  private getWellGlowMat(): THREE.SpriteMaterial {
+    if (this.wellGlowMat) return this.wellGlowMat
+    const tex = this.textureLoader.load(POI_WELL_GLOW_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.wellGlowMat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthWrite: false,
+      opacity: 0.92,
+    })
+    return this.wellGlowMat
+  }
+
+  private getWellSparkleMat(): THREE.SpriteMaterial {
+    if (this.wellSparkleMat) return this.wellSparkleMat
+    this.wellSparkleTextures = POI_WELL_SPARKLE_FRAMES.map((src) => {
+      const tex = this.textureLoader.load(src)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.minFilter = THREE.NearestFilter
+      tex.magFilter = THREE.NearestFilter
+      tex.generateMipmaps = false
+      return tex
+    })
+    const first = this.wellSparkleTextures[0]
+    this.wellSparkleMat = new THREE.SpriteMaterial({
+      map: first,
+      transparent: true,
+      depthWrite: false,
+    })
+    return this.wellSparkleMat
   }
 
   private getPoiSpriteMat(kind: PoiKind): THREE.SpriteMaterial {
@@ -523,6 +677,24 @@ export class WorldRenderer {
       const groundY = this.getPoiGroundYForKind(state, p.kind)
       p.sprite.position.y = floorTopY + lift + baseH * (0.5 - groundY)
     }
+
+    for (const d of this.wellDecorSprites) {
+      d.glow.position.copy(d.main.position)
+      d.sparkle.position.copy(d.main.position)
+      d.sparkle.position.y += 0.02
+      d.glow.scale.copy(d.main.scale).multiplyScalar(1.08)
+      d.sparkle.scale.copy(d.main.scale).multiplyScalar(0.5)
+    }
+  }
+
+  private syncWellSparkleFrame(state: GameState) {
+    if (!this.wellDecorSprites.length || !this.wellSparkleMat || this.wellSparkleTextures.length === 0) return
+    const i = Math.floor(state.nowMs / 280) % this.wellSparkleTextures.length
+    const next = this.wellSparkleTextures[i]!
+    if (this.wellSparkleMat.map !== next) {
+      this.wellSparkleMat.map = next
+      this.wellSparkleMat.needsUpdate = true
+    }
   }
 
   /** Normalized pivot from bottom of texture (same convention as `npcGroundY_*`). */
@@ -532,7 +704,7 @@ export class WorldRenderer {
     return state.render.npcGroundY_Wurglepup
   }
 
-  private getNpcSpriteMat(kind: GameState['floor']['npcs'][number]['kind']): THREE.SpriteMaterial {
+  private getNpcSpriteMat(kind: NpcKind): THREE.SpriteMaterial {
     const cached = this.npcSpriteMats[kind]
     if (cached) return cached
 
@@ -548,9 +720,44 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
 
+    this.npcSpriteBaseTex[kind] = tex
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
     this.npcSpriteMats[kind] = mat
     return mat
+  }
+
+  private ensureNpcIdleTexture(kind: NpcKind, src: string): THREE.Texture | null {
+    const existing = this.npcIdleTextures[kind]
+    if (existing) return existing
+    const tex = this.textureLoader.load(src, () => {
+      tex.needsUpdate = true
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.npcIdleTextures[kind] = tex
+    return tex
+  }
+
+  private syncNpcIdleFrames(state: GameState) {
+    for (const kind of Object.keys(NPC_SPRITE_IDLE_SRC) as NpcKind[]) {
+      const idleSrc = NPC_SPRITE_IDLE_SRC[kind]
+      if (!idleSrc) continue
+      const mat = this.npcSpriteMats[kind]
+      const base = this.npcSpriteBaseTex[kind]
+      if (!mat || !base) continue
+      const idleTex = this.ensureNpcIdleTexture(kind, idleSrc)
+      if (!idleTex) continue
+      const periodMs = 2000
+      const phase = (state.nowMs % periodMs) / periodMs
+      const useIdle = phase >= 0.58
+      const next = useIdle ? idleTex : base
+      if (mat.map !== next) {
+        mat.map = next
+        mat.needsUpdate = true
+      }
+    }
   }
 
   private syncNpcSpriteScales(state: GameState) {
@@ -571,14 +778,14 @@ export class WorldRenderer {
     }
   }
 
-  private getNpcGroundYForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+  private getNpcGroundYForKind(state: GameState, kind: NpcKind) {
     if (kind === 'Wurglepup') return state.render.npcGroundY_Wurglepup
     if (kind === 'Bobr') return state.render.npcGroundY_Bobr
     if (kind === 'Skeleton') return state.render.npcGroundY_Skeleton
     return state.render.npcGroundY_Catoctopus
   }
 
-  private getNpcSizeForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind'], npcId: string) {
+  private getNpcSizeForKind(state: GameState, kind: NpcKind, npcId: string) {
     const base = this.getNpcBaseSizeForKind(state, kind)
     const randPct = this.getNpcSizeRandForKind(state, kind)
     const signed = this.signedUnitFromStr(`npcSize:${state.floor.seed}:${kind}:${npcId}`)
@@ -586,14 +793,14 @@ export class WorldRenderer {
     return Math.max(0.05, base * factor)
   }
 
-  private getNpcBaseSizeForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+  private getNpcBaseSizeForKind(state: GameState, kind: NpcKind) {
     if (kind === 'Wurglepup') return state.render.npcSize_Wurglepup
     if (kind === 'Bobr') return state.render.npcSize_Bobr
     if (kind === 'Skeleton') return state.render.npcSize_Skeleton
     return state.render.npcSize_Catoctopus
   }
 
-  private getNpcSizeRandForKind(state: GameState, kind: GameState['floor']['npcs'][number]['kind']) {
+  private getNpcSizeRandForKind(state: GameState, kind: NpcKind) {
     if (kind === 'Wurglepup') return state.render.npcSizeRand_Wurglepup
     if (kind === 'Bobr') return state.render.npcSizeRand_Bobr
     if (kind === 'Skeleton') return state.render.npcSizeRand_Skeleton
