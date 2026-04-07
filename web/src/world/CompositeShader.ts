@@ -6,6 +6,7 @@ export const CompositeShader = {
     gameRectPx: { value: { x: 0, y: 0, z: 1, w: 1 } }, // left, top, width, height in pixels
     debugSceneMode: { value: 0.0 }, // 1 = show scene fullscreen; 2 = show center sample fullscreen
     debugSceneFlipY: { value: 1.0 }, // 1 = flip scene uv y
+    debugRect: { value: 0.0 }, // 1 = draw gameRectPx outline
   },
   vertexShader: /* glsl */ `
 varying vec2 vUv;
@@ -21,6 +22,7 @@ uniform vec2 resolution;
 uniform vec4 gameRectPx;
 uniform float debugSceneMode;
 uniform float debugSceneFlipY;
+uniform float debugRect;
 varying vec2 vUv;
 
 bool insideRect(vec2 p, vec4 r) {
@@ -32,6 +34,29 @@ void main() {
   // DOM rects (getBoundingClientRect) are top-origin; gl_FragCoord is bottom-origin.
   vec2 px = vec2(gl_FragCoord.x, resolution.y - gl_FragCoord.y);
   vec4 ui = texture2D(tUi, vUv);
+
+  // Optional debug outline for the rect (drawn over everything so it’s always visible).
+  if (debugRect > 0.5) {
+    float t = 3.0; // thickness in pixels
+    float x0 = gameRectPx.x;
+    float y0 = gameRectPx.y;
+    float x1 = gameRectPx.x + gameRectPx.z;
+    float y1 = gameRectPx.y + gameRectPx.w;
+
+    float inX = step(x0, px.x) * step(px.x, x1);
+    float inY = step(y0, px.y) * step(px.y, y1);
+
+    float left = step(x0, px.x) * step(px.x, x0 + t);
+    float right = step(x1 - t, px.x) * step(px.x, x1);
+    float top = step(y0, px.y) * step(px.y, y0 + t);
+    float bottom = step(y1 - t, px.y) * step(px.y, y1);
+
+    float edge = (left + right) * inY + (top + bottom) * inX;
+    if (edge > 0.0) {
+      gl_FragColor = vec4(1.0, 0.25, 0.75, 1.0);
+      return;
+    }
+  }
 
   if (debugSceneMode > 1.5) {
     vec4 c = texture2D(tScene, vec2(0.5, 0.5));

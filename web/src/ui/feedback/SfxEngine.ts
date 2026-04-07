@@ -1,4 +1,4 @@
-type SfxKind = 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump'
+export type SfxKind = 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav'
 type SfxTuning = {
   masterSfx: number
   munchVol: number
@@ -18,7 +18,7 @@ export class SfxEngine {
 
   play(kind: SfxKind, tuning?: Partial<SfxTuning>) {
     try {
-      if (!this.ctx) this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)()
+      if (!this.ctx) this.ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
       const ctx = this.ctx
       if (ctx.state === 'suspended') void ctx.resume()
 

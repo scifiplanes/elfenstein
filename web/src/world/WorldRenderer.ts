@@ -85,7 +85,11 @@ export class WorldRenderer {
 
   /** Ensure the offscreen buffer matches the game viewport in layout CSS px (ignores ancestor `transform: scale`). */
   syncViewportRect(cssLayoutWidth: number, cssLayoutHeight: number) {
-    const capped = Math.min(window.devicePixelRatio || 1, 1.5)
+    // Browser zoom changes `devicePixelRatio`; compensate using `visualViewport.scale` so
+    // the render target stays consistent with compositor pixel math across zoom levels.
+    const vvScale = window.visualViewport?.scale || 1
+    const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
+    const capped = Math.min(effectiveDpr, 1.5)
     const w = Math.max(1, Math.floor(cssLayoutWidth * capped))
     const h = Math.max(1, Math.floor(cssLayoutHeight * capped))
     this.syncSize(w, h)

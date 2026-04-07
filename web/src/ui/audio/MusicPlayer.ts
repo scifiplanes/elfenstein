@@ -1,65 +1,102 @@
-// Crossfade duration at each loop seam (seconds).
-// Long enough to hide the discontinuity; short enough to be inaudible as a fade.
-const CROSSFADE_SEC = 0.06
+const AudioCtx =
+  window.AudioContext ??
+  (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext
+
+// Short crossfade at each loop seam to avoid the click from a hard sample jump.
+const LOOP_XFADE_SEC = 0.06
+
+type Track = {
+  buffer: AudioBuffer
+  /** Per-track gain — ramped for crossfades between tracks. */
+  masterGain: GainNode
+  /** setTimeout handle for the loop scheduler. */
+  loopTimer: number
+  nextStartTime: number
+}
 
 export class MusicPlayer {
   private ctx: AudioContext | null = null
-  private gainNode: GainNode | null = null
-  private source: AudioBufferSourceNode | null = null
-  private buffer: AudioBuffer | null = null
-  private loading = false
-  private url: string | null = null
-  private loopTimer = 0
-  private nextStartTime = 0
+  /** Single output gain node — driven by setVolume(). */
+  private outputGain: GainNode | null = null
+  private buffers = new Map<string, AudioBuffer>()
+  private activeTracks = new Map<string, Track>()
+  private currentUrl: string | null = null
 
   ensure() {
     if (!this.ctx) {
-      this.ctx = new (window.AudioContext || (window as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
-      this.gainNode = this.ctx.createGain()
-      this.gainNode.connect(this.ctx.destination)
+      this.ctx = new AudioCtx()
+      this.outputGain = this.ctx.createGain()
+      this.outputGain.connect(this.ctx.destination)
     }
     if (this.ctx.state === 'suspended') void this.ctx.resume()
     return this.ctx
   }
 
-  async load(url: string) {
-    if (this.url === url || this.loading) return
-    this.url = url
-    this.loading = true
+  async preload(urls: string[]) {
     const ctx = this.ensure()
-    try {
-      const res = await fetch(url)
-      const arrayBuf = await res.arrayBuffer()
-      this.buffer = await ctx.decodeAudioData(arrayBuf)
-    } finally {
-      this.loading = false
+    await Promise.all(
+      urls.map(async (url) => {
+        if (this.buffers.has(url)) return
+        const res = await fetch(url)
+        const arr = await res.arrayBuffer()
+        this.buffers.set(url, await ctx.decodeAudioData(arr))
+      }),
+    )
+  }
+
+  /**
+   * Cross-fade from the currently playing track to `url` over `durationSec` seconds.
+   * Pass `durationSec = 0` for an instant switch. No-ops if `url` is already active.
+   */
+  crossfadeTo(url: string, durationSec = 2) {
+    if (this.currentUrl === url) return
+    const buffer = this.buffers.get(url)
+    if (!buffer) return // not preloaded yet — caller should await preload first
+
+    const ctx = this.ensure()
+    const now = ctx.currentTime
+
+    // Fade out every currently active track.
+    for (const [activeUrl, track] of this.activeTracks) {
+      if (activeUrl === url) continue
+      if (durationSec > 0) {
+        track.masterGain.gain.setValueAtTime(track.masterGain.gain.value, now)
+        track.masterGain.gain.linearRampToValueAtTime(0, now + durationSec)
+      } else {
+        track.masterGain.gain.setValueAtTime(0, now)
+      }
+      const urlToStop = activeUrl
+      window.setTimeout(() => this.stopTrack(urlToStop), durationSec * 1000 + 300)
     }
-    if (this.buffer) this.startLoop()
+
+    // Start the new track with its master gain at 0, then ramp to 1.
+    const masterGain = ctx.createGain()
+    masterGain.gain.setValueAtTime(0, now)
+    if (durationSec > 0) {
+      masterGain.gain.linearRampToValueAtTime(1, now + durationSec)
+    } else {
+      masterGain.gain.setValueAtTime(1, now)
+    }
+    masterGain.connect(this.outputGain!)
+
+    const track: Track = { buffer, masterGain, loopTimer: 0, nextStartTime: now }
+    this.activeTracks.set(url, track)
+    this.currentUrl = url
+    this.scheduleNext(url)
   }
 
-  private startLoop() {
-    if (!this.ctx || !this.gainNode || !this.buffer) return
-    window.clearTimeout(this.loopTimer)
-    try { this.source?.stop() } catch { /* already stopped */ }
-    this.source = null
-    this.nextStartTime = this.ctx.currentTime
-    this.scheduleNext()
-  }
+  // Schedules overlapping buffer sources at the loop seam to avoid clicks.
+  private scheduleNext(url: string) {
+    const track = this.activeTracks.get(url)
+    if (!track || !this.ctx) return
 
-  // Schedules one buffer playback with a fade-in at the start and fade-out at
-  // the end, then queues the next iteration to overlap during the fade-out —
-  // eliminating the click that AudioBufferSourceNode.loop produces at the seam.
-  private scheduleNext() {
-    if (!this.ctx || !this.gainNode || !this.buffer) return
-
-    const cf = CROSSFADE_SEC
-    const dur = this.buffer.duration
-    const startAt = this.nextStartTime
+    const cf = LOOP_XFADE_SEC
+    const dur = track.buffer.duration
+    const startAt = track.nextStartTime
 
     const src = this.ctx.createBufferSource()
-    src.buffer = this.buffer
+    src.buffer = track.buffer
 
-    // Per-source gain carries the crossfade envelope; master gainNode carries user volume.
     const g = this.ctx.createGain()
     g.gain.setValueAtTime(0, startAt)
     g.gain.linearRampToValueAtTime(1, startAt + cf)
@@ -67,27 +104,35 @@ export class MusicPlayer {
     g.gain.linearRampToValueAtTime(0, startAt + dur)
 
     src.connect(g)
-    g.connect(this.gainNode)
+    g.connect(track.masterGain)
     src.start(startAt)
     src.stop(startAt + dur)
 
-    this.source = src
-    // Next source starts cf seconds before this one ends so the fades overlap.
-    this.nextStartTime = startAt + dur - cf
+    track.nextStartTime = startAt + dur - cf
+    const msUntilNext = (track.nextStartTime - this.ctx.currentTime) * 1000
+    track.loopTimer = window.setTimeout(
+      () => this.scheduleNext(url),
+      Math.max(0, msUntilNext - 100),
+    )
+  }
 
-    const msUntilNext = (this.nextStartTime - this.ctx.currentTime) * 1000
-    this.loopTimer = window.setTimeout(() => this.scheduleNext(), Math.max(0, msUntilNext - 100))
+  private stopTrack(url: string) {
+    const track = this.activeTracks.get(url)
+    if (!track) return
+    window.clearTimeout(track.loopTimer)
+    track.masterGain.disconnect()
+    this.activeTracks.delete(url)
+    if (this.currentUrl === url) this.currentUrl = null
   }
 
   setVolume(volume: number) {
-    if (!this.gainNode || !this.ctx) return
+    if (!this.outputGain || !this.ctx) return
     if (this.ctx.state === 'suspended') void this.ctx.resume()
-    this.gainNode.gain.setTargetAtTime(Math.max(0, volume), this.ctx.currentTime, 0.05)
+    this.outputGain.gain.setTargetAtTime(Math.max(0, volume), this.ctx.currentTime, 0.05)
   }
 
   stop() {
-    window.clearTimeout(this.loopTimer)
-    try { this.source?.stop() } catch { /* already stopped */ }
-    this.source = null
+    for (const url of [...this.activeTracks.keys()]) this.stopTrack(url)
+    this.currentUrl = null
   }
 }

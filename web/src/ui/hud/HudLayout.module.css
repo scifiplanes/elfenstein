@@ -1,17 +1,29 @@
 .root {
-  position: fixed;
+  position: absolute;
   inset: 0;
   display: grid;
   isolation: isolate;
+  touch-action: none;
   /* Outer columns flex equally; center viewport track ~1.12× one outer side (matches former ~518px : ~580px split at typical widths). Map/nav cells fill their rail. */
   grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr);
-  grid-template-rows: 1fr 1fr 400px;
+  grid-template-rows: 1fr 1fr 285px;
   grid-template-areas:
     "char2 statueL game statueR char4"
     "char1 statueL game statueR char3"
-    "map inventory inventory inventory navigation";
+    "bottomRow bottomRow bottomRow bottomRow bottomRow";
   gap: 10px;
   padding: 12px;
+}
+
+/* Bottom band only: shift fr from outer rails into the center so inventory is wider between map and nav. */
+.bottomRow {
+  grid-area: bottomRow;
+  display: grid;
+  grid-template-columns: minmax(0, 0.75fr) 120px minmax(0, 1.62fr) 120px minmax(0, 0.75fr);
+  grid-template-areas: "map inventory inventory inventory navigation";
+  gap: 10px;
+  min-width: 0;
+  min-height: 0;
 }
 
 /* Full HUD chrome: `Content/ui/hud/ui_hud_background.png` → `/content/ui/hud/…` for Vite. */
@@ -68,11 +80,36 @@
 .map {
   grid-area: map;
   padding: 10px;
+  /* Full width of the **0.75fr** bottom track = **0.75fr**, same as portraits’ **75%** of a **1fr** rail. */
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+}
+
+.map > *,
+.navigation > * {
+  flex: 0 1 auto;
+  max-width: 100%;
+  max-height: 100%;
+  min-height: 0;
 }
 
 .navigation {
   grid-area: navigation;
   padding: 10px;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: stretch;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
 }
 
 .statueL {
@@ -87,18 +124,34 @@
 .char1 {
   grid-area: char1;
   padding: 10px;
+  width: 75%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: start;
 }
 .char2 {
   grid-area: char2;
   padding: 10px;
+  width: 75%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: start;
 }
 .char3 {
   grid-area: char3;
   padding: 10px;
+  width: 75%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: end;
 }
 .char4 {
   grid-area: char4;
   padding: 10px;
+  width: 75%;
+  max-width: 100%;
+  min-width: 0;
+  justify-self: end;
 }
 
 .title {
