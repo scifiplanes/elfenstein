@@ -91,7 +91,6 @@ export function GameApp() {
   return (
     <CursorProvider>
       <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-      <HudLayout state={state} dispatch={dispatch} content={content} />
       <MusicLayer state={state} src="/sounds/theme.mp3" />
       <SpatialAudioLayer state={state} />
       <FeedbackLayer state={state} dispatch={dispatch} />
