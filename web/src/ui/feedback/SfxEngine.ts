@@ -131,9 +131,19 @@ export class SfxEngine {
         let base: number
         let vol: number
         if (kind === 'step') {
+          // Soft low thud for on-screen button presses — step-like but quieter.
           o.type = 'sine'
-          base = 240
-          vol = 0.035 * masterSfx
+          base = 80
+          vol = 0.045 * masterSfx
+          o.frequency.setValueAtTime(base, now)
+          o.frequency.exponentialRampToValueAtTime(base * 0.65, now + 0.08)
+          g.gain.setValueAtTime(0.0001, now)
+          g.gain.exponentialRampToValueAtTime(vol, now + 0.01)
+          g.gain.exponentialRampToValueAtTime(0.0001, now + 0.12)
+          o.connect(g)
+          g.connect(ctx.destination)
+          o.start(now)
+          o.stop(now + 0.13)
         } else if (kind === 'bump') {
           o.type = 'sawtooth'
           base = 95

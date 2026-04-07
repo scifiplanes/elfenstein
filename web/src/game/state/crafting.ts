@@ -55,8 +55,8 @@ export function maybeFinishCrafting(state: GameState): GameState {
     return { ...state, ui: { ...state.ui, crafting: undefined, toast: { id: `t_${state.nowMs}`, text: 'Craft canceled.', untilMs: state.nowMs + 900 } } }
   }
 
-  // Deterministic-ish roll using time + ids (replace with seeded RNG stream later).
-  const seed = (Math.floor(state.nowMs) ^ hashStr(c.srcItemId) ^ (hashStr(c.dstItemId) * 31)) >>> 0
+  // Deterministic roll derived from floor seed + stable ids (multiplayer-sane direction).
+  const seed = hashStr(`${state.floor.seed}:craft:${c.srcItemId}:${c.dstItemId}:${c.resultDefId}`)
   const roll = (seed % 100) + 1 // 1..100
   const success = roll > 20 // MVP: 80% base success
 
@@ -95,7 +95,7 @@ export function maybeFinishCrafting(state: GameState): GameState {
   next = consumeItem(next, c.srcItemId)
   next = consumeItem(next, c.dstItemId)
 
-  const newId = `i_${c.resultDefId}_${Math.floor(state.nowMs)}` as ItemId
+  const newId = (`i_${c.resultDefId}_${state.floor.seed}_${(seed >>> 0).toString(16)}` as unknown) as ItemId
   const items = { ...next.party.items, [newId]: { id: newId, defId: c.resultDefId, qty: 1 } }
   const inv = next.party.inventory
   const free = inv.slots.findIndex((s) => s == null)

@@ -49,17 +49,35 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const craftProgress =
     crafting ? Math.max(0, Math.min(1, (props.state.nowMs - crafting.startedAtMs) / Math.max(1, crafting.endsAtMs - crafting.startedAtMs))) : 0
 
-  const npcAffordance =
-    dragging?.started && hoverTarget?.kind === 'npc'
+  const contextualAffordance =
+    dragging?.started
       ? (() => {
           const item = props.state.party.items[dragging.payload.itemId]
-          const defId = item?.defId
-          const isWeapon = defId === 'Club' || defId === 'Stick' || defId === 'Stone' || defId === 'Spear'
-          return isWeapon ? { icon: '⚔', label: 'Attack' } : { icon: '🎁', label: 'Give' }
+          if (!item) return null
+          const def = props.content.item(item.defId)
+
+          if (hoverTarget?.kind === 'npc') {
+            const isWeapon = def.tags.includes('weapon')
+            return isWeapon ? { icon: '⚔', label: 'Attack' } : { icon: '🎁', label: 'Give' }
+          }
+
+          if (hoverTarget?.kind === 'poi') {
+            const poi = props.state.floor.pois.find((p) => p.id === hoverTarget.poiId)
+            if (!poi) return { icon: '✦', label: 'Use' }
+            const hook = def.useOnPoi?.[poi.kind]
+            if (hook?.transformTo) return { icon: '✦', label: 'Apply' }
+            return { icon: '✦', label: 'Use' }
+          }
+
+          if (hoverTarget?.kind === 'portrait') {
+            return hoverTarget.target === 'eyes' ? { icon: '👁', label: 'Inspect' } : def.feed ? { icon: '👄', label: 'Feed' } : { icon: '👄', label: 'Offer' }
+          }
+
+          return null
         })()
       : null
 
-  const isHoveringValidTarget = Boolean(dragging?.started && (npcAffordance ?? affordance))
+  const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
   const ghostText = (() => {
     if (!ghost) return ''
     const item = props.state.party.items[ghost.itemId]
@@ -84,7 +102,7 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
           <div className={styles.craftFill} style={{ width: `${Math.round(craftProgress * 100)}%` }} />
         </div>
       ) : null}
-      {dragging?.started && (npcAffordance ?? affordance) && hoverRect ? (
+      {dragging?.started && (contextualAffordance ?? affordance) && hoverRect ? (
         <div
           className={styles.affordance}
           style={{
@@ -92,8 +110,8 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
             top: (hoverRect.top + hoverRect.bottom) / 2,
           }}
         >
-          <span aria-hidden="true">{(npcAffordance ?? affordance)!.icon}</span>
-          <span>{(npcAffordance ?? affordance)!.label}</span>
+          <span aria-hidden="true">{(contextualAffordance ?? affordance)!.icon}</span>
+          <span>{(contextualAffordance ?? affordance)!.label}</span>
         </div>
       ) : null}
     </div>

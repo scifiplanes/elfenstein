@@ -32,7 +32,7 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
     case 'poi':
       return { icon: '✦', label: 'Use' }
     case 'npc':
-      return { icon: '⚔', label: 'Attack' }
+      return { icon: '⚔', label: 'Use' }
     case 'equipmentSlot':
       return { icon: '⛭', label: 'Equip' }
     default:

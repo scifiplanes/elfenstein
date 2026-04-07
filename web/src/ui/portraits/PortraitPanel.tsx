@@ -239,6 +239,9 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
 
   if (!c) return null
 
+  const statuses = c.statuses.map((s) => s.id)
+  const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
+
   return (
     <div
       className={styles.root}
@@ -313,13 +316,14 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
           data-drop-character-id={characterId}
           data-drop-portrait-target="mouth"
         />
-      </div>
 
-      <div className={styles.stats}>
-        <div>HP {Math.round(c.hp)} · STA {Math.round(c.stamina)}</div>
-        <div>HUN {Math.round(c.hunger)} · THR {Math.round(c.thirst)}</div>
-        <div>
-          {c.statuses.length ? `Status: ${c.statuses.map((s) => s.id).join(', ')}` : 'Status: —'}
+        <div className={styles.statsOverlay} aria-hidden="true">
+          <div className={styles.vitalsLine}>
+            HP {Math.round(c.hp)} · STA {Math.round(c.stamina)} · HUN {Math.round(c.hunger)} · THR {Math.round(c.thirst)}
+          </div>
+          <div className={styles.statusLine} title={statusText}>
+            {statusText}
+          </div>
         </div>
       </div>
     </div>

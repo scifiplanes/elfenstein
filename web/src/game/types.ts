@@ -112,6 +112,8 @@ export type RenderTuning = {
   fogDensity: number
   /** First-person eye height in world units (matches camera Y on flat floor). */
   camEyeHeight: number
+  /** Moves the rendered camera forward/back along facing without changing grid position (debug/feel). */
+  camForwardOffset: number
   camFov: number
   /** Debug-only vertical look; gameplay remains grid/yaw-first. */
   camPitchDeg: number
@@ -136,6 +138,12 @@ export type RenderTuning = {
   ditherLevels: number
   ditherMatrixSize: 2 | 4 | 8
   ditherPalette: 0 | 1 | 2 | 3 | 4
+  /** Drop placement distance ahead of the player (in grid cells). */
+  dropAheadCells: number
+  /** In-cell jitter radius for floor items (world units; 1.0 == one full cell). */
+  dropJitterRadius: number
+  /** Max Manhattan distance (cells) allowed when dropping near cursor in the 3D view. */
+  dropRangeCells: number
   /** Min time (ms) between Igor portrait idle flashes; actual gap is uniform up to max. */
   portraitIdleGapMinMs: number
   /** Max time (ms) between idle flashes (inclusive upper bound of uniform range with min). */
@@ -218,7 +226,7 @@ export type GameState = {
     h: number
     tiles: Tile[]
     pois: FloorPoi[]
-    itemsOnFloor: Array<{ id: ItemId; pos: Vec2 }>
+    itemsOnFloor: Array<{ id: ItemId; pos: Vec2; jitter: { x: number; z: number } }>
     npcs: Array<{
       id: Id
       name: string
@@ -242,6 +250,7 @@ export type GameState = {
 export type DragSource =
   | { kind: 'inventorySlot'; slotIndex: number; itemId: ItemId }
   | { kind: 'equipmentSlot'; characterId: CharacterId; slot: EquipmentSlot; itemId: ItemId }
+  | { kind: 'floorItem'; itemId: ItemId }
 
 export type DragPayload = {
   itemId: ItemId
@@ -250,7 +259,7 @@ export type DragPayload = {
 
 export type DragTarget =
   | { kind: 'inventorySlot'; slotIndex: number }
-  | { kind: 'floorDrop' }
+  | { kind: 'floorDrop'; dropPos?: Vec2 }
   | { kind: 'floorItem'; itemId: ItemId }
   | { kind: 'portrait'; characterId: CharacterId; target: PortraitDropTarget }
   | { kind: 'poi'; poiId: Id }

@@ -613,3 +613,70 @@ The prior layout keyed the frame size to the image aspect ratio, which could lea
 ### Consequences
 - Portraits may show small letterboxing if the sprite aspect ratio doesn’t match the frame, but they will occupy more of the available panel slot overall.
 - Interactive target regions (eyes/mouth overlays) remain defined in portrait-relative percentages and continue to align with the portrait frame.
+
+---
+
+## ADR-0043 — Compact portrait stats overlay
+Date: 2026-04-07
+
+### Decision
+Move portrait vitals + status text into a **compact bottom overlay inside the portrait frame** and keep status text **single-line truncated** when long.
+
+### Rationale
+The portrait art is the primary information in the character panel; dedicating a separate panel row to stats reduced portrait size and made the HUD feel cramped.
+
+### Consequences
+- Portraits get more vertical space across all party slots.
+- Status detail is de-emphasized (ellipsis truncation) but remains accessible via tooltip/title on hover.
+
+---
+
+## ADR-0044 — Full-viewport HUD background plate (`ui_hud_background.png`)
+Date: 2026-04-07
+
+### Decision
+Add **`Content/ui/hud/ui_hud_background.png`** (transparent PNG) as the primary HUD chrome: `HudLayout` paints it via a **`::before`** layer (`background-size: contain`, centered) behind the existing grid. **Panel** cards lose blur/border/fill so widgets read on top of the art; section titles gain a light **text-shadow** for contrast. Mirror the file to **`web/public/content/ui/hud/`** for the dev server.
+
+### Rationale
+Art-directed layout replaces ad-hoc “glass” rectangles; one plate establishes the frame while we keep the current grid until widgets are positioned deliberately against the artwork.
+
+### Consequences
+- Transparent areas in the plate reveal the composited scene (and any bleed outside the game viewport rect).
+- `html2canvas` must include the pseudo-element (supported); if capture regressions appear, switch to a real backdrop `<div>`.
+- Slot alignment vs the PNG may need iterative CSS tuning (`grid-template-*`, padding, or future absolute placement).
+
+---
+
+## ADR-0045 — World items are draggable + interaction outcomes are content/seed driven
+Date: 2026-04-07
+
+### Decision
+- Allow **press+hold drag** directly from **world floor items** in the 3D view (not only from inventory).
+- Route key interaction checks (weapon/food/POI transforms) through **`ContentDB`** (tags + `feed` + `useOnPoi`) rather than hardcoded item id lists.
+- Replace time-based “randomness” in interaction outcomes (loot/skill checks/crafting) with **seeded, stable hashes** derived from `floor.seed` + stable ids.
+- Drop placement in the 3D view lands **ahead of the player** by a tunable distance so the item is immediately visible.
+- Add debug-tunable **camera forward/back offset** and **drop length** sliders.
+
+### Rationale
+This makes the 3D view a first-class interaction surface while keeping logic modular and extensible. Stable, seed-based outcomes are also a prerequisite for future host-authoritative multiplayer sync and reproducible debugging.
+
+### Consequences
+- Drag/drop flows must handle items whose source is the floor (detach/move/stow semantics) without duplicating or losing items.
+- Content expansion happens primarily by editing `ContentDB` definitions instead of adding new conditionals in reducers.
+- Interaction outcomes become reproducible per seed and object ids; “true randomness” should be introduced later via explicit RNG streams/events if needed.
+- Drops are biased to appear in front of the camera; blocked/out-of-bounds cases fall back to the player cell.
+
+---
+
+## ADR-0046 — Remove RT/UI debug overlays; keep F2 debug panel
+Date: 2026-04-07
+
+### Decision
+Remove the always-on on-screen **RT debug** and **UI debug** overlay readouts from the main frame (`DitheredFrameRoot`). Keep the existing **F2** debug panel for tuning.
+
+### Rationale
+The overlay text is visually noisy in normal play and doesn’t match the “low-clutter HUD” goal. The F2 panel remains the right place for tuning/debug controls.
+
+### Consequences
+- Runtime rendering diagnostics are no longer visible by default during gameplay.
+- If deeper renderer inspection is needed, it should be exposed explicitly (e.g., via query params or dev-only tooling), not as an always-present overlay.

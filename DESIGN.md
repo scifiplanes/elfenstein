@@ -14,7 +14,7 @@ Last updated: 2026-04-07
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -27,6 +27,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 
 ## 6) Controls & interaction model
 ### 6.1 Cursor (hand) states
+- **OS cursor**: hidden globally (`cursor: none` on `document.body`); interactive HUD widgets also set **`cursor: none`** so controls (e.g. navigation buttons) never revert to the system pointer—only the **`CursorLayer`** hand sprite is visible.
 - **Default**: `Hand_Point`
 - **Holding/dragging**: `Hand_Hold` (held item sprite follows pointer)
 - **Hover active**: `Hand_Active` when pointing at an interactable
@@ -34,10 +35,10 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 
 ### 6.2 Interaction rules (mouse-first)
 - **Click**: attempt to use/interact with target (object/NPC/POI/UI element).
-- **Press + hold**: pick up/drag items (primarily from inventory; optionally from world if supported).
+- **Press + hold**: pick up/drag items from **inventory** and from **world floor items** in the 3D view.
 - **Drop**:
   - Onto **inventory**: store item
-  - Onto **empty 3D view**: drop item into the dungeon cell
+  - Onto **empty 3D view**: drop item **a short distance ahead of the player** (tunable) so it is immediately visible; if blocked/out of bounds, it falls back to the player’s cell
   - Onto **another item**: attempt crafting / recipe discovery (see §7.3)
   - Onto **NPC**: use item on NPC (may be rejected/consumed/apply status/attack)
   - Onto **portrait eye**: inspect interaction
@@ -86,6 +87,7 @@ The party has **up to 4** character portrait slots.
     - Mouth: `Content/frosh_mouth_open.png`
     - Idle overlay: `Content/frosh_idle.png`
 - **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame).
+- **Portrait stats presentation**: character vitals + status are shown as a **compact bottom overlay inside the portrait frame** (two-line readout). Long status lists are **single-line truncated** to preserve portrait space.
 - **Portrait blinking**: the eyes layer is **occasionally hidden briefly** to simulate blinking.
 - **Portrait inspect hover**: while **dragging** an item and hovering the **eyes** target area, the portrait swaps to an **inspect eyes** sprite (if available). Inspect hover **overrides blink hiding**.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
@@ -248,8 +250,9 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 - **Frame presentation pipeline**:
   - The 3D world is rendered offscreen into a **render target** sized to match the on-screen **game viewport rect** (the HUD “game” panel), not necessarily the full window.
   - The HUD exists as HTML/CSS twice:
-    - an **interactive HUD** (visible, handles pointer input)
+    - an **interactive HUD** (`opacity: 0` over the final canvas but above the WebGL presenter, handles pointer input)
     - a **capture HUD** (offscreen, non-interactive) that is rasterized into a canvas texture
+  - **HUD shell art**: a single transparent **`ui_hud_background.png`** (`Content/ui/hud/`, mirrored to `web/public/content/ui/hud/`) is drawn full-bleed behind the HUD grid in `HudLayout` (CSS `::before`, `background-size: contain`, centered). Existing widgets stay in the current CSS grid; opaque “glass” panel styling is removed so content sits on the artwork (fine-tune slot positions vs the art next).
   - Presenter sizing is derived from the **viewport CSS size** (prefer `visualViewport.width/height`, else `documentElement.clientWidth/clientHeight`) rather than measuring the presenter canvas element, to avoid resize feedback loops caused by renderers writing inline canvas CSS sizes.
   - A presenter compositor shader places the scene render target into the frame **only inside** the game viewport rect and overlays the captured HUD everywhere else (and over the scene where UI alpha exists).
   - The final composite then runs through the ordered-dither post-process so the **same dithering/pixelation** applies to both 3D and HUD.
@@ -271,12 +274,13 @@ Asset types:
 - Portrait
 - Mouth PNG (transparent)
 - Eyes PNG (transparent)
+- HUD shell PNG (transparent): `Content/ui/hud/ui_hud_background.png`
 
 ## 14) “Not now” ideas (parked)
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).
 
 ## 15) Open questions (to resolve)
-- **Inventory pickup rules**: can you pick up world items directly (click) or only via interaction UI?
+- **Inventory pickup rules**: can you pick up world items directly (click) or only via interaction UI? (Currently: click-pickup + press/hold drag from world items are supported.)
 - **Combat UI**: fully diegetic in HUD vs modal encounter panel; how much player agency per turn?
 - **Crafting UI**: where does recipe discovery feedback live (log, tooltip, modal)?
 - **NPC language system**: how messages map to item concepts; how to keep learnable but not trivial?
