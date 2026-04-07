@@ -3,9 +3,9 @@
   inset: 0;
   display: grid;
   isolation: isolate;
-  /* Navigation pad at 50% of native footprint: (3×177 + 2×6) × 0.5 = 271.5px. */
-  grid-template-columns: 220px 120px 1fr 120px calc(543px * 0.5);
-  grid-template-rows: 1fr 1fr 260px;
+  /* Outer columns 518px: portraits + minimap (left) / portraits + nav (right). Center: statue + viewport + statue (inventory spans these three). */
+  grid-template-columns: 518px 120px 1fr 120px 518px;
+  grid-template-rows: 1fr 1fr 400px;
   grid-template-areas:
     "char2 statueL game statueR char4"
     "char1 statueL game statueR char3"
@@ -33,10 +33,11 @@
   position: absolute;
 }
 
+/* DEBUG: widget bounds — remove border when done tuning layout */
 .panel {
   z-index: 1;
   background: transparent;
-  border: none;
+  border: 2px solid rgb(255, 0, 0);
   box-shadow: none;
   backdrop-filter: none;
   border-radius: 0;

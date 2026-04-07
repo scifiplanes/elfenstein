@@ -680,3 +680,34 @@ The overlay text is visually noisy in normal play and doesn’t match the “low
 ### Consequences
 - Runtime rendering diagnostics are no longer visible by default during gameplay.
 - If deeper renderer inspection is needed, it should be exposed explicitly (e.g., via query params or dev-only tooling), not as an always-present overlay.
+
+---
+
+## ADR-0047 — HUD bottom row height 400px (map, inventory, navigation)
+Date: 2026-04-07
+
+### Decision
+Set `HudLayout` **`grid-template-rows`** third track to **400px** so **minimap**, **inventory**, and **navigation** share the same **400px**-tall bottom row (was briefly **560px** during layout iteration).
+
+### Rationale
+User-directed layout: consistent height across the three bottom widgets at a mid size between the original **260px** and the **560px** trial.
+
+### Consequences
+- On short viewports the fixed **400px** row still competes with the two **`1fr`** portrait/game rows; very small windows may clip or compress the upper rows.
+- Art alignment (`ui_hud_background`) may need follow-up to match the bottom band.
+
+---
+
+## ADR-0048 — HUD outer columns 518px (portraits, map, nav); center band unchanged
+Date: 2026-04-07
+
+### Decision
+Set `HudLayout` **`grid-template-columns`** to **`518px 120px 1fr 120px 518px`**: left column (**CHAR2/CHAR1 + minimap**) and right column (**CHAR4/CHAR3 + navigation**) are each **518 px** wide; center remains **statue + viewport + statue** with **inventory** spanning the three center tracks (**120 + 1fr + 120**).
+
+### Rationale
+User request: match map and navigation widget width to portrait column width; **518 px** is the current outer width (iterations from **420** / **470** / **510**).
+
+### Consequences
+- On typical desktop widths the **1fr** viewport/inventory center is narrower than the original **220 + ~271.5** layout (**518 + 518** consumes more horizontal space).
+- Navigation pad art stays the same pixel size; extra column width is **empty margin** unless new chrome is added.
+- `ui_hud_background` alignment likely needs a future pass.
