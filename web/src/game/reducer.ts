@@ -372,6 +372,9 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const camShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(r.camShakeLengthMs ?? 0))))
   const camShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeDecayMs ?? 220))))
   const camShakeUiMix = Math.max(0, Math.min(3, r.camShakeUiMix))
+  const portraitShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(r.portraitShakeLengthMs ?? camShakeLengthMs))))
+  const portraitShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.portraitShakeDecayMs ?? camShakeDecayMs))))
+  const portraitShakeMagnitudeScale = Math.max(0, Math.min(6, Number(r.portraitShakeMagnitudeScale ?? 1)))
   let portraitIdleGapMinMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMinMs ?? 8000))))
   let portraitIdleGapMaxMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMaxMs ?? 18_000))))
   if (portraitIdleGapMaxMs < portraitIdleGapMinMs) portraitIdleGapMaxMs = portraitIdleGapMinMs
@@ -397,6 +400,9 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     camShakeLengthMs,
     camShakeDecayMs,
     camShakeUiMix,
+    portraitShakeLengthMs,
+    portraitShakeDecayMs,
+    portraitShakeMagnitudeScale,
     portraitIdleGapMinMs,
     portraitIdleGapMaxMs,
     portraitIdleFlashMinMs,

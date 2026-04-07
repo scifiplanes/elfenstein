@@ -466,7 +466,7 @@ The game had only procedural SFX and synthesized spatial audio — no background
 - `AudioTuning` gains `masterMusic: number` (default `0.4`); old persisted `debug-settings.json` without the key falls back to the default via the existing spread-merge in `debug/loadTuning`.
 - Additional music tracks can be swapped by changing the `src` prop on `MusicLayer` or mounting multiple instances.
 - Browser autoplay policy applies; audio starts after first user interaction (same pattern as `SpatialAudio.ensure()`).
-## ADR-0031 — Present the frame via compositor + HUD capture
+## ADR-0032 — Present the frame via compositor + HUD capture
 Date: 2026-04-07
 
 ### Decision
@@ -481,3 +481,22 @@ The renderer needs the dither/pixelation to apply uniformly to UI + 3D, while ke
 ### Consequences
 - The HUD is rendered twice (interactive + capture) and the capture path must be resilient to resize bursts.
 - Picking/projection in the 3D world uses the **game viewport rect** as its coordinate space (not the full window).
+
+---
+
+## ADR-0033 — Separate portrait shake tuning (envelope + amplitude)
+Date: 2026-04-07
+
+### Decision
+Add portrait-scoped shake tuning fields to `RenderTuning` and expose them in F2 Debug:
+- `portraitShakeLengthMs` / `portraitShakeDecayMs` (envelope)
+- `portraitShakeMagnitudeScale` (amplitude multiplier applied to `ui.portraitShake.magnitude`)
+
+Wire `PortraitPanel` to use the portrait-specific envelope and amplitude so portrait interactions can be tuned independently from 3D camera shake.
+
+### Rationale
+Portrait inspect/feed shakes are short and HUD-local; they need independent tuning from the world camera shake to avoid coupling “3D feel” to “HUD readability”.
+
+### Consequences
+- `clampRenderTuning` must clamp these new portrait tuning values and provide sensible fallbacks for older `debug-settings.json`.
+- `web/public/debug-settings.json` now persists portrait shake tuning keys alongside other render tuning.

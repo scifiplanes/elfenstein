@@ -14,7 +14,7 @@ Last updated: 2026-04-07
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -49,6 +49,7 @@ Interactions should resolve with:
 - short relevant animation (e.g. eyes/mouth)
 - sound
 - subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera**, **HUD overlay shake**, and **portrait frame shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
+- subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera** and **HUD overlay shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
 - **Portrait frame shake** on portrait interaction resolution (inspect and feed), driven by `ui.portraitShake` on the matching character slot
 
 ### 6.4 Grid movement (first-person)
@@ -74,6 +75,9 @@ The party has **up to 4** character portrait slots.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
 - **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, and a brief **munch** SFX on successful feeding. **No** `ui.shake` (3D view or empty HUD overlay) for portrait inspect/feed—only `ui.portraitShake` on the relevant slot.
 - **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed), likewise without 3D shake.
+- **Portrait shake tuning**: portrait frame shake has its own envelope and amplitude tuning via `RenderTuning`:
+  - `portraitShakeLengthMs` / `portraitShakeDecayMs` (envelope)
+  - `portraitShakeMagnitudeScale` (amplitude multiplier applied to `ui.portraitShake.magnitude`)
 - Portrait interactive middle third is split into:
   - **Eyes area (top)** → inspect drop target
   - **Mouth area (bottom)** → feed drop target
