@@ -77,6 +77,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       tiles,
       playerPos: { x: 6, y: 10 },
       playerDir: 0,
+      gen: undefined,
       pois: [
         { id: 'poi_well', kind: 'Well', pos: { x: 6, y: 2 } },
         { id: 'poi_chest', kind: 'Chest', pos: { x: 10, y: 6 }, opened: false },

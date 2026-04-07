@@ -29,7 +29,7 @@ export type Action =
   | { type: 'player/strafe'; side: -1 | 1 }
   | { type: 'poi/use'; poiId: string }
   | { type: 'floor/pickup'; itemId: ItemId }
-  | { type: 'drag/drop'; payload: DragPayload; target: DragTarget }
+  | { type: 'drag/drop'; payload: DragPayload; target: DragTarget; nowMs?: number }
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
@@ -134,9 +134,10 @@ export function reduce(state: GameState, action: Action): GameState {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
       const w = state.floor.w
       const h = state.floor.h
-      const gen = generateDungeon({ seed: nextSeed, w, h })
+      const gen = generateDungeon({ seed: nextSeed, w, h, floorType: 'Dungeon', floorProperties: [] })
       const playerPos = { x: Math.floor(w / 2), y: h - 2 }
       const playerDir = 0 as const
+      const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state, gen.floorItems, nextSeed)
       return {
         ...state,
         floor: {
@@ -144,11 +145,13 @@ export function reduce(state: GameState, action: Action): GameState {
           seed: nextSeed,
           tiles: gen.tiles,
           pois: gen.pois,
-          itemsOnFloor: [],
+          gen,
+          itemsOnFloor: spawnedOnFloor,
           npcs: state.floor.npcs,
           playerPos,
           playerDir,
         },
+        party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
         view: viewSnapToGrid(state, playerPos, playerDir),
         ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `Regenerated (seed ${nextSeed}).`, untilMs: state.nowMs + 1200 } },
       }
@@ -200,6 +203,7 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'floor/pickup':
       return pickupFloorItem(state, action.itemId)
     case 'drag/drop': {
+      const stateAtAction = action.nowMs != null ? { ...state, nowMs: action.nowMs } : state
       const { payload, target } = action
       const itemId: ItemId = payload.itemId
 
@@ -207,53 +211,53 @@ export function reduce(state: GameState, action: Action): GameState {
         const dst = target.slotIndex
         if (payload.source.kind === 'inventorySlot') {
           const src = payload.source.slotIndex
-          const srcItemId = state.party.inventory.slots[src]
-          const dstItemId = state.party.inventory.slots[dst]
-          const srcItem = srcItemId ? state.party.items[srcItemId] : null
-          const dstItem = dstItemId ? state.party.items[dstItemId] : null
+          const srcItemId = stateAtAction.party.inventory.slots[src]
+          const dstItemId = stateAtAction.party.inventory.slots[dst]
+          const srcItem = srcItemId ? stateAtAction.party.items[srcItemId] : null
+          const dstItem = dstItemId ? stateAtAction.party.items[dstItemId] : null
           if (srcItem && dstItem) {
             const recipe = findRecipe(srcItem.defId, dstItem.defId)
             if (recipe) {
-              const withStart = startCrafting(state, srcItem.id, dstItem.id, recipe)
+              const withStart = startCrafting(stateAtAction, srcItem.id, dstItem.id, recipe)
               return reduce(reduce(withStart, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.2, ms: 90 })
             }
           }
-          return swapInventorySlots(state, src, dst)
+          return swapInventorySlots(stateAtAction, src, dst)
         }
-        return moveItemToInventorySlot(state, itemId, dst)
+        return moveItemToInventorySlot(stateAtAction, itemId, dst)
       }
 
       if (target.kind === 'floorDrop') {
-        return dropItemToFloor(state, itemId, target.dropPos)
+        return dropItemToFloor(stateAtAction, itemId, target.dropPos)
       }
 
       if (target.kind === 'floorItem') {
         // When dragging onto a floor item, interpret as pickup.
-        return pickupFloorItem(state, target.itemId)
+        return pickupFloorItem(stateAtAction, target.itemId)
       }
 
       if (target.kind === 'portrait') {
-        if (target.target === 'eyes') return inspectCharacter(state, CONTENT, target.characterId, itemId)
-        return feedCharacter(state, CONTENT, target.characterId, itemId)
+        if (target.target === 'eyes') return inspectCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+        return feedCharacter(stateAtAction, CONTENT, target.characterId, itemId)
       }
 
       if (target.kind === 'poi') {
-        return applyItemOnPoi(state, CONTENT, itemId, target.poiId)
+        return applyItemOnPoi(stateAtAction, CONTENT, itemId, target.poiId)
       }
 
       if (target.kind === 'equipmentSlot') {
-        return equipItem(state, target.characterId, target.slot, itemId)
+        return equipItem(stateAtAction, target.characterId, target.slot, itemId)
       }
 
       if (target.kind === 'npc') {
-        const item = state.party.items[itemId]
+        const item = stateAtAction.party.items[itemId]
         const isWeapon = item?.defId === 'Club' || item?.defId === 'Stick' || item?.defId === 'Stone' || item?.defId === 'Spear'
         return isWeapon
-          ? reduce(state, { type: 'npc/attack', npcId: target.npcId, itemId })
-          : reduce(state, { type: 'npc/give', npcId: target.npcId, itemId })
+          ? reduce(stateAtAction, { type: 'npc/attack', npcId: target.npcId, itemId })
+          : reduce(stateAtAction, { type: 'npc/give', npcId: target.npcId, itemId })
       }
 
-      return state
+      return stateAtAction
     }
     case 'npc/attack': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
@@ -489,6 +493,25 @@ function hashStr(s: string) {
     h = Math.imul(h, 16777619)
   }
   return h >>> 0
+}
+
+function hydrateGenFloorItems(state: GameState, floorItems: Array<{ defId: string; pos: { x: number; y: number }; qty?: number }>, floorSeed: number) {
+  if (!floorItems.length) return { spawnedItems: {} as GameState['party']['items'], spawnedOnFloor: [] as GameState['floor']['itemsOnFloor'] }
+  const spawnedItems: GameState['party']['items'] = {}
+  const spawnedOnFloor: GameState['floor']['itemsOnFloor'] = []
+  for (let i = 0; i < floorItems.length; i++) {
+    const it = floorItems[i]
+    const id = `g_${floorSeed}_${it.defId}_${it.pos.x}_${it.pos.y}_${i}`
+    spawnedItems[id] = { id, defId: it.defId, qty: it.qty ?? 1 }
+    const jitter = makeDropJitter({
+      floorSeed,
+      itemId: id,
+      nonce: 0,
+      radius: state.render.dropJitterRadius ?? 0.28,
+    })
+    spawnedOnFloor.push({ id, pos: { x: it.pos.x, y: it.pos.y }, jitter })
+  }
+  return { spawnedItems, spawnedOnFloor }
 }
 
 function viewSnapToGrid(state: GameState, playerPos: { x: number; y: number }, playerDir: 0 | 1 | 2 | 3): GameState['view'] {

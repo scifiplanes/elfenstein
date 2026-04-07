@@ -220,6 +220,19 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const blinkHideEyes = blinkClosed && !showEyesInspect
   const blinkHideEyesL = blinkClosedL && !showEyesInspect
   const blinkHideEyesR = blinkClosedR && !showEyesInspect
+  const __debug =
+    import.meta.env.DEV && state.ui.debugOpen
+      ? {
+          nowMs: Math.round(state.nowMs),
+          globalCueChar: state.ui.portraitMouth?.characterId ?? null,
+          startedAtMs: state.ui.portraitMouth?.startedAtMs != null ? Math.round(state.ui.portraitMouth.startedAtMs) : null,
+          untilMs: state.ui.portraitMouth?.untilMs != null ? Math.round(state.ui.portraitMouth.untilMs) : null,
+          isMouthCueActive,
+          cueFlickerOn,
+          showMouth,
+          hoveringMouth: isHoveringMouth,
+        }
+      : null
 
   const ps = state.ui.portraitShake
   const portraitShakeStyle =
@@ -249,7 +262,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
+        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
       }}
     >
       <button
@@ -263,6 +276,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
       <div
         className={styles.portrait}
         data-portrait-box="true"
+        data-portrait-character-id={characterId}
         style={
           {
             ...(portraitShakeStyle ?? {}),
@@ -283,13 +297,15 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             ) : (
               <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
             )}
-            <img
-              key={mouthAnimKey}
-              className={`${styles.sprite} ${showMouth ? '' : styles.mouthHidden} ${isMouthCueActive ? styles.mouthChomp : ''}`}
-              src={portrait.mouthSrc}
-              alt=""
-              draggable={false}
-            />
+            {showMouth ? (
+              <img
+                key={mouthAnimKey}
+                className={`${styles.sprite} ${isMouthCueActive ? styles.mouthChomp : ''}`}
+                src={portrait.mouthSrc}
+                alt=""
+                draggable={false}
+              />
+            ) : null}
             {portrait.idleSrc ? (
               <img
                 className={`${styles.sprite} ${idleFlash ? '' : styles.idleHidden}`}
@@ -304,6 +320,55 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             {SPECIES_FALLBACK_FACE[c.species] ?? '🙂'}
           </div>
         )}
+
+        {__debug ? (
+          <div
+            style={{
+              position: 'absolute',
+              left: 6,
+              top: 6,
+              zIndex: 20,
+              padding: '6px 7px',
+              borderRadius: 8,
+              fontFamily: 'var(--mono)',
+              fontSize: 10,
+              lineHeight: 1.25,
+              background: 'rgba(0,0,0,0.65)',
+              border: '1px solid rgba(255,255,255,0.14)',
+              color: 'rgba(255,255,255,0.85)',
+              pointerEvents: 'none',
+              whiteSpace: 'pre',
+            }}
+          >
+            {`nowMs=${__debug.nowMs}
+ui.portraitMouth.characterId=${__debug.globalCueChar}
+startedAtMs=${__debug.startedAtMs}
+untilMs=${__debug.untilMs}
+isMouthCueActive=${String(__debug.isMouthCueActive)}
+cueFlickerOn=${String(__debug.cueFlickerOn)}
+showMouth=${String(__debug.showMouth)}
+hoveringMouth=${String(__debug.hoveringMouth)}`}
+          </div>
+        ) : null}
+
+        {__debug ? (
+          <div
+            style={{
+              position: 'absolute',
+              right: 6,
+              top: 6,
+              zIndex: 21,
+              width: 16,
+              height: 16,
+              borderRadius: 4,
+              border: '2px solid rgba(255,255,255,0.7)',
+              background: __debug.showMouth ? 'rgba(80,220,120,0.95)' : 'rgba(220,80,80,0.9)',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.5)',
+              pointerEvents: 'none',
+            }}
+            title="Debug: showMouth"
+          />
+        ) : null}
 
         <div
           className={styles.eyes}

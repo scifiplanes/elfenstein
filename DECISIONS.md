@@ -1012,3 +1012,103 @@ The visible HUD is composited from an offscreen capture DOM via `html2canvas`. A
 ### Consequences
 - Party portraits respect the original PNG aspect ratio in the captured HUD texture (and therefore in the final WebGL-presented frame) across browsers.
 - Portrait layering remains unchanged (same assets, z-order, blink/idle logic); only the sizing primitive differs.
+
+---
+
+## ADR-0070 — Upgrade dungeon corridor stitching + connectivity repair
+Date: 2026-04-07
+
+### Decision
+Update the `Dungeon` floor generator (`web/src/procgen/generateDungeon.ts`) to:
+- stitch corridors between **sibling BSP subtrees** (instead of chaining rooms in array order)
+- run a deterministic **connectivity repair** pass if any walkable components remain disconnected
+- select the **exit** as the **farthest reachable** floor cell from the entrance by BFS distance
+- store the canonical generator output bundle on `state.floor.gen` (phase-stable, seed-derived meta)
+
+### Rationale
+The prior corridor “chain” produced long snaking layouts and could leave disconnected components, forcing downstream systems to defend against broken floors. Farthest-exit selection creates more consistent pacing and makes regeneration results easier to reason about and debug.
+
+### Consequences
+- Floor regeneration produces more coherent, reliably connected layouts.
+- Later phases (locks/keys, room tagging, population) can build on a stable, validated layout without adding ad-hoc fixups.
+
+---
+
+## ADR-0071 — Add minimal lock/key pass to procgen output
+Date: 2026-04-07
+
+### Decision
+Extend dungeon generation to include a minimal lock/key slice:
+- place one `lockedDoor` on the entrance→exit shortest path (lock id `A`)
+- spawn an `IronKey` on the reachable side as a deterministic floor item
+- thread spawned floor items through `floor/regen` so the world hydrates them from `floor.gen`
+
+### Rationale
+Keys/doors are a core pacing tool in the design. Implementing the smallest solvable lock early establishes the data flow (gen → state → world rendering) and provides a foundation for future mission graphs and multi-lock correctness validation.
+
+### Consequences
+- Regenerated floors include at least one locked gate and a corresponding key placement.
+- Later work will expand from a single hardcoded `IronKey` to typed keys/locks and validation (no key behind its own lock, shortcut relief, etc.).
+
+---
+
+## ADR-0072 — Add room tagging + tag-driven POI placement (M4-lite)
+Date: 2026-04-07
+
+### Decision
+Add lightweight room tags to procgen output (`floor.gen.rooms[*].tags`) and switch POI placement from “random floor cells” to a deterministic, tag-aware heuristic:
+- `Well` placed at/near the entrance
+- `Bed` placed roughly mid-distance (by BFS distance field)
+- `Chest` biased toward `Storage` (small) rooms, else farthest-unused floor cell
+
+### Rationale
+This creates the first real bridge between the design taxonomy (room roles/properties) and actual generated content placement, without committing to a full constraint solver yet. It also makes regen results more legible and testable.
+
+### Consequences
+- POI layouts become more consistent (and less “three random dots”).
+- Room tagging remains a first-pass heuristic and will be replaced by quota/adjacency-based tagging later.
+
+---
+
+## ADR-0073 — Add carve-only CA smoothing pass to dungeon layout
+Date: 2026-04-07
+
+### Decision
+Add a small, deterministic cellular-automata-style smoothing pass in dungeon generation that **only** converts some `wall` tiles into `floor` tiles based on local 8-neighbor floor density (1 pass initially).
+
+### Rationale
+We want the “softened alcove” feel from the design spec without risking corridor collapse/soft-locks. A carve-only pass improves visual/structural variety while preserving guaranteed connectivity.
+
+### Consequences
+- Layouts gain small alcoves and fewer jagged wall artifacts.
+- The pass is intentionally conservative; future work may add a second pass or a separate “close-only” pass gated by validations.
+
+---
+
+## ADR-0074 — Show player facing on minimap (north-up + arrow)
+Date: 2026-04-07
+
+### Decision
+Keep the minimap **north-up** and show the player’s facing as a small **arrow** on the player tile (4-way, derived from `floor.playerDir`).
+
+### Rationale
+Players need a quick orientation cue while navigating; an arrow marker adds clarity without rotating the minimap or changing layout.
+
+### Consequences
+- The facing indicator is discrete (N/E/S/W), matching grid yaw (no pitch / no free-look).
+- Minimap rendering remains DOM/CSS-based (no canvas) for simplicity and performance.
+
+---
+
+## ADR-0075 — Timestamp drag/drop actions to prevent immediate UI cue expiry
+Date: 2026-04-07
+
+### Decision
+Include an optional `nowMs` timestamp on `drag/drop` actions (set from `performance.now()` at pointer-up) and have the reducer apply that timestamp as the effective `state.nowMs` for resolving the drop (feed/inspect/crafting/drop).
+
+### Rationale
+Some UI cues (notably the portrait mouth “chomp” flicker burst) are time-gated and cleared in `time/tick` when `untilMs <= nowMs`. If a drop resolves using a stale `state.nowMs` value, the next tick can immediately clear the cue, making the burst appear to “not play”.
+
+### Consequences
+- Drop resolution is anchored to the pointer-up timestamp rather than “last tick time”, improving perceived responsiveness for time-based UI feedback.
+- Existing systems that rely on `state.nowMs` during drop resolution become consistent with the tick clock (both are `performance.now()`-based).

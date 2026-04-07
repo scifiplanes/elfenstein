@@ -162,14 +162,14 @@ export function GameViewport(props: {
               const clamped = clampByManhattanRange(state.floor.playerPos, rawCell, range)
               const snapped = findNearestFloorCell(state, clamped, range)
               if (snapped) {
-                dispatch({ type: 'drag/drop', payload: result.payload, target: { kind: 'floorDrop', dropPos: snapped } })
+                dispatch({ type: 'drag/drop', payload: result.payload, target: { kind: 'floorDrop', dropPos: snapped }, nowMs: performance.now() })
                 return
               }
             }
           }
         }
 
-        dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
+        dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
       }}
     >
       <div className={styles.overlay}>

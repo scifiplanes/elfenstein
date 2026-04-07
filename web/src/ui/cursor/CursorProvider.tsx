@@ -93,6 +93,9 @@ export function CursorProvider(props: PropsWithChildren) {
     const domTarget = parseTargetFromEl(node)
     const domRect = node ? node.getBoundingClientRect() : null
     const v = virtualHover.current
+    // Treat virtual hover as a one-move override. This prevents the viewport's
+    // `floorDrop` hover from "leaking" into UI hover when the pointer leaves the WebGL canvas.
+    if (v) virtualHover.current = null
     const target = v?.target ?? domTarget
     const rect = v?.rect ?? (domRect ? { left: domRect.left, top: domRect.top, right: domRect.right, bottom: domRect.bottom } : null)
     setState((s) => ({
