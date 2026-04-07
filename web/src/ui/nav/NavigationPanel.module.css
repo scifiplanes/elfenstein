@@ -1,77 +1,77 @@
 .root {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.78);
-}
-
-.hint strong {
-  color: rgba(255, 255, 255, 0.92);
-  font-weight: 600;
-}
-
-.list {
-  margin: 6px 0 0;
-  padding-left: 18px;
-}
-
-.list kbd {
-  display: inline-block;
-  padding: 1px 5px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.35);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  font-size: 11px;
-}
-
-.note {
-  margin: 10px 0 0;
-  line-height: 1.35;
-  color: rgba(255, 255, 255, 0.65);
-}
-
-.busy {
-  margin: 8px 0 0;
-  color: rgba(255, 200, 120, 0.85);
-}
-
-.pad {
-  margin-top: 12px;
+  height: 100%;
   display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 4px;
-}
-
-.padRow {
-  display: flex;
-  gap: 4px;
   align-items: center;
   justify-content: center;
+  min-height: 0;
 }
 
-.padCell {
-  width: 36px;
-  height: 32px;
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+  width: 100%;
+  max-width: 220px;
+  aspect-ratio: 3 / 2;
 }
 
-.padBtn {
-  width: 36px;
-  height: 32px;
-  font-size: 16px;
-  line-height: 1;
+.navBtn {
+  position: relative;
+  border: none;
+  padding: 0;
+  margin: 0;
+  min-width: 0;
+  min-height: 0;
+  width: 100%;
+  height: 100%;
   cursor: pointer;
-  border-radius: 4px;
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  background: rgba(40, 36, 48, 0.9);
-  color: rgba(255, 255, 255, 0.9);
+  background: transparent;
+  border-radius: 6px;
+  overflow: hidden;
+  isolation: isolate;
 }
 
-.padBtn:hover:not(:disabled) {
-  background: rgba(60, 52, 72, 0.95);
-  border-color: rgba(255, 255, 255, 0.35);
+.navBtn:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.55);
+  outline-offset: 1px;
 }
 
-.padBtn:disabled {
-  opacity: 0.4;
+.navBtn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.navBtn:active:not(:disabled) {
+  filter: brightness(0.95);
+}
+
+.navBtn:disabled {
+  opacity: 0.42;
   cursor: not-allowed;
+  filter: none;
+}
+
+.btnBg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  background-size: 100% 100%;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
+/* Centered glyph only — full-bleed <img> hid the bezel under opaque direction art. */
+.direction {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  width: 52%;
+  height: 52%;
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  pointer-events: none;
 }

@@ -1,11 +1,12 @@
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 import type { Dispatch } from 'react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { HudLayout } from '../hud/HudLayout'
+import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
 import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
@@ -36,6 +37,24 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const latestStateRef = useRef<GameState>(state)
   const latestContentRef = useRef(content)
   const renderBurstUntilMsRef = useRef(0)
+
+  const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
+  const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const onNavPadVisualPress = useCallback((id: NavPadButtonId) => {
+    setNavPadPressedId(id)
+    if (navPadTimerRef.current) clearTimeout(navPadTimerRef.current)
+    navPadTimerRef.current = setTimeout(() => {
+      setNavPadPressedId(null)
+      navPadTimerRef.current = null
+    }, 500)
+  }, [])
+
+  useEffect(() => {
+    return () => {
+      if (navPadTimerRef.current) clearTimeout(navPadTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     latestStateRef.current = state
@@ -230,7 +249,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   useEffect(() => {
     renderOnce()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [world, layoutTick, state])
+  }, [world, layoutTick, state, navPadPressedId])
 
   // During resize, the browser can stretch stale frames; keep redrawing for a short burst.
   useEffect(() => {
@@ -272,6 +291,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           rootRef={interactiveHudRef}
           gameViewportRef={gameViewportRef}
           webglError={webglError}
+          navPadPressedId={navPadPressedId}
+          onNavPadVisualPress={onNavPadVisualPress}
         />
       </div>
 
@@ -285,6 +306,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           world={null}
           rootRef={captureHudRef}
           webglError={null}
+          navPadPressedId={navPadPressedId}
+          onNavPadVisualPress={onNavPadVisualPress}
         />
       </div>
     </div>

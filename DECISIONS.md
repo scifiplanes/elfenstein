@@ -369,7 +369,7 @@ Date: 2026-04-06
 - On **`floor/regen`**, snap **`view`** (`camPos`, `camYaw`, clear `anim`) to the new spawn cell and facing so the minimap and 3D view stay aligned.
 - While **`view.anim`** is active (move/turn lerp), ignore new **`player/step`** and **`player/turn`** actions (one grid resolution at a time).
 - Add dedicated **`step`** and **`bump`** UI SFX kinds; play **step** on successful forward/back cell move, **bump** on blocked step (walls/out of bounds), keeping **reject** for other refusals.
-- Document movement in **DESIGN §6.4**; replace the obsolete open question about “strafe”; NAVIGA panel shows real controls plus on-screen buttons.
+- Document movement in **DESIGN §6.4**; replace the obsolete open question about “strafe”; navigation panel shows real controls plus on-screen buttons.
 
 ### Rationale
 Regen without view reset left the camera wrong until the next move. Chaining steps during the lerp felt mushy for a grid crawler. Distinct footstep vs wall feedback reads better than reusing generic reject for bumps.
@@ -419,7 +419,7 @@ Keyboard layout: **W/S** (and arrow up/down) forward/back along facing; **A/D** 
 Matches a familiar FPS-style layout on letter keys while staying on a discrete grid; lateral motion without spinning makes corridor navigation faster.
 
 ### Consequences
-- NAVIGA on-screen pad gains strafe buttons; DESIGN §6.4 documents strafe.
+- Navigation on-screen pad gains strafe buttons; DESIGN §6.4 documents strafe.
 - Door click remains **forward** step only.
 
 ---
@@ -500,3 +500,23 @@ Portrait inspect/feed shakes are short and HUD-local; they need independent tuni
 ### Consequences
 - `clampRenderTuning` must clamp these new portrait tuning values and provide sensible fallbacks for older `debug-settings.json`.
 - `web/public/debug-settings.json` now persists portrait shake tuning keys alongside other render tuning.
+
+---
+
+## ADR-0034 — Navigation HUD pad uses Content/ui art + timed pressed state
+Date: 2026-04-07
+
+### Decision
+Replace the text/unicode on-screen movement pad with a **3×2** grid of image buttons built from `Content/ui/navigation/`:
+- Shared bezel: **default** vs **pushed** background; **pushed** is shown for **0.5 seconds** after each successful click, then reverts.
+- Direction overlays: separate PNGs per action (forward/back/strafe/turn).
+- Grid: `[turn left][forward][turn right]` / `[strafe left][back][strafe right]`.
+- Copy these assets into `web/public/content/ui/navigation/` so Vite serves them at `/content/ui/navigation/…`.
+
+### Rationale
+Diegetic, art-directed controls match the project’s texture-first HUD; timed pressed feedback reads clearly in the dithered composite.
+
+### Consequences
+- Keyboard help text no longer lives inside the navigation panel; shortcuts remain in `title` tooltips and this doc (§6.4).
+- New UI art must be kept in sync between `Content/` and `web/public/content/` until a single-source asset pipeline exists.
+- **Pushed** navigation art must not be local to a single `NavigationPanel` instance: the visible UI is rasterized from the **capture** `HudLayout`, while clicks hit the **interactive** `HudLayout` (`web/src/ui/frame/DitheredFrameRoot.module.css`). `navPadPressedId` + `onNavPadVisualPress` in `DitheredFrameRoot` keep both trees in sync; `renderOnce` re-runs when `navPadPressedId` changes so the compositor texture updates.

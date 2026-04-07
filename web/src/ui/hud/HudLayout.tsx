@@ -7,7 +7,7 @@ import { GameViewport } from '../viewport/GameViewport'
 import { InventoryPanel } from '../inventory/InventoryPanel'
 import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
-import { NavigationPanel } from '../nav/NavigationPanel'
+import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { StatuePanel } from '../statue/StatuePanel'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { NpcDialogModal } from '../npc/NpcDialogModal'
@@ -24,8 +24,22 @@ export function HudLayout(props: {
   gameViewportRef?: RefObject<HTMLDivElement | null>
   rootRef?: RefObject<HTMLDivElement | null>
   webglError?: string | null
+  navPadPressedId: NavPadButtonId | null
+  onNavPadVisualPress: (id: NavPadButtonId) => void
 }) {
-  const { state, dispatch, content, interactive = true, captureForPostprocess = false, world = null, gameViewportRef, rootRef, webglError } = props
+  const {
+    state,
+    dispatch,
+    content,
+    interactive = true,
+    captureForPostprocess = false,
+    world = null,
+    gameViewportRef,
+    rootRef,
+    webglError,
+    navPadPressedId,
+    onNavPadVisualPress,
+  } = props
   const cursor = useCursor()
 
   return (
@@ -80,9 +94,14 @@ export function HudLayout(props: {
         <MinimapPanel state={state} />
       </section>
 
-      <section className={`${styles.panel} ${styles.nav}`}>
-        <h3 className={styles.title}>NAVIGA</h3>
-        <NavigationPanel state={state} dispatch={dispatch} />
+      <section className={`${styles.panel} ${styles.navigation}`}>
+        <h3 className={styles.title}>NAVIGATION</h3>
+        <NavigationPanel
+          state={state}
+          dispatch={dispatch}
+          pressedButtonId={navPadPressedId}
+          onNavPadVisualPress={onNavPadVisualPress}
+        />
       </section>
 
       <section className={`${styles.panel} ${styles.char3}`}>
