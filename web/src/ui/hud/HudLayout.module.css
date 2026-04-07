@@ -2,7 +2,8 @@
   position: fixed;
   inset: 0;
   display: grid;
-  grid-template-columns: 220px 120px 1fr 120px 220px;
+  /* Navigation pad at 50% of native footprint: (3×177 + 2×6) × 0.5 = 271.5px. */
+  grid-template-columns: 220px 120px 1fr 120px calc(543px * 0.5);
   grid-template-rows: 1fr 1fr 260px;
   grid-template-areas:
     "char2 statueL game statueR char4"
