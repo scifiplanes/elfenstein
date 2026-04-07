@@ -4,6 +4,21 @@ import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import styles from './DebugPanel.module.css'
 
+const TAU = Math.PI * 2
+
+function wrapPi(a: number) {
+  const r = ((a + Math.PI) % TAU + TAU) % TAU // [0, 2π)
+  return r - Math.PI // (-π, π]
+}
+
+function canonicalYawForDir(dir: 0 | 1 | 2 | 3) {
+  return wrapPi((dir * Math.PI) / 2)
+}
+
+function deg(a: number) {
+  return (a * 180) / Math.PI
+}
+
 type Slider = {
   key: string
   label: string
@@ -17,6 +32,33 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const { state, dispatch } = props
   const [query, setQuery] = useState('')
   const cursor = useCursor()
+  const [dumpTick, setDumpTick] = useState(0)
+
+  const dumpFloorGen = () => {
+    const gen = state.floor.gen
+    if (!gen) {
+      dispatch({ type: 'ui/toast', text: 'No floor.gen to dump yet. Click Regen first.', ms: 1600 })
+      return
+    }
+    try {
+      const json = JSON.stringify(gen, null, 2)
+      const blob = new Blob([json], { type: 'application/json' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      const safeSeed = gen.meta?.inputSeed ?? state.floor.seed
+      const attempt = gen.meta?.attempt ?? 0
+      a.href = url
+      a.download = `elfenstein_floor_gen_seed_${safeSeed}_attempt_${attempt}.json`
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+      URL.revokeObjectURL(url)
+      setDumpTick((t) => t + 1)
+      dispatch({ type: 'ui/toast', text: 'Downloaded floor.gen JSON.', ms: 1200 })
+    } catch {
+      dispatch({ type: 'ui/toast', text: 'Failed to dump floor.gen JSON.', ms: 1600 })
+    }
+  }
 
   const cameraSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
@@ -133,6 +175,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
@@ -158,6 +201,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
   const visibleNpc = q ? npcSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : npcSliders
 
+  const canonicalYaw = canonicalYawForDir(state.floor.playerDir)
+  const yawRaw = state.view.anim?.kind === 'turn' ? state.view.camYaw : canonicalYaw
+  const yawGame = wrapPi(yawRaw)
+  // Must match WorldRenderer: Three.js rotation.y uses opposite X sign vs game forward (sin, -cos).
+  const yawThree = -yawGame
+
   return (
     <div
       className={styles.root}
@@ -182,6 +231,22 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         >
           Regen (seed {state.floor.seed})
         </button>
+        <button
+          type="button"
+          onClick={dumpFloorGen}
+          title="Download the canonical procgen output (floor.gen) as JSON"
+          style={{
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(0,0,0,0.28)',
+            color: 'rgba(255,255,255,0.86)',
+            borderRadius: 10,
+            padding: '6px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
+          }}
+        >
+          Dump floor.gen ({dumpTick ? 'ok' : 'json'})
+        </button>
       </div>
 
       <input
@@ -190,6 +255,42 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search… (will matter later)"
       />
+
+      {(!q || 'pose yaw direction playerdir camyaw'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Pose</div>
+          <div className={styles.row}>
+            <div className={styles.label}>playerDir</div>
+            <div className={styles.value}>{state.floor.playerDir}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>view.anim</div>
+            <div className={styles.value}>{state.view.anim ? state.view.anim.kind : 'none'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>view.camYaw</div>
+            <div className={styles.value}>{deg(wrapPi(state.view.camYaw)).toFixed(1)}°</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>canonicalYaw(dir)</div>
+            <div className={styles.value}>{deg(canonicalYaw).toFixed(1)}°</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>yawGame (logic)</div>
+            <div className={styles.value}>{deg(yawGame).toFixed(1)}°</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>rotation.y (Three.js)</div>
+            <div className={styles.value}>{deg(yawThree).toFixed(1)}°</div>
+            <div />
+          </div>
+        </div>
+      )}
 
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Camera</div>

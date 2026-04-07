@@ -82,6 +82,8 @@ export type UiState = {
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
   /** Short-lived portrait frame shake (inspect/feed resolution). */
   portraitShake?: { characterId: CharacterId; untilMs: number; magnitude: number; startedAtMs: number }
+  /** Brief idle-overlay visibility after a portrait-frame tap (opens paperdoll). */
+  portraitIdlePulse?: { characterId: CharacterId; untilMs: number }
   crafting?: {
     startedAtMs: number
     endsAtMs: number
@@ -189,6 +191,8 @@ export type RenderTuning = {
   npcGroundY_Bobr: number
   npcGroundY_Skeleton: number
   npcGroundY_Catoctopus: number
+  /** POI Well billboard ground pivot (same units as `npcGroundY_*`). */
+  poiGroundY_Well: number
   npcSize_Wurglepup: number
   npcSizeRand_Wurglepup: number
   npcSize_Bobr: number

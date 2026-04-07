@@ -7,6 +7,8 @@ import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { HudLayout } from '../hud/HudLayout'
+import { PaperdollModal } from '../paperdoll/PaperdollModal'
+import { NpcDialogModal } from '../npc/NpcDialogModal'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
 import { useFixedStageOuterScale } from '../../app/FixedStageContext'
@@ -364,6 +366,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           onNavPadVisualPress={onNavPadVisualPress}
         />
       </div>
+
+      {state.ui.paperdollFor || state.ui.npcDialogFor ? (
+        <div className={styles.stageModalLayer}>
+          <PaperdollModal state={state} dispatch={dispatch} content={content} />
+          <NpcDialogModal state={state} dispatch={dispatch} content={content} />
+        </div>
+      ) : null}
 
       {captureMountEl
         ? createPortal(

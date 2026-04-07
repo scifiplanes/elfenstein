@@ -1,4 +1,4 @@
-import type { FloorPoi, ItemDefId, Tile, Vec2 } from '../game/types'
+import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, Tile, Vec2 } from '../game/types'
 
 export type FloorType = 'Dungeon' | 'Cave' | 'Ruins'
 
@@ -35,6 +35,14 @@ export type GenDoor = {
 
 export type FloorGenMeta = {
   genVersion: number
+  /** Input seed for this generation request (before any reroll attempt mixing). */
+  inputSeed: number
+  /** Seed actually used for this attempt (equals inputSeed when attempt=0). */
+  attemptSeed: number
+  /** 0-based reroll attempt index. */
+  attempt: number
+  w: number
+  h: number
   /**
    * Phase-separated deterministic seeds used to derive RNG streams.
    * Convention (initial):
@@ -52,12 +60,24 @@ export type GenFloorItem = {
   qty?: number
 }
 
+export type GenNpc = {
+  id: string
+  kind: NpcKind
+  name: string
+  pos: Vec2
+  status: 'hostile' | 'neutral' | 'friendly'
+  hp: number
+  language: NpcLanguage
+  quest?: { wants: ItemDefId; hated: ItemDefId[] }
+}
+
 export type FloorGenOutput = {
   tiles: Tile[]
   pois: FloorPoi[]
   rooms: GenRoom[]
   doors: GenDoor[]
   floorItems: GenFloorItem[]
+  npcs: GenNpc[]
   entrance: Vec2
   exit: Vec2
   meta: FloorGenMeta

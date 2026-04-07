@@ -13,9 +13,9 @@ Last updated: 2026-04-07
 ## 3) Target platform & constraints
 - **Platform**: Web (desktop first).
 - **Layout**: HUD and compositor are authored at **1920×1080** CSS px inside **`FixedStageViewport`** (`stageDesign.ts`). The **`.clip`** is exactly the scaled **1920×1080** content box (**`STAGE_CSS_*`** in **`stageDesign.ts`**). A **3px** white frame uses **`outline`** on **`.clip`** with negative **`outline-offset`** so it sits just inside that rectangle without changing layout size. The stage **uniformly scales** by **`s = min(1, viewportW/1920, viewportH/1080)`** (using **`visualViewport`** when present): on viewports **larger than 1080p** the box stays **1920×1080 CSS px** centered with black margins; smaller viewports **shrink** so everything remains visible. **All stage-internal layers (presenter canvas, interactive HUD hit layer, capture HUD) are stage-relative (positioned against the 1920×1080 stage), not browser-viewport fixed**, so letterboxing/margins can’t offset the 3D viewport vs HUD. **`FramePresenter`** / WebGL canvas and **HUD `html2canvas` capture use the same 1920×1080 CSS size**—not the browser viewport. **`getBoundingClientRect()` includes that outer scale**, so the compositor’s **`gameRectPx`** and the **3D render target** use **layout** sizes (divide by **`s`** where needed, and **`clientWidth` / `clientHeight`** for the game viewport) so the scene + UI map correctly inside the stage. In-game CSS uses **`--stage-w` / `--stage-h`** instead of **`100vw` / `100vh`** for max widths/heights where needed.
-- **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
+- **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in. **Game yaw** (from `playerDir` / `view.camYaw`) uses forward \((\sin y,\,-\cos y)\) on the XZ plane; **Three.js** `camera.rotation.y` is set to **`-y`** so the rendered view matches that forward (Three’s Y rotation would otherwise flip the X component of view direction).
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). Includes a small **Pose** readout (playerDir and camera yaw values) for diagnosing orientation issues. **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -57,9 +57,10 @@ Interactions should resolve with:
 - **Portrait frame shake** on portrait interaction resolution (inspect and feed), driven by `ui.portraitShake` on the matching character slot
 
 ### 6.4 Grid movement (first-person)
-- **Model**: discrete cells; facing is one of four compass directions; the 3D camera **yaw** matches facing. **Strafe** moves one cell **left or right relative to facing** without rotating (**A** / **D**). **W** / **S** move **forward** / **backward** along facing.
+- **Model**: discrete cells; facing is one of four compass directions (**`playerDir`** is canonical 0=N,1=E,2=S,3=W); the 3D camera **yaw** matches facing when idle. **Strafe** moves one cell **left or right relative to facing** without rotating (**A** / **D**). **W** / **S** move **forward** / **backward** along facing.
+- **Turning**: left/right turns always animate the **shortest** 90° rotation. Internally, the animated camera yaw may be temporarily **unwrapped** across the \(0 \leftrightarrow 2\pi\) boundary so the interpolation never takes a 270° path; when the turn completes the camera yaw snaps back to the canonical \(dir \cdot \pi/2\) in \([0,2\pi)\).
 - **Keyboard** (see `GameApp.tsx`): **W** / **S** (and **↑** / **↓**) forward/back; **A** / **D** strafe left/right; **Q** / **E** turn left/right. **F2** toggles the debug panel.
-- **HUD**: the bottom grid row (minimap + inventory + navigation) has a shared row height of **285 px** (**−5%** vs the prior **300 px** row, after the earlier **−25%** step from **400 px**); it stays the **third** grid row so widgets remain **bottom-aligned** with **`1fr` / `1fr`** rows above taking the freed space. The **minimap is north-up**; the player tile includes a **facing arrow** (4-way) so orientation is readable at a glance. **Left and right** portrait **rails** (rows **1–2**) use **`minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr)`**. **CHAR1/CHAR2** (left) and **CHAR3/CHAR4** (right) `<section>`s use **75%** rail width with **`justify-self: start`** / **`end`** so they line up with the **map** / **navigation** blocks below. Row **3** is a **`bottomRow`** wrapper: nested **`grid-template-columns: 0.75fr 120px 1.62fr 120px 0.75fr`** (same **3.12fr** sum as **`1 + 1.12 + 1`**) shifts width into the **center** so **inventory** (spans the **120 + 1.62fr + 120** band) stays wide. **Map** and **navigation** `<section>`s use **100%** of their **0.75fr** tracks (**0.75fr** total), matching portrait strips’ **75%** of the **1fr** rails above (**0.75fr**); they have **no** MAP/NAVIGATION title headers, and **`HudLayout`** **`display: flex`** + **`align-items`/`justify-content: center`** centers each widget in its cell. Rows **1–2** still use **1.12fr** for the **game** viewport. At a reference desktop width this yields roughly the former **~518 px** outer / **~580 px** game-column proportion. The **navigation** panel is a **3×2** image pad (sources under `Content/ui/navigation/`, mirrored to `web/public/content/ui/navigation/` for the dev server): each **cell is drawn at 50% of the bezel PNG native size** (**88.5×88.5 px** from 177×177 sources), **square** corners (no radius on the cells); on press it shows **ui_navigationbutton_pushed** for **0.5 seconds**, then returns to default. Direction glyphs are separate overlays (**arrow up/down/left/right**, **turn left/right** icons). Layout row 1: turn left, forward, turn right; row 2: strafe left, back, strafe right. The pad’s intrinsic width is **~271.5 px** (three cells + gaps); it stays **centered** inside the **navigation** panel. Tooltips still echo keyboard shortcuts (§6.4). **Note**: the on-screen HUD is composited from an offscreen **capture** DOM (`HudLayout` with `captureForPostprocess`); the **interactive** HUD is pointer-transparent (`opacity: 0`). Navigation “pushed” bezel state therefore lives in `DitheredFrameRoot` and is passed into **both** trees so `html2canvas` sees **`ui_navigationbutton_pushed.png`** on the cell you pressed.
+- **HUD**: the bottom grid row (minimap + inventory + navigation) has a shared row height of **285 px** (**−5%** vs the prior **300 px** row, after the earlier **−25%** step from **400 px**); it stays the **third** grid row so widgets remain **bottom-aligned** with **`1fr` / `1fr`** rows above taking the freed space. The **minimap is north-up** and shows a **local window** of about **12×12** floor tiles **centered on the player** (origin clamped at edges so the view never leaves the floor), not the entire map; the player tile includes a **facing arrow** (4-way) so orientation is readable at a glance. **Left and right** portrait **rails** (rows **1–2**) use **`minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr)`**. **CHAR1/CHAR2** (left) and **CHAR3/CHAR4** (right) `<section>`s use **75%** rail width with **`justify-self: start`** / **`end`** so they line up with the **map** / **navigation** blocks below. Row **3** is a **`bottomRow`** wrapper: nested **`grid-template-columns: 0.75fr 120px 1.62fr 120px 0.75fr`** (same **3.12fr** sum as **`1 + 1.12 + 1`**) shifts width into the **center** so **inventory** (spans the **120 + 1.62fr + 120** band) stays wide. **Map** and **navigation** `<section>`s use **100%** of their **0.75fr** tracks (**0.75fr** total), matching portrait strips’ **75%** of the **1fr** rails above (**0.75fr**); they have **no** MAP/NAVIGATION title headers, and **`HudLayout`** **`display: flex`** + **`align-items`/`justify-content: center`** centers each widget in its cell. Rows **1–2** still use **1.12fr** for the **game** viewport. At a reference desktop width this yields roughly the former **~518 px** outer / **~580 px** game-column proportion. The **navigation** panel is a **3×2** image pad (sources under `Content/ui/navigation/`, mirrored to `web/public/content/ui/navigation/` for the dev server): each **cell is drawn at 50% of the bezel PNG native size** (**88.5×88.5 px** from 177×177 sources), **square** corners (no radius on the cells); on press it shows **ui_navigationbutton_pushed** for **0.5 seconds**, then returns to default. Direction glyphs are separate overlays (**arrow up/down/left/right**, **turn left/right** icons). Layout row 1: turn left, forward, turn right; row 2: strafe left, back, strafe right. The pad’s intrinsic width is **~271.5 px** (three cells + gaps); it stays **centered** inside the **navigation** panel. Tooltips still echo keyboard shortcuts (§6.4). **Note**: the on-screen HUD is composited from an offscreen **capture** DOM (`HudLayout` with `captureForPostprocess`); the **interactive** HUD is pointer-transparent (`opacity: 0`). Navigation “pushed” bezel state therefore lives in `DitheredFrameRoot` and is passed into **both** trees so `html2canvas` sees **`ui_navigationbutton_pushed.png`** on the cell you pressed.
 - **Viewport**: clicking a **door** attempts a **forward** step into that cell (open normal door or try key on locked door).
 - **While a move/turn animation is playing**, new step, strafe, and turn input is ignored so the player resolves one grid action at a time.
 - **Audio**: a successful step or strafe plays a short **step** SFX; walking into a solid tile uses a distinct **bump** SFX (with existing toast + shake).
@@ -89,6 +90,7 @@ The party has **up to 4** character portrait slots.
     - Eyes (inspect hover): `Content/frosh_eye_inspect.png`
     - Mouth: `Content/frosh_mouth_open.png`
     - Idle overlay: `Content/frosh_idle.png`
+- **Portrait click (frame)**: a **primary-button tap** on the **portrait frame** opens the **paperdoll** and schedules a short **`ui.portraitIdlePulse`** window so the **idle sprite** shows for one burst (same **min/max ms** tuning as ambient idle flashes: `portraitIdleFlashMinMs` / `portraitIdleFlashMaxMs` in F2). **`HudLayout`** handles **`pointerdown`/`pointerup` in capture** on `[data-portrait-character-id]` (movement threshold ~28px; skips when `dragging.started`) and dispatches **`ui/portraitFrameTap`** so activation does not depend on synthetic **`click`**. The pulse expires on **`time/tick`** like other short UI cues.
 - **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame).
 - **Portrait stats presentation**: character vitals + status are shown as a **compact bottom overlay inside the portrait frame** (two-line readout). Long status lists are **single-line truncated** to preserve portrait space.
 - **Portrait blinking**: the eyes layer is **occasionally hidden briefly** to simulate blinking.
@@ -152,7 +154,8 @@ The party has **up to 4** character portrait slots.
 - Ash + Sulfur: two-way combo spell results (Firebolt / Fireshield)
 
 ### 7.4 Equipment & paperdoll
-- Clicking a character portrait opens a **paperdoll modal** positioned to keep inventory accessible.
+- Clicking the **portrait frame** or the **name/species** label above it dispatches **`ui/portraitFrameTap`**: opens the **paperdoll** and schedules **`ui.portraitIdlePulse`** (idle overlay while an idle sprite exists; see §7.1).
+- **Paperdoll backdrop**: for a short window after open (~450ms), **outside** backdrop clicks are ignored so the synthetic **`click`** that follows a portrait **`pointerup`** cannot open and then immediately close the modal (`portraitIdlePulse` would still run because **`ui/closePaperdoll`** only clears **`paperdollFor`**).
 - Drag/drop equipment between inventory and paperdoll slots.
 - Slots vary by species; initial slot set:
   - Head, Left hand, Right hand, Feet, Clothing, Accessories
@@ -169,6 +172,7 @@ The party has **up to 4** character portrait slots.
   - F2 Debug exposes per-kind **NPC size (height)** and deterministic **±% size variation**; values persist via `web/public/debug-settings.json`.
   - NPC sprite placement aligns the **feet/ground point** with the **floor surface** so NPCs appear grounded. F2 Debug exposes a small global lift (`npcFootLift`) plus per-kind ground pivot offsets (`npcGroundY_*`) to compensate for transparent padding differences across NPC art.
   - The NPC dialog shows a small matching sprite next to the NPC’s name.
+  - Until per-kind art exists for every `NpcKind`, missing NPC sprites are satisfied by **binary copies** of **`Placeholders/Placeholder_NPC.png`** under `web/public/content/` at the URL expected by `NPC_SPRITE_SRC` (e.g. Wurglepup).
 
 **Statuses**: Aggressive, Neutral, Friendly
 
@@ -207,25 +211,38 @@ The party has **up to 4** character portrait slots.
 
 ### 8.2 Starting algorithm (prototype baseline)
 Initial starting point to iterate:
-1. BSP partition (min leaf ~7×7; depth ~5)
-2. Room carve (60–80% of leaf, random offset)
+1. BSP partition (min leaf ~6×6; depth ~6)
+2. Room carve (~45–70% of leaf, random offset; preserves separating walls)
 3. Corridor stitch (L-bends connect **sibling BSP subtrees**; guarantees baseline connectivity)
 4. Connectivity repair (connect any remaining disconnected components deterministically)
 5. CA smoothing (1–2 wall passes for alcoves/softening; current implementation is a mild **carve-only** wall→floor pass)
 6. Exit selection (pick an exit as the **farthest reachable** floor cell from the entrance by BFS distance)
-7. Minimal lock/key pass (place a `lockedDoor` on the entrance→exit shortest path and spawn an `IronKey` on the reachable side; planned to expand into a full mission/lock graph)
+7. Minimal lock/key pass: scan the entrance→exit shortest path (from near-exit toward entrance) and place a `lockedDoor` only where it **fully separates** the exit from the entrance (no alternate walkable route while the lock is closed). Spawn an `IronKey` on the entrance side of that door. If no path cell qualifies (e.g. redundant corridors), skip lock/key for that attempt. (Planned to expand into a full mission/lock graph.)
 8. Room tagging (assign basic room tags; planned to evolve into quotas/adjacency solve)
-9. Population pass (place POIs using tags + entrance/exit heuristics; planned to expand into full spawn tables for NPCs/items/doors/torches)
+9. Population pass:
+   - place POIs using tags + entrance/exit heuristics
+   - spawn a small set of NPCs and floor items using room tags (MVP tables), with deterministic ids and positions
 10. Theme injection (tile variants + palette by theme; planned)
+
+**First load**: the game does not use a separate hand-authored map. `makeInitialState` runs the same `generateDungeon` pipeline as `floor/regen` (**31×31** dimensions) with a **fresh random 32-bit** `floor.seed` each cold start (via `crypto.getRandomValues` when available), stores the result in `floor.gen`, and places the party at **`gen.entrance`** with the camera snapped to that cell. Given that seed, the floor is fully deterministic (same as regen with an explicit seed).
+Default floor dimensions are **31×31** (large enough for BSP to split into multiple rooms); `floor/regen` keeps the current `floor.w/h`.
 
 ### 8.3 Determinism requirement
 Generation should be **seeded** and phase-stable (changes to one phase shouldn’t ripple unpredictably into others) to support future host-synced multiplayer.
 
+Validation is part of generation: the generator runs **bounded deterministic rerolls** (derived from the input seed) when lock/key constraints fail (e.g. key not reachable, exit reachable before “unlocking” when a lock is present). The **accepted** output is always a **full BSP layout** with a non-empty `rooms` list from the last attempt (or a tiny carved fallback room if generation fails catastrophically). The generator does **not** discard the dungeon and return an empty room list solely because validation failed.
+
+The final output should record which **attempt** was accepted (attempt seed + attempt index) so a generated floor can be reproduced and debugged exactly.
+
 ### 8.4 Reference pipeline (expanded)
 See `Dungeon_generation_plan_summary.md` for an expanded phased pipeline (mission graph → lock correctness → geometry → districts → tagging solve → population → validation → debug overlays).
 
+**Debuggability**: the F2 Debug panel includes a “Dump `floor.gen`” action to download the canonical procgen output JSON for a given seed/attempt.
+
 ## 9) Points of interest (POIs)
 Static interactables, triggered by dragging items onto them, clicking, or walking into them.
+
+- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well** uses `npc_well.png`; **Chest**, **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** has its own **`poiGroundY_Well`** in F2, while placeholder POI kinds follow **`npcGroundY_Wurglepup`** (matching the shared placeholder texture).
 
 Initial POIs:
 - **Well**: save point (clear notification); used to fill Waterbag
@@ -264,6 +281,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - The HUD exists as HTML/CSS twice:
     - an **interactive HUD** (`opacity: 0` over the final canvas but above the WebGL presenter, handles pointer input)
     - a **capture HUD** (offscreen, non-interactive) that is rasterized into a canvas texture
+  - **Paperdoll and NPC dialog modals** mount **only** in **`DitheredFrameRoot`’s `stageModalLayer`** (sibling of **`.interactiveHud`**, not under **`opacity: 0`**). The layer is mounted **only while** **`paperdollFor`** or **`npcDialogFor`** is set, uses **`pointer-events: auto`**, and sits **above** the invisible hit HUD (`z-index`) so controls receive input instead of falling through to **`.interactiveHud`**. They are **not** part of the **`html2canvas`** capture tree.
   - Because the capture HUD is rasterized by **`html2canvas`**, prefer conservative CSS for critical visuals (avoid relying on `object-fit` for aspect-correct sprite presentation; use intrinsic sizing patterns instead).
   - **HUD shell art**: a single transparent **`ui_hud_background.png`** (`Content/ui/hud/`, mirrored to `web/public/content/ui/hud/`) is drawn full-bleed behind the HUD grid in `HudLayout` (CSS `::before`, `background-size: contain`, centered). Existing widgets stay in the current CSS grid; opaque “glass” panel styling is removed so content sits on the artwork (fine-tune slot positions vs the art next).
   - Presenter sizing is derived from the **viewport CSS size** (prefer `visualViewport.width/height`, else `documentElement.clientWidth/clientHeight`) rather than measuring the presenter canvas element, to avoid resize feedback loops caused by renderers writing inline canvas CSS sizes.
@@ -278,7 +296,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - Distance volume settings
 
 ## 13) Content pipeline (placeholders-first)
-Create placeholder sprites in `placeholders/` and replace over time.
+Canonical placeholder NPC art lives at **`Placeholders/Placeholder_NPC.png`**. Ship **copies** into `web/public/content/` for any runtime URL the code expects (NPC or POI) until final assets replace them.
 
 Asset types:
 - Item PNG (transparent)
@@ -288,6 +306,11 @@ Asset types:
 - Mouth PNG (transparent)
 - Eyes PNG (transparent)
 - HUD shell PNG (transparent): `Content/ui/hud/ui_hud_background.png`
+
+### 13.1 Asset serving & caching (web)
+- Runtime-served assets (portraits, NPC sprites, UI art, cursor sprites) live under `web/public/content/` and are referenced via **stable** `/content/...` URLs.
+- The game relies on **browser HTTP caching** for these static URLs; avoid cache-busting query params for runtime art.
+- Imperative image loads (e.g., measuring portrait aspect ratio or preloading sprite layers) go through a small shared **in-app image cache** (`web/src/ui/assets/imageCache.ts`) to dedupe concurrent loads and reduce repeated decodes/revalidation requests.
 
 ## 14) “Not now” ideas (parked)
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).

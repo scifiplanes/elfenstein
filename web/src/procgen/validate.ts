@@ -13,6 +13,12 @@ export function isWalkable(t: Tile): boolean {
   return t === 'floor' || t === 'door' || t === 'lockedDoor'
 }
 
+export function isWalkableWithLocks(t: Tile, opts: { lockedDoorsAreWalkable: boolean }): boolean {
+  if (t === 'floor' || t === 'door') return true
+  if (t === 'lockedDoor') return opts.lockedDoorsAreWalkable
+  return false
+}
+
 export function floodFillReachable(tiles: Tile[], w: number, h: number, start: Vec2): boolean[] {
   const out = Array.from({ length: tiles.length }, () => false)
   if (!inBounds(start, w, h)) return out
@@ -45,6 +51,63 @@ export function floodFillReachable(tiles: Tile[], w: number, h: number, start: V
   }
 
   return out
+}
+
+export function floodFillReachableWithLocks(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  start: Vec2,
+  opts: { lockedDoorsAreWalkable: boolean },
+): boolean[] {
+  const out = Array.from({ length: tiles.length }, () => false)
+  if (!inBounds(start, w, h)) return out
+  const startIdx = idxOf(start, w)
+  if (startIdx < 0 || startIdx >= tiles.length) return out
+  if (!isWalkableWithLocks(tiles[startIdx], opts)) return out
+
+  const qx: number[] = [start.x]
+  const qy: number[] = [start.y]
+  out[startIdx] = true
+
+  for (let qi = 0; qi < qx.length; qi++) {
+    const x = qx[qi]
+    const y = qy[qi]
+    const n = [
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+    ]
+    for (const p of n) {
+      if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue
+      const i = p.x + p.y * w
+      if (out[i]) continue
+      if (!isWalkableWithLocks(tiles[i], opts)) continue
+      out[i] = true
+      qx.push(p.x)
+      qy.push(p.y)
+    }
+  }
+
+  return out
+}
+
+export function allReachableWithLocks(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  start: Vec2,
+  targets: Vec2[],
+  opts: { lockedDoorsAreWalkable: boolean },
+): boolean {
+  const reach = floodFillReachableWithLocks(tiles, w, h, start, opts)
+  for (const t of targets) {
+    if (!inBounds(t, w, h)) return false
+    const i = idxOf(t, w)
+    if (!reach[i]) return false
+  }
+  return true
 }
 
 export function allReachable(tiles: Tile[], w: number, h: number, start: Vec2, targets: Vec2[]): boolean {

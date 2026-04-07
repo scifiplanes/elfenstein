@@ -1,4 +1,4 @@
-import type { Dispatch, RefObject } from 'react'
+import { type Dispatch, type RefObject, useRef } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { GameState } from '../../game/types'
 import type { Action } from '../../game/reducer'
@@ -9,8 +9,6 @@ import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { StatuePanel } from '../statue/StatuePanel'
-import { PaperdollModal } from '../paperdoll/PaperdollModal'
-import { NpcDialogModal } from '../npc/NpcDialogModal'
 import { useCursor } from '../cursor/useCursor'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 
@@ -41,6 +39,8 @@ export function HudLayout(props: {
     onNavPadVisualPress,
   } = props
   const cursor = useCursor()
+  /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
+  const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
 
   return (
     <div
@@ -48,7 +48,47 @@ export function HudLayout(props: {
       data-capture={captureForPostprocess ? 'true' : 'false'}
       ref={rootRef}
       onPointerMove={interactive ? cursor.onPointerMove : undefined}
-      onPointerCancel={interactive ? cursor.cancelDrag : undefined}
+      onPointerCancel={
+        interactive
+          ? (e) => {
+              if (portraitTapRef.current?.pointerId === e.pointerId) portraitTapRef.current = null
+              cursor.cancelDrag()
+            }
+          : undefined
+      }
+      onPointerDownCapture={
+        interactive
+          ? (e) => {
+              if (e.button !== 0) return
+              const el = (e.target as Element | null)?.closest?.('[data-portrait-character-id]')
+              if (!el) return
+              const characterId = el.getAttribute('data-portrait-character-id')
+              if (!characterId) return
+              portraitTapRef.current = {
+                characterId,
+                pointerId: e.pointerId,
+                x: e.clientX,
+                y: e.clientY,
+              }
+            }
+          : undefined
+      }
+      onPointerUpCapture={
+        interactive
+          ? (e) => {
+              if (e.button !== 0) return
+              const g = portraitTapRef.current
+              if (!g || g.pointerId !== e.pointerId) return
+              portraitTapRef.current = null
+              const el = (e.target as Element | null)?.closest?.('[data-portrait-character-id]')
+              if (!el || el.getAttribute('data-portrait-character-id') !== g.characterId) return
+              const slop = 28
+              if ((e.clientX - g.x) ** 2 + (e.clientY - g.y) ** 2 > slop * slop) return
+              if (cursor.state.dragging?.started) return
+              dispatch({ type: 'ui/portraitFrameTap', characterId: g.characterId })
+            }
+          : undefined
+      }
       onPointerUp={
         interactive
           ? (e) => {
@@ -110,9 +150,6 @@ export function HudLayout(props: {
           />
         </section>
       </div>
-
-      {interactive ? <PaperdollModal state={state} dispatch={dispatch} content={content} /> : null}
-      {interactive ? <NpcDialogModal state={state} dispatch={dispatch} content={content} /> : null}
     </div>
   )
 }
