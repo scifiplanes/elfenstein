@@ -17,8 +17,23 @@
 .interactiveHud {
   position: absolute;
   inset: 0;
+  /* Invisible hit layer for the live HUD; compositor shows the captured bitmap. */
   opacity: 0;
+  pointer-events: auto;
   z-index: 3;
+}
+
+/*
+ * Modals live above `.interactiveHud` (z-index 3). The layer must use `pointer-events: auto` when
+ * present; with `pointer-events: none` on the wrapper, hits fall through to the invisible HUD and
+ * never reach the Close button. The wrapper mounts only while a modal is open so it does not
+ * block the HUD when closed.
+ */
+.stageModalLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 8;
+  pointer-events: auto;
 }
 
 .captureHud {

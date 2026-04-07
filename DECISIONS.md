@@ -1085,6 +1085,84 @@ We want the “softened alcove” feel from the design spec without risking corr
 
 ---
 
+## ADR-0074 — Procgen spawns NPCs and extra floor items (tag-driven)
+Date: 2026-04-07
+
+### Decision
+Extend `floor.gen` to include generated `npcs[]` and spawn a small set of NPCs + extra floor items during the population phase based on basic room tags (function/properties). Wire `floor/regen` to hydrate `state.floor.npcs` from `floor.gen.npcs` instead of keeping the fixed demo list.
+
+### Rationale
+Dungeon generation needs to drive encounter and discovery pacing. Spawning NPCs/items from tags establishes the core “taxonomy → content tables” loop early, while keeping determinism and phase separation intact.
+
+### Consequences
+- Regenerated floors have varied NPC placement and loot-like floor items without manual seeding.
+
+### Update (superseded by ADR-0078)
+Startup now uses procgen for the first floor; the fixed demo map and hand-placed NPC list were removed from `makeInitialState`.
+
+---
+
+## ADR-0078 — Bootstrap first floor from procgen (same path as regen)
+Date: 2026-04-07
+
+### Decision
+Replace the hand-built 13×13 demo corridor in `makeInitialState` with a call to `generateDungeon` using the same default seed/dimensions as before, hydrate spawned floor items into `party.items` + `floor.itemsOnFloor`, set `floor.npcs` from `gen.npcs`, and spawn the player at `gen.entrance`. Extract `hydrateGenFloorItems` and `snapViewToGrid` into `web/src/game/state/procgenHydrate.ts` for reuse by `reducer` and `makeInitialState`. Align `floor/regen` player spawn with `gen.entrance` (was bottom-center).
+
+### Rationale
+Players and production builds should see the procedural dungeon immediately; requiring F2 Regen hid the real system. Sharing hydration helpers avoids drift between startup and regen.
+
+### Consequences
+- Shrine/CrackedWall demo POIs on the old map are no longer present unless procgen adds equivalent content later.
+- First-floor layout is deterministic for the default seed (same as before for seed-only expectations, but layout content is procgen output).
+
+---
+
+## ADR-0075 — Add deterministic validation and bounded rerolls to procgen
+Date: 2026-04-07
+
+### Decision
+Add a bounded, deterministic **validation + reroll loop** inside dungeon generation:
+- retry generation (using derived attempt seeds) if key/lock solvability constraints fail
+- validate that the key is reachable without passing locked doors and that the exit is unreachable-before / reachable-after unlocking
+
+### Rationale
+As generation gains more phases (population, locks, tagging), occasional invalid configurations are inevitable. A bounded deterministic retry strategy preserves reproducibility while preventing soft-lock floors from leaking into gameplay.
+
+### Consequences
+- Same input seed still produces the same final floor, even with retries.
+- Debugging should surface the final chosen attempt/seed if we later add overlays/logging.
+
+---
+
+## ADR-0076 — Record accepted reroll attempt in procgen meta
+Date: 2026-04-07
+
+### Decision
+Include `inputSeed`, `attemptSeed`, `attempt`, and `w/h` in `floor.gen.meta` so the final accepted reroll is explicit and reproducible.
+
+### Rationale
+Once generation includes validation and rerolls, the “seed” alone is no longer sufficient for debugging: we need to know which derived attempt was accepted. Recording this metadata keeps determinism while making issues reproducible.
+
+### Consequences
+- Debug tooling can display and export the exact accepted attempt without guessing.
+- Future multiplayer/host-sync work can log and transmit the meta as part of the floor snapshot.
+
+---
+
+## ADR-0077 — Add “Dump floor.gen JSON” debug action
+Date: 2026-04-07
+
+### Decision
+Add a button in the F2 Debug panel to download the current `state.floor.gen` as a JSON file named by seed + attempt.
+
+### Rationale
+Procgen iteration is dramatically faster when we can capture and share a complete reproducible snapshot (layout, tags, locks, POIs, NPCs, items, meta) without adding temporary console logs.
+
+### Consequences
+- Designers/devs can attach a `floor.gen` JSON to bug reports or use it for future replay tooling.
+
+---
+
 ## ADR-0074 — Show player facing on minimap (north-up + arrow)
 Date: 2026-04-07
 
@@ -1112,3 +1190,216 @@ Some UI cues (notably the portrait mouth “chomp” flicker burst) are time-gat
 ### Consequences
 - Drop resolution is anchored to the pointer-up timestamp rather than “last tick time”, improving perceived responsiveness for time-based UI feedback.
 - Existing systems that rely on `state.nowMs` during drop resolution become consistent with the tick clock (both are `performance.now()`-based).
+
+---
+
+## ADR-0076 — Cache portrait image loads to prevent revalidation storms
+Date: 2026-04-07
+
+### Decision
+Prevent repeated runtime image requests by:
+- tightening `PortraitPanel` effects to depend on **stable URL strings** (not whole character objects that can change identity every `time/tick`)
+- introducing a small shared in-app image cache (`web/src/ui/assets/imageCache.ts`) to dedupe in-flight loads and reuse decoded `HTMLImageElement`s for imperative loads and prefetching
+
+### Rationale
+During play, state updates frequently (`time/tick`). When a portrait effect depends on an object whose identity churns, it can re-run each tick and re-assign image `src`/create new `Image()` instances, which in dev (and sometimes in prod) can lead to constant network revalidation and unnecessary decode work.
+
+### Consequences
+- Portrait sprite layers are prefetched once per portrait URL-set change, reducing hitches and network chatter.
+- Any future imperative image loads should use `loadImage()` / `prefetchImages()` rather than `new Image()` directly.
+
+---
+
+## ADR-0079 — Fix procgen empty rooms: separating locks + keep last layout on failed validation
+Date: 2026-04-07
+
+### Decision
+- Place `lockedDoor` only on a shortest-path tile where closing the lock makes the exit **unreachable** from the entrance (true gate); otherwise try another path index or omit lock/key for that attempt.
+- After bounded rerolls, return the **last full `generateDungeonOnce` result** (always includes BSP rooms) when validation still fails, instead of falling through to a stub with `rooms: []`.
+- If catastrophic failure still requires a fallback, carve a **minimal single-room** layout rather than all-walls empty metadata.
+
+### Rationale
+Validation required “exit not reachable before unlock” while a single lock on one corridor tile could leave alternate routes in looped layouts, causing every attempt to fail and the outer loop to pick `generateDungeonFallback`, which returned empty `rooms`.
+
+### Consequences
+- Lock placement is slightly more selective; some seeds get no lock/key when no separating cell exists on the chosen path.
+- Players always see a real procgen room list unless the fallback path runs (should be rare).
+
+---
+
+## ADR-0080 — Increase default floor size to 31×31 (multi-room BSP)
+Date: 2026-04-07
+
+### Decision
+Change the default first-floor dimensions in `makeInitialState` from **13×13** to **31×31** (regen keeps current `floor.w/h`).
+
+### Rationale
+The BSP generator’s current minimum leaf size and depth limits don’t meaningfully split a 13×13 inner rect, so most seeds look like a single “big room.” 31×31 consistently yields multiple rooms + corridors without changing procgen logic.
+
+### Consequences
+- First load and subsequent regen runs on that save/session will use larger floors.
+- UI/minimap must remain readable at this scale; adjust later if needed.
+
+---
+
+## ADR-0081 — Reduce room fill + increase BSP splits (avoid “single big room” feel)
+Date: 2026-04-07
+
+### Decision
+Adjust procgen BSP parameters to produce more, smaller rooms with more wall separation:
+- min leaf: ~7→~6
+- max BSP depth: 5→6
+- room carve ratio: ~60–80% → ~45–70% of leaf
+
+### Rationale
+Even at 31×31, large leaf rooms + high room-fill can read like one large open space in first-person. Smaller rooms and thicker inter-room walls improve spatial readability.
+
+### Consequences
+- Slightly more corridors/walls; floor coverage decreases.
+- Existing lock/key and POI placement continues to work (still uses floor tiles + room centers).
+
+---
+
+## ADR-0082 — Turn animation uses shortest-path yaw (unwrap across 0/2π)
+Date: 2026-04-07
+
+### Decision
+When animating `player/turn`, compute the target yaw as the **equivalent angle closest to the current yaw** (unwrapping by integer multiples of \(2\pi\)), so the camera always rotates the **shortest** 90° path across the \(0 \leftrightarrow 2\pi\) boundary. On turn completion, snap `view.camYaw` back to the canonical \(dir \cdot \pi/2\) wrapped into \([0,2\pi)\).
+
+### Rationale
+Interpolating yaw directly between canonical angles (e.g. `0` and `3π/2`) can accidentally take a **270°** path, which can present as the first-person view facing “backwards” relative to minimap/movement even though `playerDir` is correct.
+
+### Consequences
+- Grid movement and minimap remain driven by canonical `floor.playerDir` (0..3).
+- The animated camera yaw may be temporarily outside \([0,2\pi)\) during the turn tween; it is canonicalized when the animation ends.
+
+---
+
+## ADR-0083 — Add F2 debug pose readout for yaw diagnostics
+Date: 2026-04-07
+
+### Decision
+Add a small **Pose** readout to the F2 debug panel showing `playerDir`, `view.camYaw`, the canonical yaw for `playerDir`, and the yaw value the renderer applies.
+
+### Rationale
+Camera-facing bugs can stem from state desyncs vs renderer angle wrapping/convention. A live readout makes the failure mode obvious without adding always-on overlays or temporary console logging.
+
+### Consequences
+When the camera appears reversed, we can immediately tell whether `playerDir`, `view.camYaw`, or the renderer-applied yaw is inconsistent.
+
+---
+
+## ADR-0084 — Negate Three.js `rotation.y` vs game yaw (forward XZ convention)
+Date: 2026-04-07
+
+### Decision
+Keep **`view.camYaw` / `playerDir`** as the **game-space** yaw whose forward on the XZ plane is \((\sin y,\,-\cos y)\). In `WorldRenderer`, set the camera Euler **Y** to **`-yawGame`** (after wrap), not `+yawGame`. Camera shake’s lateral world conversion uses the same **`yawThree`** as `rotation.y` so shake stays aligned with the view.
+
+### Rationale
+Three.js `Object3D.rotation.y` rotates the camera’s local \(-Z\) toward \((-\sin y,\,0,\,-\cos y)\), which has the **opposite sign on X** versus our grid/minimap forward convention \((\sin y,\,0,\,-\cos y)\). Using `+yawGame` directly made facing agree with state numbers while the view could look **180° wrong** (especially noticeable after many turns / wrap). Negating matches game forward, movement, and minimap.
+
+### Consequences
+- F2 Pose readout distinguishes **yawGame (logic)** vs **rotation.y (Three.js)**.
+- Any future code that derives world directions from the camera must use the same sign convention (or read from the camera matrix).
+
+---
+
+## ADR-0085 — Portrait frame click: paperdoll + forced idle flash
+Date: 2026-04-07
+
+### Decision
+(original) Clicking the **portrait frame** should open the **paperdoll** and show a short **idle overlay** burst using **`portraitIdleFlashMinMs`…`portraitIdleFlashMaxMs`**.
+
+### Rationale
+Immediate character feedback when opening equipment; reuse idle art + tuning.
+
+### Consequences
+Superseded in practice by **ADR-0086**: portrait-local **`click` / `pointerup` listeners were unreliable** with the compositor HUD + chained **`endPointerUp`**. The shipped approach is **`HudLayout` capture** + **`ui/portraitFrameTap`** + **`ui.portraitIdlePulse`**.
+
+---
+
+## ADR-0086 — Portrait frame tap via HudLayout capture + `portraitIdlePulse` state
+Date: 2026-04-07
+
+### Decision
+Detect portrait-frame taps at **`HudLayout`** using **`onPointerDownCapture` / `onPointerUpCapture`** on **`[data-portrait-character-id]`**, and handle them with **`ui/portraitFrameTap`**, which opens the paperdoll and sets **`ui.portraitIdlePulse`** until **`time/tick`** passes **`untilMs`**. **`PortraitPanel`** only **renders** idle visibility from **`portraitIdlePulse`** (plus ambient idle flashes).
+
+### Rationale
+Portrait-local React listeners still failed in practice (opaque compositor + chained **`pointerup`** / event delegation). Ancestor capture runs first and matches the same DOM markers the player actually hits.
+
+### Consequences
+- **`ui/openPaperdoll`** remains for flows that open equipment without a pulse (if any); the **name/species** button uses **`portraitFrameTap`** for parity with the frame.
+- One more short-lived field on **`UiState`** (`portraitIdlePulse`).
+- **Paperdoll backdrop** ignores outside clicks for ~450ms after open so a trailing **`click`** does not call **`ui/closePaperdoll`** while **`portraitIdlePulse`** (unchanged by close) still makes the idle overlay look “successful.”
+
+---
+
+## ADR-0087 — Modals only in `stageModalLayer` (not in capture HUD)
+Date: 2026-04-07
+
+### Decision
+**`PaperdollModal`** and **`NpcDialogModal`** render **only** in **`DitheredFrameRoot`’s `stageModalLayer`**. Neither **`HudLayout`** (interactive nor capture) mounts them.
+
+### Rationale
+The final image is **WebGL presenter canvas** (3D + HUD **`html2canvas` texture**) with **DOM** allowed above the canvas. If modals exist in **both** the capture tree **and** **`stageModalLayer`**, the texture contains one modal and the DOM draws another → **two** visible modals. Omitting modals from capture leaves **one** DOM modal above the canvas; it is visible and interactive and not multiplied by **`opacity: 0`**.
+
+### Consequences
+- While a modal is open, the **HUD texture** does not include it (only the base HUD); the modal is entirely the **DOM** overlay.
+- **`HudLayout`** no longer imports modal components.
+- **`stageModalLayer`** must use **`pointer-events: auto`** and mount **only when** a modal is open; a **`pointer-events: none`** wrapper let events fall through to **`.interactiveHud`**, so **Close** and other controls never received clicks.
+
+---
+
+## ADR-0088 — Minimap local viewport (~12×12, player-centered)
+Date: 2026-04-07
+
+### Decision
+**`MinimapPanel`** renders a **fixed-size tile viewport** (currently **12×12**, capped by floor `w`/`h`) **centered on `playerPos`**, with the origin **clamped** so the window stays inside the floor. It no longer draws every tile of large procgen floors.
+
+### Rationale
+Full-floor minimaps become unreadable and waste HUD space as dungeon size grows; a local window keeps scale consistent.
+
+### Consequences
+**POIs** and distant terrain **off the window** are hidden until the player moves closer. Constants live beside **`MinimapPanel`**; CSS grid track counts are set **inline** from the viewport size.
+
+---
+
+## ADR-0089 — Random first-load floor seed
+Date: 2026-04-07
+
+### Decision
+`makeInitialState` picks **`floor.seed`** with **`crypto.getRandomValues`** (32-bit), with a **`Math.random` + `performance.now` XOR** fallback when `getRandomValues` is unavailable. The previous fixed seed (**1337**) is removed.
+
+### Rationale
+Cold starts should see varied layouts without manual regen; runs remain reproducible from **`floor.gen`** / debug dump and the stored **`floor.seed`**.
+
+### Consequences
+First load no longer matches the old single fixed dungeon. **`floor/regen`** without an explicit seed still uses time-based mixing (unchanged).
+
+---
+
+## ADR-0090 — Placeholder NPC/POI sprites from `Placeholders/`
+Date: 2026-04-07
+
+### Decision
+Use **`Placeholders/Placeholder_NPC.png`** as the canonical missing-art stand-in. Copy it into **`web/public/content/`** as **`npc_wurglepup.png`** (so `NPC_SPRITE_SRC` resolves) and **`poi_placeholder.png`**. Map POI kinds in **`POI_SPRITE_SRC`**: **Well** → **`/content/npc_well.png`**, other **`PoiKind`** values → **`/content/poi_placeholder.png`**. **`WorldRenderer`** draws POI billboards with the same texture/material path as NPC sprites (aspect-aware scale) instead of the prior shared glyph sprite.
+
+### Rationale
+Avoids broken URLs for Wurglepup and gives POIs visible, consistent placeholder art until per-kind PNGs exist, without scattering different ad-hoc fallbacks.
+
+### Consequences
+Replacing placeholder art updates **`Placeholders/Placeholder_NPC.png`** and re-copies (or replaces) the derived files under **`web/public/content/`**. POI billboard **height** stays fixed at ~**0.55** world units until dedicated POI size tuning exists.
+
+---
+
+## ADR-0091 — Ground POI billboards like NPCs
+Date: 2026-04-07
+
+### Decision
+POI sprite **Y** uses the same **center-pivot floor formula** as NPCs: **`floorTopY + npcFootLift + height * (0.5 - groundY)`**, with **`height === 0.55`** for POIs. **Well** reads **`poiGroundY_Well`**; other POI kinds use **`npcGroundY_Wurglepup`** because they share the Wurglepup/placeholder texture.
+
+### Rationale
+A fixed **`y = 0.72`** was left over from the old compact glyph POI marker; with full-height PNG billboards the sprite center sat far above the floor, so POIs appeared to float.
+
+### Consequences
+F2 exposes **`poiGroundY_Well`** next to NPC ground pivots. **`debug-settings.json`** may persist it.

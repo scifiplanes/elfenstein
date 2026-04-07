@@ -6,6 +6,7 @@ import type { GameState } from '../../game/types'
 import { useEffect, useState } from 'react'
 import { useCursor } from '../cursor/useCursor'
 import { shakeTransform } from '../feedback/shakeTransform'
+import { loadImage, prefetchImages } from '../assets/imageCache'
 import styles from './PortraitPanel.module.css'
 
 type PortraitSprites =
@@ -59,6 +60,13 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const cursor = useCursor()
   const c = state.party.chars.find((x) => x.id === characterId) ?? null
   const portrait = c ? SPECIES_PORTRAIT[c.species] : undefined
+  const portraitBaseSrc = portrait?.baseSrc ?? ''
+  const portraitEyesSrc = portrait && portrait.kind !== 'frosh' ? portrait.eyesSrc : ''
+  const portraitEyesSrcL = portrait && portrait.kind === 'frosh' ? portrait.eyesSrcL : ''
+  const portraitEyesSrcR = portrait && portrait.kind === 'frosh' ? portrait.eyesSrcR : ''
+  const portraitEyesInspectSrc = portrait?.eyesInspectSrc ?? ''
+  const portraitMouthSrc = portrait?.mouthSrc ?? ''
+  const portraitIdleSrc = portrait?.idleSrc ?? ''
   const [blinkClosed, setBlinkClosed] = useState(false)
   const [blinkClosedL, setBlinkClosedL] = useState(false)
   const [blinkClosedR, setBlinkClosedR] = useState(false)
@@ -68,7 +76,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   useEffect(() => {
     let cancelled = false
     const timeoutIds: number[] = []
-    if (!portrait || !c) return
+    if (!portrait) return
 
     const schedule = (ms: number, fn: () => void) => {
       const id = window.setTimeout(() => {
@@ -121,29 +129,49 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   }, [
     characterId,
     portrait?.kind,
-    portrait && portrait.kind === 'frosh' ? portrait.eyesSrcL : (portrait as any)?.eyesSrc,
-    portrait && portrait.kind === 'frosh' ? portrait.eyesSrcR : '',
-    c,
+    portraitEyesSrc,
+    portraitEyesSrcL,
+    portraitEyesSrcR,
   ])
 
   useEffect(() => {
-    if (!portrait?.baseSrc || !c) return
+    if (!portraitBaseSrc) return
     let cancelled = false
-    const img = new Image()
-    img.onload = () => {
-      if (cancelled) return
-      const w = img.naturalWidth || 0
-      const h = img.naturalHeight || 0
-      if (w > 0 && h > 0) setPortraitAr(w / h)
-    }
-    img.src = portrait.baseSrc
+    loadImage(portraitBaseSrc)
+      .then((img) => {
+        if (cancelled) return
+        const w = img.naturalWidth || 0
+        const h = img.naturalHeight || 0
+        if (w > 0 && h > 0) setPortraitAr(w / h)
+      })
+      .catch(() => {
+        // Keep previous AR; the portrait will still render via <img>.
+      })
     return () => {
       cancelled = true
     }
-  }, [portrait?.baseSrc, c])
+  }, [portraitBaseSrc])
 
   useEffect(() => {
-    if (!portrait?.idleSrc || !c) return
+    if (!portrait) return
+    if (portrait.kind === 'frosh') {
+      prefetchImages([portraitBaseSrc, portraitEyesSrcL, portraitEyesSrcR, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+    } else {
+      prefetchImages([portraitBaseSrc, portraitEyesSrc, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+    }
+  }, [
+    portrait?.kind,
+    portraitBaseSrc,
+    portraitEyesSrc,
+    portraitEyesSrcL,
+    portraitEyesSrcR,
+    portraitEyesInspectSrc,
+    portraitMouthSrc,
+    portraitIdleSrc,
+  ])
+
+  useEffect(() => {
+    if (!portraitIdleSrc) return
     let cancelled = false
     let timeoutId: number | null = null
 
@@ -173,12 +201,11 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     }
   }, [
     characterId,
-    portrait?.idleSrc,
+    portraitIdleSrc,
     state.render.portraitIdleGapMinMs,
     state.render.portraitIdleGapMaxMs,
     state.render.portraitIdleFlashMinMs,
     state.render.portraitIdleFlashMaxMs,
-    c,
   ])
 
   const isHoveringEyes =
@@ -255,6 +282,10 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
+  const pulse = state.ui.portraitIdlePulse
+  const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > state.nowMs
+  const showIdle = idleFlash || pulseIdle
+
   return (
     <div
       className={styles.root}
@@ -268,7 +299,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
       <button
         type="button"
         className={styles.btn}
-        onClick={() => dispatch({ type: 'ui/openPaperdoll', characterId })}
+        onClick={() => dispatch({ type: 'ui/portraitFrameTap', characterId })}
       >
         {c.name} · {c.species}
       </button>
@@ -277,6 +308,14 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
         className={styles.portrait}
         data-portrait-box="true"
         data-portrait-character-id={characterId}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            dispatch({ type: 'ui/portraitFrameTap', characterId })
+          }
+        }}
         style={
           {
             ...(portraitShakeStyle ?? {}),
@@ -308,7 +347,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             ) : null}
             {portrait.idleSrc ? (
               <img
-                className={`${styles.sprite} ${idleFlash ? '' : styles.idleHidden}`}
+                className={`${styles.sprite} ${showIdle ? '' : styles.idleHidden}`}
                 src={portrait.idleSrc}
                 alt=""
                 draggable={false}

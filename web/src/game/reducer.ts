@@ -6,16 +6,38 @@ import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlo
 import { feedCharacter, inspectCharacter } from './state/interactions'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
-import { makeDropJitter } from './state/dropJitter'
 import { generateDungeon } from '../procgen/generateDungeon'
+import { makeDropJitter } from './state/dropJitter'
+import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe, maybeFinishCrafting, startCrafting } from './state/crafting'
 
 const CONTENT = ContentDB.createDefault()
 
+const TAU = Math.PI * 2
+
+function wrapTau(a: number) {
+  // Normalize into [0, 2π) for stable camera application/debugging.
+  const r = a % TAU
+  return r < 0 ? r + TAU : r
+}
+
+function canonicalYawForDir(dir: 0 | 1 | 2 | 3) {
+  return wrapTau((dir * Math.PI) / 2)
+}
+
+function nearestEquivalentAngle(from: number, to: number) {
+  // Pick to + k*2π (k any integer) closest to `from`, so turn anim always takes the short way
+  // even if `from` has drifted outside [0, 2π) due to earlier interpolation.
+  const k = Math.round((from - to) / TAU)
+  return to + k * TAU
+}
+
 export type Action =
   | { type: 'ui/toggleDebug' }
   | { type: 'ui/openPaperdoll'; characterId: string }
+  /** Opens paperdoll and schedules idle overlay pulse (HUD capture path; avoids lost clicks). */
+  | { type: 'ui/portraitFrameTap'; characterId: string }
   | { type: 'ui/closePaperdoll' }
   | { type: 'ui/openNpcDialog'; npcId: string }
   | { type: 'ui/closeNpcDialog' }
@@ -48,6 +70,21 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
     case 'ui/openPaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: action.characterId } }
+    case 'ui/portraitFrameTap': {
+      if (!state.party.chars.some((c) => c.id === action.characterId)) return state
+      const min = state.render.portraitIdleFlashMinMs
+      const max = state.render.portraitIdleFlashMaxMs
+      const span = Math.max(0, max - min)
+      const ms = Math.round(min + Math.random() * span)
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          paperdollFor: action.characterId,
+          portraitIdlePulse: { characterId: action.characterId, untilMs: state.nowMs + ms },
+        },
+      }
+    }
     case 'ui/closePaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
     case 'ui/openNpcDialog':
@@ -79,13 +116,27 @@ export function reduce(state: GameState, action: Action): GameState {
       const next: GameState = { ...state, nowMs: action.nowMs }
       const withDecay = applyStatusDecay(next)
       const withCrafting = maybeFinishCrafting(withDecay)
-      const withAnim = tickViewAnimation(withCrafting)
+      let withAnim = tickViewAnimation(withCrafting)
+
+      // Invariant: when not turning, camera yaw must match the canonical facing.
+      // This prevents rare desyncs where movement/minimap are correct but the 3D camera ends up reversed.
+      const a = withAnim.view.anim
+      if (!a || a.kind !== 'turn') {
+        const want = canonicalYawForDir(withAnim.floor.playerDir)
+        if (wrapTau(withAnim.view.camYaw) !== want) {
+          withAnim = { ...withAnim, view: { ...withAnim.view, camYaw: want } }
+        }
+      }
       const toast = withCrafting.ui.toast && withCrafting.ui.toast.untilMs <= action.nowMs ? undefined : withCrafting.ui.toast
       const shake = withCrafting.ui.shake && withCrafting.ui.shake.untilMs <= action.nowMs ? undefined : withCrafting.ui.shake
       const portraitMouth =
         withCrafting.ui.portraitMouth && withCrafting.ui.portraitMouth.untilMs <= action.nowMs ? undefined : withCrafting.ui.portraitMouth
       const portraitShake =
         withCrafting.ui.portraitShake && withCrafting.ui.portraitShake.untilMs <= action.nowMs ? undefined : withCrafting.ui.portraitShake
+      const portraitIdlePulse =
+        withCrafting.ui.portraitIdlePulse && withCrafting.ui.portraitIdlePulse.untilMs <= action.nowMs
+          ? undefined
+          : withCrafting.ui.portraitIdlePulse
       const sfxQueue = withCrafting.ui.sfxQueue ?? []
       const clearedQueue = sfxQueue.length ? [] : sfxQueue
       if (
@@ -93,10 +144,14 @@ export function reduce(state: GameState, action: Action): GameState {
         shake !== withAnim.ui.shake ||
         portraitMouth !== withAnim.ui.portraitMouth ||
         portraitShake !== withAnim.ui.portraitShake ||
+        portraitIdlePulse !== withAnim.ui.portraitIdlePulse ||
         clearedQueue !== sfxQueue ||
         withAnim.view !== withCrafting.view
       ) {
-        return { ...withAnim, ui: { ...withAnim.ui, toast, shake, portraitMouth, portraitShake, sfxQueue: clearedQueue } }
+        return {
+          ...withAnim,
+          ui: { ...withAnim.ui, toast, shake, portraitMouth, portraitShake, portraitIdlePulse, sfxQueue: clearedQueue },
+        }
       }
       return withAnim
     }
@@ -135,9 +190,9 @@ export function reduce(state: GameState, action: Action): GameState {
       const w = state.floor.w
       const h = state.floor.h
       const gen = generateDungeon({ seed: nextSeed, w, h, floorType: 'Dungeon', floorProperties: [] })
-      const playerPos = { x: Math.floor(w / 2), y: h - 2 }
+      const playerPos = { ...gen.entrance }
       const playerDir = 0 as const
-      const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state, gen.floorItems, nextSeed)
+      const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
       return {
         ...state,
         floor: {
@@ -147,12 +202,12 @@ export function reduce(state: GameState, action: Action): GameState {
           pois: gen.pois,
           gen,
           itemsOnFloor: spawnedOnFloor,
-          npcs: state.floor.npcs,
+          npcs: gen.npcs,
           playerPos,
           playerDir,
         },
         party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
-        view: viewSnapToGrid(state, playerPos, playerDir),
+        view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
         ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `Regenerated (seed ${nextSeed}).`, untilMs: state.nowMs + 1200 } },
       }
     }
@@ -160,7 +215,8 @@ export function reduce(state: GameState, action: Action): GameState {
       if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
       const fromYaw = state.view.camYaw
-      const toYaw = (dir * Math.PI) / 2
+      const baseToYaw = (dir * Math.PI) / 2
+      const toYaw = nearestEquivalentAngle(fromYaw, baseToYaw)
       const startedAtMs = state.nowMs
       const endsAtMs = startedAtMs + 90
       return {
@@ -409,6 +465,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcGroundY_Bobr = clampNpcGroundY(r.npcGroundY_Bobr ?? 0)
   const npcGroundY_Skeleton = clampNpcGroundY(r.npcGroundY_Skeleton ?? 0)
   const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
+  const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
 
   const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
   const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
@@ -456,6 +513,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcGroundY_Bobr,
     npcGroundY_Skeleton,
     npcGroundY_Catoctopus,
+    poiGroundY_Well,
     npcSize_Wurglepup,
     npcSizeRand_Wurglepup,
     npcSize_Bobr,
@@ -493,38 +551,6 @@ function hashStr(s: string) {
     h = Math.imul(h, 16777619)
   }
   return h >>> 0
-}
-
-function hydrateGenFloorItems(state: GameState, floorItems: Array<{ defId: string; pos: { x: number; y: number }; qty?: number }>, floorSeed: number) {
-  if (!floorItems.length) return { spawnedItems: {} as GameState['party']['items'], spawnedOnFloor: [] as GameState['floor']['itemsOnFloor'] }
-  const spawnedItems: GameState['party']['items'] = {}
-  const spawnedOnFloor: GameState['floor']['itemsOnFloor'] = []
-  for (let i = 0; i < floorItems.length; i++) {
-    const it = floorItems[i]
-    const id = `g_${floorSeed}_${it.defId}_${it.pos.x}_${it.pos.y}_${i}`
-    spawnedItems[id] = { id, defId: it.defId, qty: it.qty ?? 1 }
-    const jitter = makeDropJitter({
-      floorSeed,
-      itemId: id,
-      nonce: 0,
-      radius: state.render.dropJitterRadius ?? 0.28,
-    })
-    spawnedOnFloor.push({ id, pos: { x: it.pos.x, y: it.pos.y }, jitter })
-  }
-  return { spawnedItems, spawnedOnFloor }
-}
-
-function viewSnapToGrid(state: GameState, playerPos: { x: number; y: number }, playerDir: 0 | 1 | 2 | 3): GameState['view'] {
-  const { w, h } = state.floor
-  return {
-    camPos: {
-      x: playerPos.x - w / 2,
-      y: state.render.camEyeHeight,
-      z: playerPos.y - h / 2,
-    },
-    camYaw: (playerDir * Math.PI) / 2,
-    anim: undefined,
-  }
 }
 
 function dirVec(dir: 0 | 1 | 2 | 3) {
@@ -599,7 +625,9 @@ function tickViewAnimation(state: GameState): GameState {
   const a = state.view.anim
   if (!a) return state
   if (state.nowMs >= a.endsAtMs) {
-    return { ...state, view: { ...state.view, camPos: a.toPos, camYaw: a.toYaw, anim: undefined } }
+    const camYaw =
+      a.kind === 'turn' ? canonicalYawForDir(state.floor.playerDir) : a.toYaw
+    return { ...state, view: { ...state.view, camPos: a.toPos, camYaw, anim: undefined } }
   }
   const t = (state.nowMs - a.startedAtMs) / Math.max(1, a.endsAtMs - a.startedAtMs)
   const sm = t * t * (3 - 2 * t)

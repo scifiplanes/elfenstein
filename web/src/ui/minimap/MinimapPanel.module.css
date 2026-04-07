@@ -9,8 +9,6 @@
 
 .map {
   display: grid;
-  grid-template-columns: repeat(13, 10px);
-  grid-template-rows: repeat(13, 10px);
   gap: 2px;
 }
 

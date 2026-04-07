@@ -1,8 +1,22 @@
 import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
-import type { GameState } from '../game/types'
+import type { GameState, PoiKind } from '../game/types'
 import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
 import { NPC_SPRITE_SRC } from '../game/npc/npcDefs'
+import { POI_SPRITE_SRC } from '../game/poi/poiDefs'
+
+const TAU = Math.PI * 2
+
+function wrapPi(a: number) {
+  // Normalize into (-π, π] to keep Euler->quaternion conversions stable even if upstream yaw drifts.
+  // JS `%` is remainder (keeps sign), so we must re-wrap into [0, 2π) first.
+  const r = ((a + Math.PI) % TAU + TAU) % TAU // [0, 2π)
+  return r - Math.PI // (-π, π]
+}
+
+function canonicalYawForDir(dir: 0 | 1 | 2 | 3) {
+  return wrapPi((dir * Math.PI) / 2)
+}
 
 export class WorldRenderer {
   private readonly renderer: THREE.WebGLRenderer
@@ -30,6 +44,10 @@ export class WorldRenderer {
   private readonly npcSpriteMats: Partial<Record<GameState['floor']['npcs'][number]['kind'], THREE.SpriteMaterial>> = {}
   private readonly npcSpriteAspects: Partial<Record<GameState['floor']['npcs'][number]['kind'], number>> = {}
   private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: GameState['floor']['npcs'][number]['kind'] }> = []
+
+  private readonly poiSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
+  private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
+  private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -67,6 +85,11 @@ export class WorldRenderer {
 
   dispose() {
     for (const m of Object.values(this.npcSpriteMats)) {
+      if (!m) continue
+      m.map?.dispose()
+      m.dispose()
+    }
+    for (const m of Object.values(this.poiSpriteMats)) {
       if (!m) continue
       m.map?.dispose()
       m.dispose()
@@ -225,7 +248,11 @@ export class WorldRenderer {
     // Camera reads from view state (supports tweening).
     const basePos = state.view.camPos
     const pitch = (state.render.camPitchDeg * Math.PI) / 180
-    const yaw = state.view.camYaw
+    // Game yaw uses forward (sin(y), 0, -cos(y)) in world XZ. Three.js `rotation.y` rotates local -Z
+    // into (-sin(y), 0, -cos(y)) — opposite X sign — so we negate here to match game/minimap facing.
+    const yawRaw = state.view.anim?.kind === 'turn' ? state.view.camYaw : canonicalYawForDir(state.floor.playerDir)
+    const yawGame = wrapPi(yawRaw)
+    const yawThree = -yawGame
 
     // Apply interaction camera shake (3D view). Non-accumulating: derived from base pose each frame.
     const uiShake = state.ui.shake
@@ -244,8 +271,8 @@ export class WorldRenderer {
     // Camera forward/back offset (feel/debug): move along facing without changing grid state.
     const camForward = Number(state.render.camForwardOffset ?? 0)
     if (camForward !== 0) {
-      const fx = Math.sin(yaw)
-      const fz = -Math.cos(yaw)
+      const fx = Math.sin(yawGame)
+      const fz = -Math.cos(yawGame)
       x += fx * camForward
       z += fz * camForward
     }
@@ -266,9 +293,9 @@ export class WorldRenderer {
       const dxLocal = Math.sin(w) * state.render.camShakePosAmp * mag
       const dyLocal = Math.cos(w * 0.93 + 1.7) * state.render.camShakePosAmp * 0.75 * mag
 
-      // Convert camera-local X into world space using yaw (good enough for subtle shake).
-      const c = Math.cos(yaw)
-      const s = Math.sin(yaw)
+      // Align shake lateral translation with Three.js camera orientation (yawThree).
+      const c = Math.cos(yawThree)
+      const s = Math.sin(yawThree)
       x += c * dxLocal
       z += -s * dxLocal
       y += dyLocal
@@ -277,7 +304,7 @@ export class WorldRenderer {
     }
 
     this.camera.position.set(x, y, z)
-    this.camera.rotation.set(pitch, yaw, roll)
+    this.camera.rotation.set(pitch, yawThree, roll)
 
     // Lantern is camera-attached; offsets are in camera-local space (forward is -Z).
     this.lantern.position.set(0, state.render.lanternVerticalOffset, -state.render.lanternForwardOffset)
@@ -292,6 +319,7 @@ export class WorldRenderer {
     const g = new THREE.Group()
     this.pickables = []
     this.npcSprites = []
+    this.poiSprites = []
 
     const wallTex = makeWallTexture(state.floor.seed ^ 0x111)
     const floorTex = makeFloorTexture(state.floor.seed ^ 0x222)
@@ -361,18 +389,18 @@ export class WorldRenderer {
       }
     }
 
-    const poiMat = makeBillboardMaterial('✦', '#ffd59a')
     const itemMat = makeBillboardMaterial('◻', '#b6ff8b')
 
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
-      const s = new THREE.Sprite(poiMat)
-      s.position.set(x, 0.72, z)
-      s.scale.set(0.55, 0.55, 1)
+      const s = new THREE.Sprite(this.getPoiSpriteMat(p.kind))
+      s.position.set(x, 0, z)
+      // Scale and floor grounding are applied in `syncTuning()` (same center-pivot math as NPCs).
       s.userData = { kind: 'poi', id: p.id }
       g.add(s)
       this.pickables.push(s)
+      this.poiSprites.push({ sprite: s, id: p.id, kind: p.kind })
     })
 
     state.floor.npcs.forEach((n) => {
@@ -459,6 +487,49 @@ export class WorldRenderer {
     }
 
     this.syncNpcSpriteScales(state)
+    this.syncPoiSpriteScales(state)
+  }
+
+  private getPoiSpriteMat(kind: PoiKind): THREE.SpriteMaterial {
+    const cached = this.poiSpriteMats[kind]
+    if (cached) return cached
+
+    const src = POI_SPRITE_SRC[kind]
+    const tex = this.textureLoader.load(src, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const iw = img && typeof img.width === 'number' ? img.width : 0
+      const ih = img && typeof img.height === 'number' ? img.height : 0
+      if (iw > 0 && ih > 0) this.poiSpriteAspects[kind] = iw / ih
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.poiSpriteMats[kind] = mat
+    return mat
+  }
+
+  private syncPoiSpriteScales(state: GameState) {
+    if (!this.poiSprites.length) return
+
+    const floorTopY = 0
+    const lift = Number(state.render.npcFootLift ?? 0)
+    const baseH = 0.55
+    for (const p of this.poiSprites) {
+      const aspect = this.poiSpriteAspects[p.kind] ?? 1.0
+      p.sprite.scale.set(baseH * aspect, baseH, 1)
+      const groundY = this.getPoiGroundYForKind(state, p.kind)
+      p.sprite.position.y = floorTopY + lift + baseH * (0.5 - groundY)
+    }
+  }
+
+  /** Normalized pivot from bottom of texture (same convention as `npcGroundY_*`). */
+  private getPoiGroundYForKind(state: GameState, kind: PoiKind) {
+    if (kind === 'Well') return state.render.poiGroundY_Well
+    // Chest/Bed/Shrine/CrackedWall use the same placeholder PNG as Wurglepup today.
+    return state.render.npcGroundY_Wurglepup
   }
 
   private getNpcSpriteMat(kind: GameState['floor']['npcs'][number]['kind']): THREE.SpriteMaterial {

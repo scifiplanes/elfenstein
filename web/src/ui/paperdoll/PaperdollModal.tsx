@@ -1,4 +1,5 @@
 import type { Dispatch } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { EquipmentSlot, GameState } from '../../game/types'
@@ -11,6 +12,14 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
   const { state, dispatch, content } = props
   const cursor = useCursor()
   const characterId = state.ui.paperdollFor
+  /** Opening from a portrait tap dispatches before the synthetic `click`; the click then hits this full-screen backdrop and would close immediately. */
+  const suppressBackdropCloseUntilRef = useRef(0)
+  useLayoutEffect(() => {
+    if (characterId) {
+      suppressBackdropCloseUntilRef.current = performance.now() + 450
+    }
+  }, [characterId])
+
   if (!characterId) return null
   const c = state.party.chars.find((x) => x.id === characterId)
   if (!c) return null
@@ -18,7 +27,14 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
   return (
     <div
       className={styles.backdrop}
-      onClick={() => dispatch({ type: 'ui/closePaperdoll' })}
+      onClick={(e) => {
+        if (performance.now() < suppressBackdropCloseUntilRef.current) {
+          e.preventDefault()
+          e.stopPropagation()
+          return
+        }
+        dispatch({ type: 'ui/closePaperdoll' })
+      }}
       onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
