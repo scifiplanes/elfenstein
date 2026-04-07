@@ -12,6 +12,12 @@
   padding: 12px;
 }
 
+.root[data-capture='true'] {
+  /* The capture HUD is placed inside an offscreen wrapper.
+     Use absolute so `position: fixed` doesn't pin it back onto the viewport. */
+  position: absolute;
+}
+
 .panel {
   background: var(--panel);
   border: 1px solid var(--panelBorder);
@@ -27,6 +33,14 @@
   grid-area: game;
   padding: 0;
   border-radius: 14px;
+  background: transparent;
+}
+
+.root[data-capture='true'] .panel.game {
+  background: transparent;
+  border-color: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
 }
 
 .inventory {

@@ -1,4 +1,5 @@
 import type { Dispatch } from 'react'
+import type React from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
@@ -27,14 +28,14 @@ const SPECIES_FALLBACK_FACE: Record<string, string> = {
 export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB; characterId: string }) {
   const { state, dispatch, characterId } = props
   const cursor = useCursor()
-  const c = state.party.chars.find((x) => x.id === characterId)
-  if (!c) return null
-  const portrait = SPECIES_PORTRAIT[c.species]
+  const c = state.party.chars.find((x) => x.id === characterId) ?? null
+  const portrait = c ? SPECIES_PORTRAIT[c.species] : undefined
   const [blinkClosed, setBlinkClosed] = useState(false)
   const [idleFlash, setIdleFlash] = useState(false)
+  const [portraitAr, setPortraitAr] = useState<number>(1)
 
   useEffect(() => {
-    if (!portrait?.eyesSrc) return
+    if (!portrait?.eyesSrc || !c) return
     let cancelled = false
     let timeoutId: number | null = null
 
@@ -59,10 +60,10 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
       cancelled = true
       if (timeoutId != null) window.clearTimeout(timeoutId)
     }
-  }, [characterId, portrait?.eyesSrc])
+  }, [characterId, portrait?.eyesSrc, c])
 
   useEffect(() => {
-    if (!portrait?.idleSrc) return
+    if (!portrait?.idleSrc || !c) return
     let cancelled = false
     let timeoutId: number | null = null
 
@@ -97,7 +98,24 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     state.render.portraitIdleGapMaxMs,
     state.render.portraitIdleFlashMinMs,
     state.render.portraitIdleFlashMaxMs,
+    c,
   ])
+
+  useEffect(() => {
+    if (!portrait?.baseSrc || !c) return
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      const w = img.naturalWidth || 0
+      const h = img.naturalHeight || 0
+      if (w > 0 && h > 0) setPortraitAr(w / h)
+    }
+    img.src = portrait.baseSrc
+    return () => {
+      cancelled = true
+    }
+  }, [portrait?.baseSrc, c])
 
   const isHoveringMouth =
     cursor.state.dragging?.started &&
@@ -123,6 +141,8 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
         }
       : undefined
 
+  if (!c) return null
+
   return (
     <div
       className={styles.root}
@@ -140,7 +160,16 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
         {c.name} · {c.species}
       </button>
 
-      <div className={styles.portrait} style={portraitShakeStyle}>
+      <div
+        className={styles.portrait}
+        data-portrait-box="true"
+        style={
+          {
+            ...(portraitShakeStyle ?? {}),
+            ['--portrait-ar' as unknown as string]: `${portraitAr}`,
+          } as unknown as React.CSSProperties
+        }
+      >
         {portrait ? (
           <div className={styles.spriteStack} aria-hidden="true">
             <img className={styles.sprite} src={portrait.baseSrc} alt="" draggable={false} />
