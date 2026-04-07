@@ -35,6 +35,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const portraitSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
+      { key: 'portraitShakeLengthMs', label: 'Portrait shake length / hold (ms)', min: 0, max: 12_000, step: 10, format: (v) => String(Math.round(v)) },
+      { key: 'portraitShakeDecayMs', label: 'Portrait shake decay / fade (ms)', min: 0, max: 3000, step: 10, format: (v) => String(Math.round(v)) },
+      { key: 'portraitShakeMagnitudeScale', label: 'Portrait shake amplitude', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
       {
         key: 'portraitIdleGapMinMs',
         label: 'Portrait idle gap min (ms)',

@@ -35,6 +35,10 @@ export const DEFAULT_RENDER: RenderTuning = {
   portraitIdleGapMaxMs: 18000,
   portraitIdleFlashMinMs: 120,
   portraitIdleFlashMaxMs: 350,
+  // Start by matching camera shake envelope so existing feel is unchanged until tuned.
+  portraitShakeLengthMs: 0,
+  portraitShakeDecayMs: 220,
+  portraitShakeMagnitudeScale: 1.0,
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {

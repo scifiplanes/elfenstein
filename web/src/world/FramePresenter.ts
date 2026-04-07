@@ -53,7 +53,9 @@ export class FramePresenter {
     this.lastSize = { w, h }
     this.lastDpr = capped
     this.renderer.setPixelRatio(capped)
-    this.renderer.setSize(w, h, false)
+    // Keep the canvas element's CSS size locked to the render size.
+    // Otherwise the browser may stretch the drawing buffer to fit fractional CSS pixels during resize.
+    this.renderer.setSize(w, h, true)
     // EffectComposer maintains its own internal render targets; it needs pixelRatio too.
     ;(this.composer as unknown as { setPixelRatio?: (dpr: number) => void }).setPixelRatio?.(capped)
     this.composer.setSize(w, h)

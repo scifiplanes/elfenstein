@@ -134,9 +134,9 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             state.nowMs,
             ps.startedAtMs ?? ps.untilMs - 160,
             ps.untilMs,
-            ps.magnitude,
-            state.render.camShakeLengthMs,
-            state.render.camShakeDecayMs,
+            ps.magnitude * state.render.portraitShakeMagnitudeScale,
+            state.render.portraitShakeLengthMs,
+            state.render.portraitShakeDecayMs,
           ),
         }
       : undefined
