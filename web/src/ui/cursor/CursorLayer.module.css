@@ -7,9 +7,9 @@
 
 .hand {
   position: absolute;
-  width: 56px;
-  height: 56px;
-  transform: translate(-12px, -10px);
+  width: calc(56px * 1.1);
+  height: calc(56px * 1.1);
+  transform: translate(calc(-12px * 1.1), calc(-10px * 1.1));
   background-repeat: no-repeat;
   background-size: contain;
   filter: drop-shadow(0 12px 18px rgba(0, 0, 0, 0.55));
