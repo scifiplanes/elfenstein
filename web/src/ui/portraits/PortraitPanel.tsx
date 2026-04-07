@@ -8,14 +8,43 @@ import { useCursor } from '../cursor/useCursor'
 import { shakeTransform } from '../feedback/shakeTransform'
 import styles from './PortraitPanel.module.css'
 
-type PortraitSprites = { baseSrc: string; eyesSrc: string; mouthSrc: string; idleSrc?: string }
+type PortraitSprites =
+  | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; idleSrc?: string }
+  | {
+      kind: 'frosh'
+      baseSrc: string
+      eyesSrcL: string
+      eyesSrcR: string
+      eyesInspectSrc?: string
+      mouthSrc: string
+      idleSrc?: string
+    }
 
 const SPECIES_PORTRAIT: Partial<Record<GameState['party']['chars'][number]['species'], PortraitSprites>> = {
   Igor: {
+    kind: 'simple',
     baseSrc: '/content/boblin_base.png',
     eyesSrc: '/content/boblin_eyes_open.png',
+    eyesInspectSrc: '/content/boblin_eyes_inspect.png',
     mouthSrc: '/content/boblin_mouth_open.png',
     idleSrc: '/content/boblin_idle.png',
+  },
+  Mycyclops: {
+    kind: 'simple',
+    baseSrc: '/content/myclops_base.png',
+    eyesSrc: '/content/myclops_eyes_open.png',
+    eyesInspectSrc: '/content/myclops_eyes_inspect.png',
+    mouthSrc: '/content/myclops_mouth_open.png',
+    idleSrc: '/content/myclops_idle.png',
+  },
+  Frosch: {
+    kind: 'frosh',
+    baseSrc: '/content/frosh_base.png',
+    eyesSrcL: '/content/frosh_eye_L.png',
+    eyesSrcR: '/content/frosh_eye_R.png',
+    eyesInspectSrc: '/content/frosh_eye_inspect.png',
+    mouthSrc: '/content/frosh_mouth_open.png',
+    idleSrc: '/content/frosh_idle.png',
   },
 }
 
@@ -31,36 +60,87 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const c = state.party.chars.find((x) => x.id === characterId) ?? null
   const portrait = c ? SPECIES_PORTRAIT[c.species] : undefined
   const [blinkClosed, setBlinkClosed] = useState(false)
+  const [blinkClosedL, setBlinkClosedL] = useState(false)
+  const [blinkClosedR, setBlinkClosedR] = useState(false)
   const [idleFlash, setIdleFlash] = useState(false)
   const [portraitAr, setPortraitAr] = useState<number>(1)
 
   useEffect(() => {
-    if (!portrait?.eyesSrc || !c) return
     let cancelled = false
-    let timeoutId: number | null = null
+    const timeoutIds: number[] = []
+    if (!portrait || !c) return
 
     const schedule = (ms: number, fn: () => void) => {
-      timeoutId = window.setTimeout(() => {
+      const id = window.setTimeout(() => {
         if (cancelled) return
         fn()
       }, ms)
+      timeoutIds.push(id)
     }
 
-    const startCycle = () => {
+    const openMs = () => 2200 + Math.random() * 3800
+    const blinkMs = () => 70 + Math.random() * 70
+
+    const startCycleSimple = () => {
       // Eyes stay open for a while, then briefly close (blink).
       setBlinkClosed(false)
-      schedule(2200 + Math.random() * 3800, () => {
+      schedule(openMs(), () => {
         setBlinkClosed(true)
-        schedule(70 + Math.random() * 70, () => startCycle())
+        schedule(blinkMs(), () => startCycleSimple())
       })
     }
 
-    startCycle()
+    const startCycleFrosh = () => {
+      // Frosh has independent eye sprites; blink with a slight offset between L/R.
+      setBlinkClosed(false)
+      setBlinkClosedL(false)
+      setBlinkClosedR(false)
+      schedule(openMs(), () => {
+        const offsetMs = 35 + Math.random() * 110
+        const durL = blinkMs()
+        const durR = blinkMs()
+
+        setBlinkClosedL(true)
+        schedule(durL, () => setBlinkClosedL(false))
+
+        schedule(offsetMs, () => {
+          setBlinkClosedR(true)
+          schedule(durR, () => setBlinkClosedR(false))
+        })
+
+        schedule(Math.max(durL, offsetMs + durR) + 40, () => startCycleFrosh())
+      })
+    }
+
+    if (portrait.kind === 'frosh') startCycleFrosh()
+    else startCycleSimple()
     return () => {
       cancelled = true
-      if (timeoutId != null) window.clearTimeout(timeoutId)
+      for (const id of timeoutIds) window.clearTimeout(id)
     }
-  }, [characterId, portrait?.eyesSrc, c])
+  }, [
+    characterId,
+    portrait?.kind,
+    portrait && portrait.kind === 'frosh' ? portrait.eyesSrcL : (portrait as any)?.eyesSrc,
+    portrait && portrait.kind === 'frosh' ? portrait.eyesSrcR : '',
+    c,
+  ])
+
+  useEffect(() => {
+    if (!portrait?.baseSrc || !c) return
+    let cancelled = false
+    const img = new Image()
+    img.onload = () => {
+      if (cancelled) return
+      const w = img.naturalWidth || 0
+      const h = img.naturalHeight || 0
+      if (w > 0 && h > 0) setPortraitAr(w / h)
+    }
+    img.src = portrait.baseSrc
+    return () => {
+      cancelled = true
+    }
+  }, [portrait?.baseSrc, c])
 
   useEffect(() => {
     if (!portrait?.idleSrc || !c) return
@@ -101,30 +181,45 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     c,
   ])
 
-  useEffect(() => {
-    if (!portrait?.baseSrc || !c) return
-    let cancelled = false
-    const img = new Image()
-    img.onload = () => {
-      if (cancelled) return
-      const w = img.naturalWidth || 0
-      const h = img.naturalHeight || 0
-      if (w > 0 && h > 0) setPortraitAr(w / h)
-    }
-    img.src = portrait.baseSrc
-    return () => {
-      cancelled = true
-    }
-  }, [portrait?.baseSrc, c])
-
+  const isHoveringEyes =
+    cursor.state.dragging?.started &&
+    cursor.state.hoverTarget?.kind === 'portrait' &&
+    cursor.state.hoverTarget.characterId === characterId &&
+    cursor.state.hoverTarget.target === 'eyes'
   const isHoveringMouth =
     cursor.state.dragging?.started &&
     cursor.state.hoverTarget?.kind === 'portrait' &&
     cursor.state.hoverTarget.characterId === characterId &&
     cursor.state.hoverTarget.target === 'mouth'
-  const isMouthFlashActive = state.ui.portraitMouth?.characterId === characterId && state.ui.portraitMouth.untilMs > state.nowMs
-  const showMouth = isHoveringMouth || isMouthFlashActive
-  const mouthAnimKey = isMouthFlashActive ? `mouth_${state.ui.portraitMouth?.startedAtMs ?? 0}` : 'mouth_idle'
+  const mouthCue = state.ui.portraitMouth?.characterId === characterId && state.ui.portraitMouth.untilMs > state.nowMs ? state.ui.portraitMouth : null
+  const isMouthCueActive = !!mouthCue
+  const mouthAnimKey = isMouthCueActive ? `mouth_${mouthCue?.startedAtMs ?? 0}` : 'mouth_idle'
+
+  const flickerHz = Math.max(0, Number(state.render.portraitMouthFlickerHz ?? 0))
+  const flickerAmount = Math.max(0, Math.round(Number(state.render.portraitMouthFlickerAmount ?? 0)))
+  // Amount is interpreted as number of visible “chomps” (mouth-on pulses).
+  const flickerSteps = flickerAmount * 2
+  const flickerEnabled = flickerHz > 0 && flickerSteps > 0
+  const cueFlickerOn = (() => {
+    if (!mouthCue) return false
+    if (!flickerEnabled) return true
+    const startedAtMs = mouthCue.startedAtMs ?? state.nowMs
+    const totalMs = Math.max(1, mouthCue.untilMs - startedAtMs)
+    const elapsedMs = Math.max(0, state.nowMs - startedAtMs)
+
+    // Stretch the discrete on/off steps across the whole burst window so we don't “finish early”
+    // when `untilMs` is clamped up (e.g. minimum burst duration for capture-to-texture).
+    const t = Math.max(0, Math.min(0.999999, elapsedMs / totalMs))
+    const tick = Math.floor(t * flickerSteps)
+    return tick % 2 === 0
+  })()
+  // Hover should show the mouth steadily as an affordance.
+  // But once a feed cue is active, flicker should be visible even if the cursor is still hovering.
+  const showMouth = isMouthCueActive ? cueFlickerOn : isHoveringMouth
+  const showEyesInspect = isHoveringEyes && !!portrait && !!portrait.eyesInspectSrc
+  const blinkHideEyes = blinkClosed && !showEyesInspect
+  const blinkHideEyesL = blinkClosedL && !showEyesInspect
+  const blinkHideEyesR = blinkClosedR && !showEyesInspect
 
   const ps = state.ui.portraitShake
   const portraitShakeStyle =
@@ -137,6 +232,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             ps.magnitude * state.render.portraitShakeMagnitudeScale,
             state.render.portraitShakeLengthMs,
             state.render.portraitShakeDecayMs,
+            state.render.portraitShakeHz,
           ),
         }
       : undefined
@@ -173,10 +269,19 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
         {portrait ? (
           <div className={styles.spriteStack} aria-hidden="true">
             <img className={styles.sprite} src={portrait.baseSrc} alt="" draggable={false} />
-            <img className={`${styles.sprite} ${blinkClosed ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
+            {showEyesInspect ? (
+              <img className={styles.sprite} src={portrait.eyesInspectSrc} alt="" draggable={false} />
+            ) : portrait.kind === 'frosh' ? (
+              <>
+                <img className={`${styles.sprite} ${blinkHideEyesL ? styles.eyesHidden : ''}`} src={portrait.eyesSrcL} alt="" draggable={false} />
+                <img className={`${styles.sprite} ${blinkHideEyesR ? styles.eyesHidden : ''}`} src={portrait.eyesSrcR} alt="" draggable={false} />
+              </>
+            ) : (
+              <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
+            )}
             <img
               key={mouthAnimKey}
-              className={`${styles.sprite} ${showMouth ? '' : styles.mouthHidden} ${isMouthFlashActive ? styles.mouthChomp : ''}`}
+              className={`${styles.sprite} ${showMouth ? '' : styles.mouthHidden} ${isMouthCueActive ? styles.mouthChomp : ''}`}
               src={portrait.mouthSrc}
               alt=""
               draggable={false}

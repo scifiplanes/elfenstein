@@ -130,6 +130,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
   }, [])
 
+  const getViewportCssSize = () => {
+    // IMPORTANT: don't measure the presenter canvas rect. FramePresenter.syncSize() uses
+    // THREE.WebGLRenderer.setSize(w, h, true) which writes inline CSS width/height.
+    // Measuring the canvas creates a feedback loop where future resizes stop affecting `w,h`.
+    const vv = window.visualViewport
+    const w = Math.max(1, Math.floor(vv?.width ?? document.documentElement.clientWidth ?? window.innerWidth))
+    const h = Math.max(1, Math.floor(vv?.height ?? document.documentElement.clientHeight ?? window.innerHeight))
+    return { w, h }
+  }
+
   const renderOnce = () => {
     const presenter = presenterRef.current
     if (!presenter) return false
@@ -145,8 +155,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
     const presentEl = presentCanvasRef.current
     const pr = presentEl?.getBoundingClientRect()
-    const w = Math.max(1, Math.floor(pr?.width ?? window.innerWidth))
-    const h = Math.max(1, Math.floor(pr?.height ?? window.innerHeight))
+    const { w, h } = getViewportCssSize()
     presenter.syncSize(w, h)
     presenter.syncDither(latestStateRef.current.render)
     presenter.setDebug({ sceneMode: debugSceneMode as 0 | 1 | 2, sceneFlipY: debugSceneFlipY })
@@ -188,7 +197,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       wrap.style.width = `${w}px`
       wrap.style.height = `${h}px`
     }
-    if (!inResizeBurst && captureEl && !captureInFlightRef.current && now - lastCaptureMsRef.current > 80) {
+    const ui = latestStateRef.current.ui
+    const anyShakeActive =
+      (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
+    const anyMouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
+    const highFpsUi = anyShakeActive || anyMouthActive
+    // For “animated UI” moments, capture again immediately when the previous capture finishes.
+    // (html2canvas is async and we already gate with `captureInFlightRef`.)
+    const captureIntervalMs = highFpsUi ? 0 : 80
+
+    if (!inResizeBurst && captureEl && !captureInFlightRef.current && now - lastCaptureMsRef.current > captureIntervalMs) {
       captureInFlightRef.current = true
       void html2canvas(captureEl, {
         backgroundColor: null,

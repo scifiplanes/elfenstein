@@ -14,7 +14,7 @@ Last updated: 2026-04-07
 - **Platform**: Web (desktop first).
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in.
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -66,18 +66,36 @@ The party has **up to 4** character portrait slots.
 
 **Character composition (portrait)**:
 - Base sprite + Eyes sprite + Mouth sprite (selected from species libraries)
-- **Igor portrait sprite source (current)**:
-  - Base: `Content/boblin_base.png`
-  - Eyes: `Content/boblin_eyes_open.png`
-  - Mouth: `Content/boblin_mouth_open.png`
-  - Idle overlay: `Content/boblin_idle.png` (briefly shown on top at a **lower frequency** than blinking)
+- **Portrait sprite sources (current)**:
+  - **Igor**:
+    - Base: `Content/boblin_base.png`
+    - Eyes (open): `Content/boblin_eyes_open.png`
+    - Eyes (inspect hover): `Content/boblin_eyes_inspect.png`
+    - Mouth: `Content/boblin_mouth_open.png`
+    - Idle overlay: `Content/boblin_idle.png` (briefly shown on top at a **lower frequency** than blinking)
+  - **Mycyclops**:
+    - Base: `Content/myclops_base.png`
+    - Eyes (open): `Content/myclops_eyes_open.png`
+    - Eyes (inspect hover): `Content/myclops_eyes_inspect.png`
+    - Mouth: `Content/myclops_mouth_open.png`
+    - Idle overlay: `Content/myclops_idle.png`
+  - **Frosch**:
+    - Base: `Content/frosh_base.png`
+    - Eyes (open): `Content/frosh_eye_L.png` + `Content/frosh_eye_R.png` (two sprites)
+    - Eyes (inspect hover): `Content/frosh_eye_inspect.png`
+    - Mouth: `Content/frosh_mouth_open.png`
+    - Idle overlay: `Content/frosh_idle.png`
+- **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame).
 - **Portrait blinking**: the eyes layer is **occasionally hidden briefly** to simulate blinking.
+- **Portrait inspect hover**: while **dragging** an item and hovering the **eyes** target area, the portrait swaps to an **inspect eyes** sprite (if available). Inspect hover **overrides blink hiding**.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
 - **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, and a brief **munch** SFX on successful feeding. **No** `ui.shake` (3D view or empty HUD overlay) for portrait inspect/feed—only `ui.portraitShake` on the relevant slot.
 - **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed), likewise without 3D shake.
 - **Portrait shake tuning**: portrait frame shake has its own envelope and amplitude tuning via `RenderTuning`:
   - `portraitShakeLengthMs` / `portraitShakeDecayMs` (envelope)
   - `portraitShakeMagnitudeScale` (amplitude multiplier applied to `ui.portraitShake.magnitude`)
+  - `portraitShakeHz` (oscillation speed for the portrait shake transform)
+  - Portrait shake duration is at least the authored base duration, but increases to match the tuned envelope window so “hold/decay” can produce multi-oscillation shakes.
 - Portrait interactive middle third is split into:
   - **Eyes area (top)** → inspect drop target
   - **Mouth area (bottom)** → feed drop target
@@ -232,6 +250,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - The HUD exists as HTML/CSS twice:
     - an **interactive HUD** (visible, handles pointer input)
     - a **capture HUD** (offscreen, non-interactive) that is rasterized into a canvas texture
+  - Presenter sizing is derived from the **viewport CSS size** (prefer `visualViewport.width/height`, else `documentElement.clientWidth/clientHeight`) rather than measuring the presenter canvas element, to avoid resize feedback loops caused by renderers writing inline canvas CSS sizes.
   - A presenter compositor shader places the scene render target into the frame **only inside** the game viewport rect and overlays the captured HUD everywhere else (and over the scene where UI alpha exists).
   - The final composite then runs through the ordered-dither post-process so the **same dithering/pixelation** applies to both 3D and HUD.
 

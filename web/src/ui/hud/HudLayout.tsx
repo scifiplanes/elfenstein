@@ -58,7 +58,6 @@ export function HudLayout(props: {
       }
     >
       <section className={`${styles.panel} ${styles.char2}`}>
-        <h3 className={styles.title}>CHAR2</h3>
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[1].id} />
       </section>
 
@@ -80,12 +79,10 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.char4}`}>
-        <h3 className={styles.title}>CHAR4</h3>
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[3].id} />
       </section>
 
       <section className={`${styles.panel} ${styles.char1}`}>
-        <h3 className={styles.title}>CHAR1</h3>
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[0].id} />
       </section>
 
@@ -105,7 +102,6 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.char3}`}>
-        <h3 className={styles.title}>CHAR3</h3>
         <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[2].id} />
       </section>
 

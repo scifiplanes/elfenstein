@@ -466,7 +466,24 @@ The game had only procedural SFX and synthesized spatial audio — no background
 - `AudioTuning` gains `masterMusic: number` (default `0.4`); old persisted `debug-settings.json` without the key falls back to the default via the existing spread-merge in `debug/loadTuning`.
 - Additional music tracks can be swapped by changing the `src` prop on `MusicLayer` or mounting multiple instances.
 - Browser autoplay policy applies; audio starts after first user interaction (same pattern as `SpatialAudio.ensure()`).
-## ADR-0032 — Present the frame via compositor + HUD capture
+
+---
+
+## ADR-0034 — Portrait eyes “inspect hover” sprite + Frosh split-eye blink
+Date: 2026-04-07
+
+### Decision
+Add a new **eyes inspect-hover** portrait state: while the player is **dragging** an item and hovers the portrait **eyes** target, the eyes layer swaps to a species-specific **inspect** sprite (`*_eyes_inspect.png` / `frosh_eye_inspect.png`) when available. For **Frosch**, represent “eyes open” as **two separate eye sprites** (left + right) that blink together; inspect-hover **overrides** blink hiding.
+
+Serve portrait art from `web/public/content/` so it’s reachable at runtime via the Vite public path `/content/*`.
+
+### Rationale
+The inspect-hover swap makes the eyes target feel interactive (parallel to the mouth affordance), and Frosh’s art is authored as separate eyes so the portrait renderer must support multi-sprite eyes while keeping a consistent blink + hover rule.
+
+### Consequences
+- `PortraitPanel` supports a Frosh-specific eyes layout (L/R) and an optional `eyesInspectSrc`.
+- `Content/*.png` portrait assets must be present in `web/public/content/` for dev/build (including cursor hand sprites already referenced via `/content/*`).
+## ADR-0035 — Present the frame via compositor + HUD capture
 Date: 2026-04-07
 
 ### Decision
@@ -484,7 +501,7 @@ The renderer needs the dither/pixelation to apply uniformly to UI + 3D, while ke
 
 ---
 
-## ADR-0033 — Separate portrait shake tuning (envelope + amplitude)
+## ADR-0036 — Separate portrait shake tuning (envelope + amplitude)
 Date: 2026-04-07
 
 ### Decision
@@ -503,7 +520,7 @@ Portrait inspect/feed shakes are short and HUD-local; they need independent tuni
 
 ---
 
-## ADR-0034 — Navigation HUD pad uses Content/ui art + timed pressed state
+## ADR-0037 — Navigation HUD pad uses Content/ui art + timed pressed state
 Date: 2026-04-07
 
 ### Decision
@@ -520,3 +537,79 @@ Diegetic, art-directed controls match the project’s texture-first HUD; timed p
 - Keyboard help text no longer lives inside the navigation panel; shortcuts remain in `title` tooltips and this doc (§6.4).
 - New UI art must be kept in sync between `Content/` and `web/public/content/` until a single-source asset pipeline exists.
 - **Pushed** navigation art must not be local to a single `NavigationPanel` instance: the visible UI is rasterized from the **capture** `HudLayout`, while clicks hit the **interactive** `HudLayout` (`web/src/ui/frame/DitheredFrameRoot.module.css`). `navPadPressedId` + `onNavPadVisualPress` in `DitheredFrameRoot` keep both trees in sync; `renderOnce` re-runs when `navPadPressedId` changes so the compositor texture updates.
+
+---
+
+## ADR-0038 — Add portrait shake frequency tuning (Hz)
+Date: 2026-04-07
+
+### Decision
+Add `portraitShakeHz` to `RenderTuning`, expose it in F2 Debug, and pass it to the portrait shake transform so portrait shake frequency can be tuned independently.
+
+### Rationale
+Portrait shake feel depends heavily on oscillation speed; a dedicated Hz slider makes it easy to go from “soft wiggle” to “snappy rattle” without changing authored shake magnitudes.
+
+### Consequences
+`shakeTransform` accepts an optional Hz parameter; existing UI shake continues to use the legacy behavior when Hz is not provided.
+
+---
+
+## ADR-0039 — Portrait shake duration follows tuned envelope
+Date: 2026-04-07
+
+### Decision
+When creating `ui.portraitShake` events (inspect/feed), set `untilMs` to at least the authored base duration, but extend it to cover `portraitShakeLengthMs + portraitShakeDecayMs` when that tuned envelope is longer.
+
+### Rationale
+Without extending the event window, long hold/decay values (and higher Hz) compress into ~130–200ms and read like a single bump instead of multiple oscillations.
+
+### Consequences
+Portrait shakes can last longer when tuned; `time/tick` expiry will clear them normally when `untilMs` passes.
+
+---
+
+## ADR-0040 — Make feed “chomp” a flicker burst (tunable)
+Date: 2026-04-07
+
+### Decision
+Replace the single mouth reveal on feed with a **show/hide flicker burst**, tunable in F2 Debug via `RenderTuning`:
+- `portraitMouthFlickerHz` (frequency)
+- `portraitMouthFlickerAmount` (toggle count)
+
+Feeding sets `ui.portraitMouth.untilMs` based on these parameters so the cue duration matches the burst.
+
+### Rationale
+A short flicker reads as a more satisfying “chomp” than a single static reveal and is easy to dial in (subtle nibble → exaggerated goblin chew) without new art.
+
+### Consequences
+- `debug-settings.json` persists the new keys; older files fall back to defaults via merge + clamp.
+- Mouth visibility during the cue is time-driven (deterministic from `nowMs`), not CSS-opacity-driven.
+
+---
+
+## ADR-0041 — Fix HUD scaling by sizing from viewport (not canvas rect)
+Date: 2026-04-07
+
+### Decision
+Derive presenter/HUD-capture sizing from the **viewport CSS size** (prefer `window.visualViewport.width/height`, else `document.documentElement.clientWidth/clientHeight`) rather than measuring the presenter canvas element.
+
+### Rationale
+`THREE.WebGLRenderer.setSize(w, h, true)` writes inline CSS width/height onto the canvas. If we then compute \(w,h\) from `canvas.getBoundingClientRect()`, resizes can stop affecting the measured size due to a feedback loop, causing the HUD capture/composite to appear “stuck” at the old scale.
+
+### Consequences
+- Resizing the browser reliably updates the presenter and the captured HUD texture sizes again (desktop and mobile viewport chrome changes).\n- Viewport measurement is now the single source of truth for frame sizing; the canvas element is treated as an output surface, not the sizing reference.
+
+---
+
+## ADR-0042 — Portraits scale to fit (no crop) while filling slot
+Date: 2026-04-07
+
+### Decision
+Change portrait rendering so the portrait frame scales to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**, and the portrait sprite layers use **no-crop scaling** (fit/contain) so the full art remains visible.
+
+### Rationale
+The prior layout keyed the frame size to the image aspect ratio, which could leave unused space inside the character panel. Prioritizing fit/contain maximizes readable character art without losing important features to cropping.
+
+### Consequences
+- Portraits may show small letterboxing if the sprite aspect ratio doesn’t match the frame, but they will occupy more of the available panel slot overall.
+- Interactive target regions (eyes/mouth overlays) remain defined in portrait-relative percentages and continue to align with the portrait frame.

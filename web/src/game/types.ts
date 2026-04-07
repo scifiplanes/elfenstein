@@ -145,6 +145,11 @@ export type RenderTuning = {
   /** Max visible duration (ms) of one idle flash. */
   portraitIdleFlashMaxMs: number
 
+  /** Feeding “mouth” cue flicker speed (Hz). 0 disables flicker (always visible during cue). */
+  portraitMouthFlickerHz: number
+  /** Feeding “mouth” cue flicker amount (number of visible chomps / mouth-on pulses). */
+  portraitMouthFlickerAmount: number
+
   /**
    * Portrait interaction shake envelope: hold at full strength (ms) before fade.
    * Used by `ui.portraitShake` (inspect/feed resolution).
@@ -154,6 +159,8 @@ export type RenderTuning = {
   portraitShakeDecayMs: number
   /** Multiplies `ui.portraitShake.magnitude` (0..n, debug-tunable). */
   portraitShakeMagnitudeScale: number
+  /** Portrait interaction shake oscillation frequency (Hz). */
+  portraitShakeHz: number
 }
 
 export type AudioTuning = {

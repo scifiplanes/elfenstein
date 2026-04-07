@@ -7,12 +7,14 @@ export function inspectCharacter(state: GameState, characterId: string, itemId: 
   if (!item) return state
   const c = state.party.chars.find((x) => x.id === characterId)
   if (!c) return state
+  const tunedMs = Math.max(0, (state.render.portraitShakeLengthMs ?? 0) + (state.render.portraitShakeDecayMs ?? 0))
+  const durMs = Math.max(130, tunedMs)
   return {
     ...state,
     ui: {
       ...state.ui,
       toast: { id: `t_${state.nowMs}`, text: `${c.name} inspects ${item.defId}.`, untilMs: state.nowMs + 1400 },
-      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 130, magnitude: 0.14 },
+      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + durMs, magnitude: 0.14 },
     },
   }
 }
@@ -23,12 +25,23 @@ export function feedCharacter(state: GameState, characterId: string, itemId: Ite
   const cIdx = state.party.chars.findIndex((x) => x.id === characterId)
   if (cIdx < 0) return state
 
+  const tunedMs = Math.max(0, (state.render.portraitShakeLengthMs ?? 0) + (state.render.portraitShakeDecayMs ?? 0))
+  const durMs = Math.max(200, tunedMs)
+  const hz = Math.max(0, Number(state.render.portraitMouthFlickerHz ?? 0))
+  // Amount is interpreted as number of visible “chomps” (mouth-on pulses), not raw on/off toggles.
+  const amount = Math.max(0, Math.round(Number(state.render.portraitMouthFlickerAmount ?? 0)))
+  const steps = amount * 2
+  const computedBurstMs = hz > 0 && steps > 0 ? Math.round((steps * 1000) / hz) : 0
+  // The HUD is captured to a texture asynchronously; very short bursts can end before multiple captures land.
+  // Keep a minimum window so flicker is actually visible.
+  // Keep a minimum window so flicker is actually visible (capture-to-texture is async).
+  const burstMs = Math.max(650, Math.min(8000, computedBurstMs || 650))
   const withMouth: GameState = {
     ...state,
     ui: {
       ...state.ui,
-      portraitMouth: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 650 },
-      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + 200, magnitude: 0.2 },
+      portraitMouth: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + burstMs },
+      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + durMs, magnitude: 0.2 },
       sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'ui' }]),
     },
   }

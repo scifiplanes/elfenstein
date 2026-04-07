@@ -37,7 +37,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     () => [
       { key: 'portraitShakeLengthMs', label: 'Portrait shake length / hold (ms)', min: 0, max: 12_000, step: 10, format: (v) => String(Math.round(v)) },
       { key: 'portraitShakeDecayMs', label: 'Portrait shake decay / fade (ms)', min: 0, max: 3000, step: 10, format: (v) => String(Math.round(v)) },
-      { key: 'portraitShakeMagnitudeScale', label: 'Portrait shake amplitude', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'portraitShakeMagnitudeScale', label: 'Portrait shake amplitude', min: 0, max: 10.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'portraitShakeHz', label: 'Portrait shake Hz', min: 0, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'portraitMouthFlickerHz', label: 'Portrait mouth flicker Hz', min: 0, max: 40, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'portraitMouthFlickerAmount', label: 'Portrait mouth flicker amount (chomps)', min: 0, max: 64, step: 1, format: (v) => String(Math.round(v)) },
       {
         key: 'portraitIdleGapMinMs',
         label: 'Portrait idle gap min (ms)',
