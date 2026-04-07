@@ -1,72 +1,104 @@
-import type { FloorPoi, Tile } from '../game/types'
+import type { FloorPoi, Tile, Vec2 } from '../game/types'
 import { mulberry32, splitSeed } from './seededRng'
-
-export type DungeonGenInput = {
-  seed: number
-  w: number
-  h: number
-}
+import type { FloorGenInput, FloorGenOutput, GenDoor, GenFloorItem, GenRoom } from './types'
+import { bfsDistances, floodFillReachable, inBounds, isWalkable } from './validate'
 
 type Rect = { x: number; y: number; w: number; h: number }
 
-export function generateDungeon(input: DungeonGenInput): { tiles: Tile[]; pois: FloorPoi[] } {
+export function generateDungeon(input: FloorGenInput): FloorGenOutput {
   const { seed, w, h } = input
-  const layoutRng = mulberry32(splitSeed(seed, 1))
-  const poiRng = mulberry32(splitSeed(seed, 2))
+  const streams = { layout: splitSeed(seed, 1), tags: splitSeed(seed, 2), population: splitSeed(seed, 3), locks: splitSeed(seed, 4) }
+  const layoutRng = mulberry32(streams.layout)
+  const tagsRng = mulberry32(streams.tags)
+  const popRng = mulberry32(streams.population)
+  const locksRng = mulberry32(streams.locks)
 
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
 
-  const leaves: Rect[] = []
-  function split(rect: Rect, depth: number) {
+  type BspNode =
+    | { rect: Rect; depth: number; left: BspNode; right: BspNode }
+    | { rect: Rect; depth: number; room: Rect }
+
+  const rooms: Rect[] = []
+  const genRooms: GenRoom[] = []
+
+  function split(rect: Rect, depth: number): BspNode {
     const minLeaf = 7
     if (depth >= 5 || rect.w < minLeaf * 2 || rect.h < minLeaf * 2) {
-      leaves.push(rect)
-      return
+      const rw = Math.max(3, Math.floor(rect.w * (0.6 + layoutRng.next() * 0.2)))
+      const rh = Math.max(3, Math.floor(rect.h * (0.6 + layoutRng.next() * 0.2)))
+      const rx = rect.x + layoutRng.int(0, Math.max(1, rect.w - rw))
+      const ry = rect.y + layoutRng.int(0, Math.max(1, rect.h - rh))
+      const room = { x: rx, y: ry, w: rw, h: rh }
+      rooms.push(room)
+      carveRect(tiles, w, room)
+      const c = center(room)
+      genRooms.push({ id: `r_${genRooms.length}`, rect: { ...room }, center: c, leafDepth: depth })
+      return { rect, depth, room }
     }
     const splitVert = rect.w > rect.h ? true : rect.h > rect.w ? false : layoutRng.next() < 0.5
     if (splitVert) {
       const cut = layoutRng.int(minLeaf, rect.w - minLeaf)
-      split({ x: rect.x, y: rect.y, w: cut, h: rect.h }, depth + 1)
-      split({ x: rect.x + cut, y: rect.y, w: rect.w - cut, h: rect.h }, depth + 1)
+      const left = split({ x: rect.x, y: rect.y, w: cut, h: rect.h }, depth + 1)
+      const right = split({ x: rect.x + cut, y: rect.y, w: rect.w - cut, h: rect.h }, depth + 1)
+      return { rect, depth, left, right }
     } else {
       const cut = layoutRng.int(minLeaf, rect.h - minLeaf)
-      split({ x: rect.x, y: rect.y, w: rect.w, h: cut }, depth + 1)
-      split({ x: rect.x, y: rect.y + cut, w: rect.w, h: rect.h - cut }, depth + 1)
+      const left = split({ x: rect.x, y: rect.y, w: rect.w, h: cut }, depth + 1)
+      const right = split({ x: rect.x, y: rect.y + cut, w: rect.w, h: rect.h - cut }, depth + 1)
+      return { rect, depth, left, right }
     }
   }
 
-  split({ x: 1, y: 1, w: w - 2, h: h - 2 }, 0)
+  const root = split({ x: 1, y: 1, w: w - 2, h: h - 2 }, 0)
 
-  const rooms: Rect[] = []
-  for (const leaf of leaves) {
-    const rw = Math.max(3, Math.floor(leaf.w * (0.6 + layoutRng.next() * 0.2)))
-    const rh = Math.max(3, Math.floor(leaf.h * (0.6 + layoutRng.next() * 0.2)))
-    const rx = leaf.x + layoutRng.int(0, Math.max(1, leaf.w - rw))
-    const ry = leaf.y + layoutRng.int(0, Math.max(1, leaf.h - rh))
-    rooms.push({ x: rx, y: ry, w: rw, h: rh })
-    carveRect(tiles, w, { x: rx, y: ry, w: rw, h: rh })
-  }
-
-  // Stitch corridors between consecutive rooms (simple chain for MVP).
-  for (let i = 1; i < rooms.length; i++) {
-    const a = center(rooms[i - 1])
-    const b = center(rooms[i])
+  // Stitch corridors between sibling subtrees (BSP connectivity).
+  const connect = (node: BspNode): Vec2 => {
+    if ('room' in node) return center(node.room)
+    const a = connect(node.left)
+    const b = connect(node.right)
     carveCorridor(tiles, w, a.x, a.y, b.x, b.y, layoutRng.next() < 0.5)
+    // Return either side's representative; bias to keep determinism stable.
+    return layoutRng.next() < 0.5 ? a : b
   }
+  connect(root)
 
-  // POIs: pick random floor tiles.
-  const floorCells = []
-  for (let i = 0; i < tiles.length; i++) if (tiles[i] === 'floor') floorCells.push(i)
-  const pois: FloorPoi[] = []
-  const kinds: FloorPoi['kind'][] = ['Well', 'Chest', 'Bed']
-  for (let k = 0; k < kinds.length; k++) {
-    const idx = floorCells[poiRng.int(0, floorCells.length)]
-    const x = idx % w
-    const y = Math.floor(idx / w)
-    pois.push({ id: `poi_${kinds[k].toLowerCase()}`, kind: kinds[k], pos: { x, y }, opened: kinds[k] === 'Chest' ? false : undefined })
+  // Connectivity repair: ensure every walkable tile is connected.
+  repairConnectivity(tiles, w, h, layoutRng)
+
+  // CA smoothing (mild): soften jagged walls by carving alcoves.
+  // This pass only converts some 'wall' cells into 'floor' based on local floor density,
+  // so it cannot accidentally "seal" corridors.
+  smoothWallsCarveOnly(tiles, w, h, 1)
+
+  const { entrance, exit } = pickEntranceExit({ tiles, w, h, rooms: genRooms, rng: layoutRng })
+
+  // Tag rooms (M4-lite): size + light thematic bias from floor properties.
+  tagRooms(genRooms, input.floorProperties ?? [], tagsRng)
+
+  // Populate POIs driven by tags and entrance/exit (deterministic).
+  const pois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
+
+  // Minimal lock/key slice (A): lock a tile on the entrance→exit shortest path and
+  // place an IronKey on the reachable side.
+  const { doors, floorItems } = placeSingleLockAndKey({
+    tiles,
+    w,
+    entrance,
+    exit,
+    rng: locksRng,
+  })
+
+  return {
+    tiles,
+    pois,
+    rooms: genRooms,
+    doors,
+    floorItems,
+    entrance,
+    exit,
+    meta: { genVersion: 1, streams },
   }
-
-  return { tiles, pois }
 }
 
 function carveRect(tiles: Tile[], w: number, r: Rect) {
@@ -102,5 +134,329 @@ function carveLine(tiles: Tile[], w: number, x0: number, y0: number, x1: number,
 
 function center(r: Rect) {
   return { x: Math.floor(r.x + r.w / 2), y: Math.floor(r.y + r.h / 2) }
+}
+
+function pickEntranceExit(args: {
+  tiles: Tile[]
+  w: number
+  h: number
+  rooms: GenRoom[]
+  rng: { int(min: number, maxExclusive: number): number; next(): number }
+}): { entrance: Vec2; exit: Vec2 } {
+  const { tiles, w, h, rooms, rng } = args
+
+  const preferred = rooms.length ? rooms[rng.int(0, rooms.length)].center : null
+  const entrance = preferred && isGoodSpawn(tiles, w, h, preferred) ? preferred : (randomFloorCell({ tiles, w, h, rng }) ?? { x: 1, y: 1 })
+
+  // Exit: farthest reachable cell by BFS distance (stable, good pacing).
+  const dist = bfsDistances(tiles, w, h, entrance)
+  let bestIdx = entrance.x + entrance.y * w
+  let bestD = -1
+  for (let i = 0; i < dist.length; i++) {
+    const d = dist[i]
+    if (d > bestD && tiles[i] === 'floor') {
+      bestD = d
+      bestIdx = i
+    }
+  }
+  const exit = { x: bestIdx % w, y: Math.floor(bestIdx / w) }
+  return { entrance: { ...entrance }, exit: { ...exit } }
+}
+
+function isGoodSpawn(tiles: Tile[], w: number, h: number, pos: Vec2): boolean {
+  if (!inBounds(pos, w, h)) return false
+  const t = tiles[pos.x + pos.y * w]
+  return isWalkable(t)
+}
+
+function randomFloorCell(args: { tiles: Tile[]; w: number; h: number; rng: { int(min: number, maxExclusive: number): number } }): Vec2 | null {
+  const { tiles, w, h, rng } = args
+  // Bounded attempt count keeps runtime stable and deterministic.
+  for (let i = 0; i < 200; i++) {
+    const x = rng.int(1, Math.max(2, w - 1))
+    const y = rng.int(1, Math.max(2, h - 1))
+    const t = tiles[x + y * w]
+    if (t === 'floor') return { x, y }
+  }
+  return null
+}
+
+function repairConnectivity(tiles: Tile[], w: number, h: number, rng: { int(min: number, maxExclusive: number): number; next(): number }) {
+  // Find a starting walkable cell.
+  let startIdx = -1
+  for (let i = 0; i < tiles.length; i++) {
+    if (isWalkable(tiles[i])) {
+      startIdx = i
+      break
+    }
+  }
+  if (startIdx < 0) return
+  const start = { x: startIdx % w, y: Math.floor(startIdx / w) }
+
+  // Repair loop is bounded for determinism/runtime safety.
+  for (let pass = 0; pass < 24; pass++) {
+    const reach = floodFillReachable(tiles, w, h, start)
+    let unreachableIdx = -1
+    for (let i = 0; i < tiles.length; i++) {
+      if (isWalkable(tiles[i]) && !reach[i]) {
+        unreachableIdx = i
+        break
+      }
+    }
+    if (unreachableIdx < 0) return
+
+    // Choose a target in the unreachable component.
+    const target = { x: unreachableIdx % w, y: Math.floor(unreachableIdx / w) }
+
+    // Find the nearest reachable tile to connect to, via expanding Manhattan rings.
+    const anchor = findNearestReachable(reach, w, h, target)
+    if (!anchor) return
+
+    carveCorridor(tiles, w, anchor.x, anchor.y, target.x, target.y, rng.next() < 0.5)
+  }
+}
+
+function findNearestReachable(reach: boolean[], w: number, h: number, target: Vec2): Vec2 | null {
+  // Expanding ring search is deterministic and fast for these grid sizes.
+  const maxR = w + h
+  for (let r = 1; r <= maxR; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const dy = r - Math.abs(dx)
+      const cand = [
+        { x: target.x + dx, y: target.y + dy },
+        { x: target.x + dx, y: target.y - dy },
+      ]
+      for (const p of cand) {
+        if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue
+        const i = p.x + p.y * w
+        if (reach[i]) return p
+      }
+    }
+  }
+  return null
+}
+
+function placeSingleLockAndKey(args: {
+  tiles: Tile[]
+  w: number
+  entrance: Vec2
+  exit: Vec2
+  rng: { next(): number }
+}): { doors: GenDoor[]; floorItems: GenFloorItem[] } {
+  const { tiles, w, entrance, exit, rng } = args
+
+  // BFS with parent pointers over walkable tiles.
+  const prev = new Int32Array(tiles.length)
+  prev.fill(-1)
+  const dist = new Int32Array(tiles.length)
+  dist.fill(-1)
+
+  const s = entrance.x + entrance.y * w
+  const goal = exit.x + exit.y * w
+  if (s < 0 || s >= tiles.length) return { doors: [], floorItems: [] }
+  if (goal < 0 || goal >= tiles.length) return { doors: [], floorItems: [] }
+  if (!isWalkable(tiles[s]) || !isWalkable(tiles[goal])) return { doors: [], floorItems: [] }
+
+  const q: number[] = [s]
+  dist[s] = 0
+
+  for (let qi = 0; qi < q.length; qi++) {
+    const i = q[qi]
+    if (i === goal) break
+    const x = i % w
+    const y = (i / w) | 0
+    const neigh = [i + 1, i - 1, i + w, i - w]
+    for (const j of neigh) {
+      if (j < 0 || j >= tiles.length) continue
+      const nx = j % w
+      const ny = (j / w) | 0
+      if (Math.abs(nx - x) + Math.abs(ny - y) !== 1) continue
+      if (dist[j] !== -1) continue
+      if (!isWalkable(tiles[j])) continue
+      dist[j] = dist[i] + 1
+      prev[j] = i
+      q.push(j)
+    }
+  }
+
+  if (dist[goal] < 0) return { doors: [], floorItems: [] }
+
+  // Reconstruct path indices from entrance→exit.
+  const path: number[] = []
+  for (let cur = goal; cur !== -1; cur = prev[cur]) path.push(cur)
+  path.reverse()
+  if (path.length < 6) return { doors: [], floorItems: [] }
+
+  // Choose a lock tile on the path, avoiding endpoints.
+  const lockIdxOnPath = clampInt(Math.floor(path.length * 0.62 + (rng.next() - 0.5) * 4), 2, path.length - 3)
+  const lockCell = path[lockIdxOnPath]
+  if (tiles[lockCell] === 'floor') {
+    tiles[lockCell] = 'lockedDoor'
+  }
+  const lockPos = { x: lockCell % w, y: Math.floor(lockCell / w) }
+
+  // Place key on reachable side (before lock on the same path).
+  const keyIdxOnPath = clampInt(Math.floor(path.length * 0.22 + (rng.next() - 0.5) * 3), 1, Math.max(1, lockIdxOnPath - 2))
+  const keyCell = path[keyIdxOnPath]
+  const keyPos = { x: keyCell % w, y: Math.floor(keyCell / w) }
+
+  // Ensure key lands on a floor tile (not inside the lockedDoor tile).
+  const keyTile = tiles[keyCell]
+  const placeKeyPos = keyTile === 'floor' ? keyPos : entrance
+
+  const doors: GenDoor[] = [{ pos: lockPos, locked: true, lockId: 'A' }]
+  const floorItems: GenFloorItem[] = [{ defId: 'IronKey', pos: placeKeyPos, qty: 1 }]
+  return { doors, floorItems }
+}
+
+function clampInt(v: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, Math.round(v)))
+}
+
+function smoothWallsCarveOnly(tiles: Tile[], w: number, h: number, passes: number) {
+  const p = Math.max(0, Math.min(4, Math.floor(passes)))
+  if (p === 0) return
+  for (let pass = 0; pass < p; pass++) {
+    const next = tiles.slice()
+    for (let y = 1; y < h - 1; y++) {
+      for (let x = 1; x < w - 1; x++) {
+        const i = x + y * w
+        if (tiles[i] !== 'wall') continue
+        // Count 8-neighborhood floor density.
+        let floors = 0
+        for (let dy = -1; dy <= 1; dy++) {
+          for (let dx = -1; dx <= 1; dx++) {
+            if (dx === 0 && dy === 0) continue
+            const t = tiles[(x + dx) + (y + dy) * w]
+            if (t === 'floor' || t === 'door' || t === 'lockedDoor') floors++
+          }
+        }
+        // Threshold tuned to "carve alcoves" rather than open wide caverns.
+        if (floors >= 6) next[i] = 'floor'
+      }
+    }
+    for (let i = 0; i < tiles.length; i++) tiles[i] = next[i]
+  }
+}
+
+function tagRooms(rooms: GenRoom[], floorProperties: Array<NonNullable<FloorGenInput['floorProperties']>[number]>, rng: { next(): number }) {
+  const has = (p: string) => floorProperties.includes(p as any)
+  for (const r of rooms) {
+    const area = r.rect.w * r.rect.h
+    const size = area <= 20 ? 'tiny' : area <= 48 ? 'medium' : 'large'
+    const roomFunction =
+      size === 'tiny' ? 'Storage' : size === 'large' ? (rng.next() < 0.55 ? 'Communal' : 'Workshop') : rng.next() < 0.5 ? 'Habitat' : 'Passage'
+
+    // Very light first-pass bias; later this becomes a quota/adjacency solve.
+    const roomStatus = has('Overgrown') && rng.next() < 0.35 ? 'Overgrown' : has('Destroyed') && rng.next() < 0.25 ? 'Destroyed' : undefined
+    const roomProperties = has('Infested') && rng.next() < 0.28 ? 'Infected' : has('Cursed') && rng.next() < 0.12 ? 'Burning' : undefined
+
+    r.tags = { ...(r.tags ?? {}), size, roomFunction, roomStatus, roomProperties }
+  }
+}
+
+function placePois(args: {
+  tiles: Tile[]
+  w: number
+  h: number
+  rooms: GenRoom[]
+  entrance: Vec2
+  exit: Vec2
+  rng: { next(): number }
+}): FloorPoi[] {
+  const { tiles, w, h, rooms, entrance, exit } = args
+
+  const used = new Set<string>()
+  const use = (p: Vec2) => used.add(`${p.x},${p.y}`)
+  const ok = (p: Vec2) => p.x >= 0 && p.y >= 0 && p.x < w && p.y < h && tiles[p.x + p.y * w] === 'floor' && !used.has(`${p.x},${p.y}`)
+
+  // Well: at/near entrance.
+  const wellPos = ok(entrance) ? entrance : (findNearestFloor(tiles, w, h, entrance) ?? entrance)
+  use(wellPos)
+
+  // Bed: roughly mid-distance between entrance and exit (by distance field).
+  const dist = bfsDistances(tiles, w, h, entrance)
+  const exitIdx = exit.x + exit.y * w
+  const maxD = exitIdx >= 0 && exitIdx < dist.length ? dist[exitIdx] : -1
+  const targetD = Math.max(0, Math.floor(maxD * 0.45))
+  const bedPos = pickClosestDistanceCell(dist, tiles, w, targetD, used) ?? wellPos
+  use(bedPos)
+
+  // Chest: prefer Storage/small rooms; fall back to far-ish from entrance.
+  const storageRooms = rooms
+    .filter((r) => r.tags?.roomFunction === 'Storage')
+    .sort((a, b) => (a.rect.w * a.rect.h) - (b.rect.w * b.rect.h))
+  let chestPos: Vec2 | null = null
+  for (const r of storageRooms) {
+    if (ok(r.center)) {
+      chestPos = r.center
+      break
+    }
+  }
+  if (!chestPos) {
+    chestPos = pickFarthestUnusedFloor(dist, tiles, w, used) ?? bedPos
+  }
+  use(chestPos)
+
+  return [
+    { id: 'poi_well', kind: 'Well', pos: wellPos },
+    { id: 'poi_bed', kind: 'Bed', pos: bedPos },
+    { id: 'poi_chest', kind: 'Chest', pos: chestPos, opened: false },
+  ]
+}
+
+function findNearestFloor(tiles: Tile[], w: number, h: number, start: Vec2): Vec2 | null {
+  const maxR = w + h
+  for (let r = 0; r <= maxR; r++) {
+    for (let dx = -r; dx <= r; dx++) {
+      const dy = r - Math.abs(dx)
+      const cand = [
+        { x: start.x + dx, y: start.y + dy },
+        { x: start.x + dx, y: start.y - dy },
+      ]
+      for (const p of cand) {
+        if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue
+        if (tiles[p.x + p.y * w] === 'floor') return p
+      }
+    }
+  }
+  return null
+}
+
+function pickClosestDistanceCell(dist: Int32Array, tiles: Tile[], w: number, targetD: number, used: Set<string>): Vec2 | null {
+  let bestIdx = -1
+  let bestErr = 1e9
+  for (let i = 0; i < dist.length; i++) {
+    const d = dist[i]
+    if (d < 0) continue
+    if (tiles[i] !== 'floor') continue
+    const x = i % w
+    const y = Math.floor(i / w)
+    if (used.has(`${x},${y}`)) continue
+    const err = Math.abs(d - targetD)
+    if (err < bestErr) {
+      bestErr = err
+      bestIdx = i
+    }
+  }
+  if (bestIdx < 0) return null
+  return { x: bestIdx % w, y: Math.floor(bestIdx / w) }
+}
+
+function pickFarthestUnusedFloor(dist: Int32Array, tiles: Tile[], w: number, used: Set<string>): Vec2 | null {
+  let bestIdx = -1
+  let bestD = -1
+  for (let i = 0; i < dist.length; i++) {
+    const d = dist[i]
+    if (d <= bestD) continue
+    if (tiles[i] !== 'floor') continue
+    const x = i % w
+    const y = Math.floor(i / w)
+    if (used.has(`${x},${y}`)) continue
+    bestD = d
+    bestIdx = i
+  }
+  if (bestIdx < 0) return null
+  return { x: bestIdx % w, y: Math.floor(bestIdx / w) }
 }
 

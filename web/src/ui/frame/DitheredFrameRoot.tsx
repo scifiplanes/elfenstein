@@ -213,8 +213,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
     prevHighFpsUiRef.current = highFpsUi
 
-    // For “animated UI” moments, capture again immediately when the previous capture finishes.
-    // (html2canvas is async and we already gate with `captureInFlightRef`.)
+    // Default cadence: keep captures reasonably frequent for normal HUD reactivity.
+    // During mouth flicker / shake, capture as soon as the previous capture finishes
+    // (html2canvas is async and we already gate with `captureInFlightRef`).
+    // Scale is pinned during the burst (below) to avoid full-screen shimmer from resampling.
     const captureIntervalMs = highFpsUi ? 0 : 80
 
     if (!inResizeBurst && captureEl && !captureInFlightRef.current && now - lastCaptureMsRef.current > captureIntervalMs) {
@@ -223,7 +225,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       // when the UI texture resolution changes mid-frame.
       const vvScale = window.visualViewport?.scale || 1
       const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
-      const captureScale = Math.min(effectiveDpr, 1.5)
+      const desiredScale = Math.min(effectiveDpr, 1.5)
+      // If a high-FPS moment is active, pin to the previous scale (if any) so we don't
+      // swap UI texture resolution repeatedly during the burst.
+      const captureScale = highFpsUi && lastUiCaptureScaleRef.current != null ? lastUiCaptureScaleRef.current : desiredScale
       const prevScale = lastUiCaptureScaleRef.current
       if (prevScale == null || Math.abs(prevScale - captureScale) > 1e-6) {
         lastUiCaptureScaleRef.current = captureScale

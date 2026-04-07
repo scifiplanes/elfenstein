@@ -3,7 +3,7 @@ import styles from './MinimapPanel.module.css'
 
 export function MinimapPanel(props: { state: GameState }) {
   const { state } = props
-  const { w, h, tiles, playerPos, pois } = state.floor
+  const { w, h, tiles, playerPos, playerDir, pois } = state.floor
   const poiSet = new Set(pois.map((p) => `${p.pos.x},${p.pos.y}`))
 
   return (
@@ -16,7 +16,7 @@ export function MinimapPanel(props: { state: GameState }) {
           const isPlayer = x === playerPos.x && y === playerPos.y
           const isPoi = poiSet.has(key)
           const kind = isPlayer ? 'player' : isPoi ? 'poi' : t
-          return <div key={i} className={styles.cell} data-kind={kind} />
+          return <div key={i} className={styles.cell} data-kind={kind} data-dir={isPlayer ? playerDir : undefined} />
         })}
       </div>
     </div>

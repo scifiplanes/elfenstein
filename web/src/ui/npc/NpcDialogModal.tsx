@@ -27,7 +27,7 @@ export function NpcDialogModal(props: { state: GameState; dispatch: Dispatch<Act
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target })
+        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
       }}
     >
       <div

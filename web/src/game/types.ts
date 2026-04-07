@@ -254,6 +254,8 @@ export type GameState = {
     h: number
     tiles: Tile[]
     pois: FloorPoi[]
+    /** Canonical procgen output bundle (seeded + phase-stable). */
+    gen?: import('../procgen/types').FloorGenOutput
     itemsOnFloor: Array<{ id: ItemId; pos: Vec2; jitter: { x: number; z: number } }>
     npcs: Array<{
       id: Id

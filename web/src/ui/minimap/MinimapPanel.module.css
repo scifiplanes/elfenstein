@@ -26,7 +26,40 @@
 }
 
 .cell[data-kind='player'] {
+  position: relative;
   background: rgba(255, 230, 130, 0.9);
+}
+
+.cell[data-kind='player']::after {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 0;
+  height: 0;
+  border-left: 3.5px solid transparent;
+  border-right: 3.5px solid transparent;
+  border-bottom: 6px solid rgba(40, 28, 10, 0.95);
+  transform: translate(-50%, -55%) rotate(0deg);
+  transform-origin: center;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.cell[data-kind='player'][data-dir='0']::after {
+  transform: translate(-50%, -55%) rotate(0deg);
+}
+
+.cell[data-kind='player'][data-dir='1']::after {
+  transform: translate(-50%, -55%) rotate(90deg);
+}
+
+.cell[data-kind='player'][data-dir='2']::after {
+  transform: translate(-50%, -55%) rotate(180deg);
+}
+
+.cell[data-kind='player'][data-dir='3']::after {
+  transform: translate(-50%, -55%) rotate(270deg);
 }
 
 .cell[data-kind='poi'] {
