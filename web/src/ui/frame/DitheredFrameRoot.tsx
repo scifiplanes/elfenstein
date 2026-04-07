@@ -37,6 +37,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const latestStateRef = useRef<GameState>(state)
   const latestContentRef = useRef(content)
   const renderBurstUntilMsRef = useRef(0)
+  const prevHighFpsUiRef = useRef(false)
+  const lastUiCaptureScaleRef = useRef<number | null>(null)
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
@@ -186,6 +188,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         uiTexRef.current.dispose()
         uiTexRef.current = null
       }
+      lastUiCaptureScaleRef.current = null
       // Force a fresh capture once the resize burst settles.
       lastCaptureMsRef.current = 0
     }
@@ -202,16 +205,35 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
     const anyMouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
     const highFpsUi = anyShakeActive || anyMouthActive
+
+    // When a high-FPS UI moment begins (e.g. portrait mouth flicker), force the next capture ASAP
+    // so the burst doesn't "start late" waiting for a stale interval gate.
+    if (highFpsUi && !prevHighFpsUiRef.current) {
+      lastCaptureMsRef.current = 0
+    }
+    prevHighFpsUiRef.current = highFpsUi
+
     // For “animated UI” moments, capture again immediately when the previous capture finishes.
     // (html2canvas is async and we already gate with `captureInFlightRef`.)
     const captureIntervalMs = highFpsUi ? 0 : 80
 
     if (!inResizeBurst && captureEl && !captureInFlightRef.current && now - lastCaptureMsRef.current > captureIntervalMs) {
       captureInFlightRef.current = true
+      // Keep capture scale stable to prevent transient full-screen resampling artifacts
+      // when the UI texture resolution changes mid-frame.
+      const captureScale = Math.min(window.devicePixelRatio || 1, 1.5)
+      const prevScale = lastUiCaptureScaleRef.current
+      if (prevScale == null || Math.abs(prevScale - captureScale) > 1e-6) {
+        lastUiCaptureScaleRef.current = captureScale
+        if (uiTexRef.current) {
+          uiTexRef.current.dispose()
+          uiTexRef.current = null
+        }
+      }
       void html2canvas(captureEl, {
         backgroundColor: null,
         logging: false,
-        scale: Math.min(window.devicePixelRatio || 1, 1.5),
+        scale: captureScale,
         width: w,
         height: h,
         windowWidth: w,
