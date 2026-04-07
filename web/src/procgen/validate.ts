@@ -120,6 +120,29 @@ export function allReachable(tiles: Tile[], w: number, h: number, start: Vec2, t
   return true
 }
 
+/** Cells on any shortest entrance→exit path satisfy distFromEntrance + distFromExit === shortestLen. */
+export function shortestPathLatticeStats(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  entrance: Vec2,
+  exit: Vec2,
+): { shortestLen: number; latticeCells: number } {
+  const distE = bfsDistances(tiles, w, h, entrance)
+  const distX = bfsDistances(tiles, w, h, exit)
+  const exitIdx = idxOf(exit, w)
+  const L = exitIdx >= 0 && exitIdx < distE.length ? distE[exitIdx] : -1
+  if (L < 0) return { shortestLen: -1, latticeCells: 0 }
+  let latticeCells = 0
+  for (let i = 0; i < tiles.length; i++) {
+    if (!isWalkable(tiles[i])) continue
+    const de = distE[i]
+    const dx = distX[i]
+    if (de >= 0 && dx >= 0 && de + dx === L) latticeCells++
+  }
+  return { shortestLen: L, latticeCells }
+}
+
 export function bfsDistances(tiles: Tile[], w: number, h: number, start: Vec2): Int32Array {
   const dist = new Int32Array(tiles.length)
   dist.fill(-1)

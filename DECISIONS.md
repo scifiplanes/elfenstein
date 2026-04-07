@@ -1474,3 +1474,158 @@ In practice the beam is often off; previously the spot could still cast shadows 
 
 ### Consequences
 Baseline look may lose **dynamic shadows** until the player enables **`shadowLanternPoint`** and/or a visible beam with **`shadowLanternBeam`**. **`DESIGN.md`** §11 and F2 copy reflect the new knobs. [ADR-0008](DECISIONS.md) / [ADR-0010](DECISIONS.md) remain historical; shadows are no longer “always both lantern lights.”
+
+---
+
+## ADR-0096 — Dungeon environment uses authored cave PNG albedos
+Date: 2026-04-08
+
+### Decision
+Replace procedural canvas **floor / wall / ceiling** maps in `WorldRenderer` with **`TextureLoader`** images: **`cave_floor.png`**, **`cave_wall.png`**, **`cave_ceiling.png`** at stable **`/content/…`** URLs (mirrored from **`Content/`** into **`web/public/content/`**). Textures are cached on the renderer, **`SRGBColorSpace`**, **`RepeatWrapping`**, **`repeat (1,1)`** per ~1 world-unit tile face.
+
+### Rationale
+Art-ready environment tiles ship in **`Content/`**; the web runtime only serves static files under **`public/`**, so we copy the PNGs and point code at those URLs. Caching avoids reloading on every dungeon geometry rebuild.
+
+### Consequences
+**`web/src/world/procTextures.ts`** is unused by the main renderer (kept in tree for now). Swap **`texture_wall_cave_01.png`** or other variants by changing **`dungeonEnvTextures.ts`** and copying into **`web/public/content/`**. **`DESIGN.md`** §11 and §13 list the three filenames.
+
+---
+
+## ADR-0097 — Dungeon mesh shading: Lambert instead of PBR Standard
+Date: 2026-04-08
+
+### Decision
+Use **`MeshLambertMaterial`** for dungeon **floor, wall, ceiling, and door** meshes in **`WorldRenderer`** instead of **`MeshStandardMaterial`**. Keep **`map`** + **`emissive`** / **`emissiveIntensity`** for the baseline lift; drop **`roughness`** and **`metalness`**.
+
+### Rationale
+The scene does not need physically based BRDF complexity; Lambert diffuse is cheaper and easier to reason about while still responding to point/spot lights and shadow maps.
+
+### Consequences
+No specular lobes or PBR environment response on voxels (previously near-fully rough anyway). **`DESIGN.md`** §11 updated. Sprites remain **`SpriteMaterial`** (unchanged).
+
+---
+
+## ADR-0098 — Procgen: pacing validation, mission graph fidelity, spawn tables, tag constraints, theme
+Date: 2026-04-08
+
+### Decision
+- **Validation**: After lock checks, reject layouts where **Well** is farther than **3** BFS steps from **`entrance`** or **Bed** farther than **48** (see **`locks.ts`**; matches mid-path bed heuristic on large floors).
+- **Scoring**: Extend **`scoreLayout`** with reachable **junction** cells (floor with ≥3 walkable neighbors) and a bonus when the entrance→exit **shortest-path lattice** is wider than a single spine (**`shortestPathLatticeStats`** in **`validate.ts`**).
+- **Mission graph**: Chain **Well/Bed/Chest** edges by increasing BFS distance from entrance; add **`kind: 'shortcut'`** entrance→exit when alternate shortest routes exist; set **`hasAlternateEntranceExitRoute`** on **`MissionGraph`**.
+- **Spawn data**: Move NPC/item pick logic into **`spawnTables.ts`**; **`NPC_DEFAULT_WEIGHTS_BY_FLOOR`** keeps single-entry defaults so RNG consumption matches the prior **`population.ts`** path unless designers add weights.
+- **Tags**: **`applyTagConstraints`** after quotas (**`districtsTags.ts`**) for Storage/dead-end preference and **Flooded** clustering on **Cursed** floors.
+- **Theme**: New RNG stream **`theme`**, **`pickFloorTheme`** (**`floorTheme.ts`**), **`floor.gen.theme`**; **`WorldRenderer`** applies **`material.color`** tints on floor/wall/ceiling Lambert meshes; geometry rebuild key includes theme.
+- **Schema**: Bump **`floor.gen.meta.genVersion`** to **3** (adds **`streams.theme`**, **`theme`**, richer **`missionGraph`**).
+- **Mission-first**: Stub module **`web/src/procgen/missionFirst.ts`** documents the deferred geometry-last flip; no change to **`generateDungeon`** order yet.
+
+### Rationale
+Closes gaps called out in the dungeon procgen roadmap: safer POI pacing, better layout selection for loops, clearer debug graphs, data-shaped spawns, stronger room tags, and visible floor-type differentiation without new textures.
+
+### Consequences
+Old **`floor.gen`** JSON without **`theme`** / **`streams.theme`** still loads; renderer falls back to white **tint**. Dump consumers should tolerate **`genVersion` 3**. **`DESIGN.md`** §8 is the updated source of truth.
+
+---
+
+## ADR-0099 — Dither: blend warm palette snap vs quantised-only
+Date: 2026-04-08
+
+### Decision
+Add **`ditherPalette0Mix`** (0..1) on **`RenderTuning`**, wired into **`DitherShader`** as **`palette0Mix`**. When the dither **palette index** is **0** (warm dungeon), the post-process mixes between **Bayer-quantised colour** (no five-colour snap) and **full snap to warm palette**; other palette indices behave as before. Default **1** preserves prior warm-dungeon appearance.
+
+### Rationale
+Lets art direction slide between a softer quantised look and the hard woodcut palette without switching to palette **4** (no snap globally).
+
+### Consequences
+F2 exposes **Warm palette mix**; **`clampRenderTuning`** clamps the value. **`DESIGN.md`** §11 lists the control.
+
+---
+
+## ADR-0100 — Procgen v4: spawn context, lock+loop validation, mission stream, debug overlay, mission-first schema
+Date: 2026-04-08
+
+### Decision
+- **Spawn tables**: Extend **`NpcSpawnContext`** / **`ItemSpawnContext`** with **`floorProperties`**, **`isOnEntranceExitShortestPath`** (pre-lock BFS shortest path through room center), and use **`roomStatus`** in **`pickNpcKindFromTable`** / **`pickFloorItemDefFromTable`**; **`population.ts`** passes **`floorProperties`** from **`generateDungeon`** and builds the path set via **`shortestPathIndices`** (**`locks.ts`**).
+- **Validation**: When **`doors`** include any procgen lock, **`validateGen`** rejects layouts unless **`shortestPathLatticeStats`** reports a wide entrance→exit shortest-path lattice (same threshold as **`hasAlternateEntranceExitRoute`**).
+- **Scoring**: **`scoreLayout`** adds **`lockLoopBonus`** when locked doors exist and the lattice bonus is nonzero.
+- **Mission stream**: Add **`streams.mission`**; call **`planMissionBeforeGeometry`** (still returns **`null`**) so the RNG phase is reserved; document **`PlannedMission`** types and embedding contract in **`missionFirst.ts`**.
+- **Schema**: Bump **`genVersion`** to **4**.
+- **Debug**: F2 **Proc overlay** cycles tints in **`WorldRenderer`** (**districts** / **room function** / **mission** nodes); **`ui.procgenDebugOverlay`** + **`ui/setProcgenDebugOverlay`**; Procgen readout shows **`streams.mission`**.
+
+### Rationale
+Implements the roadmap items for taxonomy-driven spawns, backtrack relief when locks exist, explicit mission-first data hooks without flipping pipeline order yet, and in-world procgen visualization for iteration.
+
+### Consequences
+Dump JSON and deterministic outputs change vs **`genVersion` 3** (new stream, spawn RNG sequence, validation stricter for locked floors). Older **`floor.gen`** objects without **`streams.mission`** are outside the current type contract if rehydrated manually.
+
+---
+
+## ADR-0101 — Higher-contrast minimap tile palette
+Date: 2026-04-08
+
+### Decision
+Replace low-alpha **`MinimapPanel.module.css`** fills with **opaque RGB** colours: darker **walls**, lighter **floors**, slightly punchier **player** / **POI** / **door** / **locked door**, and a solid **facing-arrow** fill.
+
+### Rationale
+Semi-transparent minimap tiles washed out against the HUD plate and post-process; opaque, separated luminance improves readability at small tile size.
+
+### Consequences
+**`DESIGN.md`** §6.4 notes the high-contrast minimap palette; tweak colours in **`web/src/ui/minimap/MinimapPanel.module.css`** only.
+
+---
+
+## ADR-0102 — Soften minimap palette slightly
+Date: 2026-04-08
+
+### Decision
+Lighten **walls**, dim **floors** slightly, and soften **player** / **POI** / **door** / **locked door** (and the facing arrow) versus **ADR-0101**, keeping **opaque** fills.
+
+### Rationale
+**ADR-0101** read a bit harsh on the HUD; a small step back preserves legibility without the same visual punch.
+
+### Consequences
+**`DESIGN.md`** §6.4 wording updated to “moderate separation” / softened accents; palette remains in **`MinimapPanel.module.css`** only.
+
+---
+
+## ADR-0103 — Minimap local viewport 10×10 tiles
+Date: 2026-04-08
+
+### Decision
+Set **`MinimapPanel`** **`MINIMAP_VIEW_W` / `MINIMAP_VIEW_H`** to **10** (was **12**).
+
+### Rationale
+Slightly smaller HUD footprint while keeping a north-up, player-centered window.
+
+### Consequences
+**`DESIGN.md`** §6.4 updated; behaviour still capped by floor **`w`/`h`** when smaller than **10**.
+
+---
+
+## ADR-0104 — Larger minimap on-screen (14px cells)
+Date: 2026-04-08
+
+### Decision
+Increase **`MinimapPanel`** tile **CSS size** from **10×10 px** to **14×14 px** (**`MINIMAP_CELL_PX`**), **3 px** grid gap (was **2 px**), slightly larger **corner radius** and **facing-arrow** triangle; drive **`.cell`** size with **`--minimap-cell`** set inline so tracks and cells stay matched.
+
+### Rationale
+After narrowing the tile **count** to **10×10**, the map read small; larger pixels restore legibility without widening the logical viewport.
+
+### Consequences
+**`DESIGN.md`** §6.4 notes cell size + CSS variable; tune **`MINIMAP_CELL_PX`** and **`MinimapPanel.module.css`** gap/radius/arrow together.
+
+---
+
+## ADR-0105 — Procgen difficulty input, genVersion 5, Track A1 + mission-first design note
+Date: 2026-04-08
+
+### Decision
+- **Track choice (roadmap)**: Implement **Track A1** — optional **`FloorGenInput.difficulty`** (`0` easy | `1` normal | `2` hard; default via **`normalizeFloorGenDifficulty`**), stored on **`GameState.floor.difficulty`**, passed through **`makeInitialState`**, **`floor/regen`**, and echoed in **`floor.gen.meta.difficulty`**.
+- **Consumers**: **`generateDungeon`** reroll attempt count (**8** / **6** / **5**); **`placeLocksOnPath`** min path length and two-lock eligibility (easy: no two-lock, higher min path for any lock; hard: lower thresholds); **`scoreLayout`** scales lock+loop bonus (**0.65** / **1** / **1.2**). Bump **`genVersion`** to **5**.
+- **Debug**: F2 **Cycle difficulty** + Procgen readout row.
+- **Track B (not implemented)**: Expand **`web/src/procgen/missionFirst.ts`** with an in-source specification: **`PlannedMission`** (abstract, pre-geometry) vs **`MissionGraph`** (realized positions), plan validation rules, per-**`floorType`** embedding outline, downstream wiring to locks/`buildMissionGraph`, and a note that a future embedding feature should add e.g. **`meta.plannedMission`** and bump **`genVersion`** again.
+
+### Rationale
+Delivers the roadmap’s first tunable pacing knob without flipping to geometry-last generation; documents mission-first work so Track B can start from a single canonical file.
+
+### Consequences
+Dump JSON and **`layoutScore`** selection change vs **`genVersion` 4** for the same seed when **`difficulty` ≠ 1**. Consumers of **`floor.gen`** should tolerate **`meta.difficulty`** and **`genVersion` 5**.

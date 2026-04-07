@@ -1,6 +1,6 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState } from '../../game/types'
+import type { GameState, ProcgenDebugOverlayMode } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import styles from './DebugPanel.module.css'
 
@@ -178,6 +178,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'ditherLevels', label: 'Dither levels', min: 2, max: 24, step: 1 },
       { key: 'ditherMatrixSize', label: 'Dither matrix', min: 2, max: 8, step: 2 },
       { key: 'ditherPalette', label: 'Palette (0-4)', min: 0, max: 4, step: 1 },
+      {
+        key: 'ditherPalette0Mix',
+        label: 'Warm palette mix (0=quantised only, 1=full snap; palette 0)',
+        min: 0,
+        max: 1,
+        step: 0.01,
+        format: (v) => v.toFixed(2),
+      },
     ],
     [],
   )
@@ -282,6 +290,49 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </button>
         <button
           type="button"
+          onClick={() => dispatch({ type: 'floor/debugCycleDifficulty' })}
+          title="Cycles easy (0) → normal (1) → hard (2) for the next Regen"
+          style={{
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(0,0,0,0.28)',
+            color: 'rgba(255,255,255,0.86)',
+            borderRadius: 10,
+            padding: '6px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
+          }}
+        >
+          Cycle difficulty ({state.floor.difficulty})
+        </button>
+        <button
+          type="button"
+          onClick={() => {
+            const order: Array<ProcgenDebugOverlayMode | undefined> = [
+              undefined,
+              'districts',
+              'roomTags',
+              'mission',
+            ]
+            const cur = state.ui.procgenDebugOverlay
+            const i = Math.max(0, order.indexOf(cur))
+            const next = order[(i + 1) % order.length]
+            dispatch({ type: 'ui/setProcgenDebugOverlay', mode: next })
+          }}
+          title="Cycle floor tint overlay in the 3D view (districts → room function → mission nodes → off)"
+          style={{
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(0,0,0,0.28)',
+            color: 'rgba(255,255,255,0.86)',
+            borderRadius: 10,
+            padding: '6px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
+          }}
+        >
+          Proc overlay: {state.ui.procgenDebugOverlay ?? 'off'}
+        </button>
+        <button
+          type="button"
           onClick={dumpFloorGen}
           title="Download the canonical procgen output (floor.gen) as JSON"
           style={{
@@ -305,9 +356,16 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         placeholder="Search… (will matter later)"
       />
 
-      {(!q || 'procgen floor gen mission district score'.includes(q)) && (
+      {(!q || 'procgen floor gen mission district score difficulty'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Procgen</div>
+          <div className={styles.row}>
+            <div className={styles.label}>difficulty</div>
+            <div className={styles.value}>
+              {state.floor.difficulty === 0 ? 'easy (0)' : state.floor.difficulty === 1 ? 'normal (1)' : 'hard (2)'}
+            </div>
+            <div />
+          </div>
           <div className={styles.row}>
             <div className={styles.label}>floorType</div>
             <div className={styles.value}>{state.floor.floorType}</div>
@@ -331,6 +389,15 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 <div />
               </div>
               <div className={styles.row}>
+                <div className={styles.label}>stream mission</div>
+                <div className={styles.value}>
+                  {state.floor.gen.meta.streams.mission !== undefined
+                    ? String(state.floor.gen.meta.streams.mission)
+                    : '—'}
+                </div>
+                <div />
+              </div>
+              <div className={styles.row}>
                 <div className={styles.label}>attempt</div>
                 <div className={styles.value}>{state.floor.gen.meta.attempt}</div>
                 <div />
@@ -343,10 +410,16 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 <div />
               </div>
               <div className={styles.row}>
+                <div className={styles.label}>theme</div>
+                <div className={styles.value}>{state.floor.gen.theme?.id ?? '—'}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
                 <div className={styles.label}>missionGraph</div>
                 <div className={styles.value}>
                   {state.floor.gen.missionGraph
-                    ? `${state.floor.gen.missionGraph.nodes.length} nodes, ${state.floor.gen.missionGraph.edges.length} edges`
+                    ? `${state.floor.gen.missionGraph.nodes.length} nodes, ${state.floor.gen.missionGraph.edges.length} edges` +
+                      (state.floor.gen.missionGraph.hasAlternateEntranceExitRoute ? ', altRoute' : '')
                     : '—'}
                 </div>
                 <div />

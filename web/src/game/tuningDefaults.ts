@@ -38,6 +38,7 @@ export const DEFAULT_RENDER: RenderTuning = {
   ditherLevels: 10,
   ditherMatrixSize: 4,
   ditherPalette: 4,
+  ditherPalette0Mix: 1,
   dropAheadCells: 0.8,
   dropJitterRadius: 0.28,
   dropRangeCells: 5,

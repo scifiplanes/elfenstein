@@ -54,7 +54,7 @@ This document summarizes the intended dungeon-generation pipeline for Elfenstein
   - Debug UI hooks: show seed + regen, overlays (mission nodes, locks/keys, districts, room tags), connectivity heatmap, dump JSON output.
 
 ## Minimal data model (to standardize early)
-- `FloorGenInput`: seed, floorIndex, floorType, properties, difficulty.
+- `FloorGenInput`: seed, floorIndex, floorType, properties, difficulty (`0`/`1`/`2` easy/normal/hard; see DESIGN §8.1).
 - `MissionGraph`: typed nodes + typed edges (normal/locked/shortcut).
 - `Tilemap`: grid of `Wall/Floor/Door/Pit/POI/NPCSpawn`.
 - `Room`: id, cells/bounds, size, room tags, mission-node role.

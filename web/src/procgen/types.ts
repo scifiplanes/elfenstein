@@ -4,6 +4,14 @@ export type FloorType = 'Dungeon' | 'Cave' | 'Ruins'
 
 export type FloorProperty = 'Infested' | 'Cursed' | 'Destroyed' | 'Overgrown'
 
+/** 0 = easier (fewer lock rolls, more gen rerolls); 1 = default; 2 = harder (more lock pressure, fewer rerolls). */
+export type FloorGenDifficulty = 0 | 1 | 2
+
+export function normalizeFloorGenDifficulty(v: number | undefined): FloorGenDifficulty {
+  if (v === 0 || v === 1 || v === 2) return v
+  return 1
+}
+
 export type FloorGenInput = {
   /** Canonical seed for the floor (already mixed with world/floor index by caller if desired). */
   seed: number
@@ -13,6 +21,8 @@ export type FloorGenInput = {
   floorIndex?: number
   floorType: FloorType
   floorProperties?: FloorProperty[]
+  /** Omitted or invalid values behave as `1` (normal). */
+  difficulty?: number
 }
 
 export type DistrictTag = 'NorthWing' | 'SouthWing' | 'EastWing' | 'WestWing' | 'Core' | 'Ruin'
@@ -64,13 +74,25 @@ export type MissionGraphNode = {
 export type MissionGraphEdge = {
   fromId: string
   toId: string
-  kind: 'path' | 'locked'
+  /** `shortcut` marks an alternate entrance→exit route exists (not a distinct physical edge in the grid). */
+  kind: 'path' | 'locked' | 'shortcut'
   lockId?: string
 }
 
 export type MissionGraph = {
   nodes: MissionGraphNode[]
   edges: MissionGraphEdge[]
+  /** Multiple shortest-length routes exist between entrance and exit (loop / backtrack relief). */
+  hasAlternateEntranceExitRoute?: boolean
+}
+
+/** Procgen theme for dungeon materials (tints base textures in the renderer). */
+export type FloorGenTheme = {
+  id: string
+  /** Multiply `MeshLambertMaterial.color` for floor voxels (hex, e.g. #ffffff). */
+  floorColor: string
+  wallColor: string
+  ceilColor: string
 }
 
 export type FloorGenMeta = {
@@ -93,9 +115,14 @@ export type FloorGenMeta = {
     locks: number
     districts: number
     score: number
+    theme: number
+    /** Present from genVersion 4; reserved for `planMissionBeforeGeometry` / mission-first embed. */
+    mission?: number
   }
   /** Soft layout score (higher = more loops / fewer dead-ends heuristic). */
   layoutScore?: number
+  /** Input difficulty echoed for dumps/debug (present from genVersion 5). */
+  difficulty?: FloorGenDifficulty
 }
 
 export type GenFloorItem = {
@@ -129,4 +156,6 @@ export type FloorGenOutput = {
   meta: FloorGenMeta
   /** Progression + POI anchor graph for debug / future mission logic. */
   missionGraph?: MissionGraph
+  /** Visual theme applied by `WorldRenderer` (optional for backward-compatible dumps). */
+  theme?: FloorGenTheme
 }

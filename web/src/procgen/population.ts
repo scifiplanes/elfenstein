@@ -1,8 +1,20 @@
-import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, Tile, Vec2 } from '../game/types'
+import type { FloorPoi, ItemDefId, NpcLanguage, Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
-import type { GenNpc, GenRoom } from './types'
+import type { FloorProperty, FloorType, GenNpc, GenRoom } from './types'
+import { pickFloorItemDefFromTable, pickNpcKindFromTable } from './spawnTables'
+import { shortestPathIndices } from './locks'
 import { bfsDistances } from './validate'
 import { findNearestFloor, pickClosestDistanceCell, pickFarthestUnusedFloor } from './layoutPasses'
+
+function shortestPathCellSet(tiles: Tile[], w: number, h: number, entrance: Vec2, exit: Vec2): Set<string> {
+  const path = shortestPathIndices(tiles, w, h, entrance, exit)
+  if (!path) return new Set()
+  const s = new Set<string>()
+  for (const idx of path) {
+    s.add(`${idx % w},${((idx / w) | 0)}`)
+  }
+  return s
+}
 
 export function placePois(args: {
   tiles: Tile[]
@@ -60,11 +72,16 @@ export function spawnNpcsAndItems(args: {
   exit: Vec2
   occupied: Set<string>
   rng: Rng
+  floorType: FloorType
+  floorProperties?: readonly FloorProperty[]
 }): { npcs: GenNpc[]; floorItems: Array<{ defId: ItemDefId; pos: Vec2; qty?: number }> } {
-  const { tiles, w, h, rooms, entrance, exit, occupied, rng } = args
+  const { tiles, w, h, rooms, entrance, exit, occupied, rng, floorType } = args
+  const floorProperties = args.floorProperties ?? []
 
   const npcs: GenNpc[] = []
   const floorItems: Array<{ defId: ItemDefId; pos: Vec2; qty?: number }> = []
+
+  const pathCells = shortestPathCellSet(tiles, w, h, entrance, exit)
 
   const keyOf = (p: Vec2) => `${p.x},${p.y}`
   const isFreeFloor = (p: Vec2) =>
@@ -99,15 +116,11 @@ export function spawnNpcsAndItems(args: {
   const npcFromRoom = (room: GenRoom, idx: number, isNear: boolean): GenNpc | null => {
     const pos = room.center
     if (!isFreeFloor(pos)) return null
-    const func = room.tags?.roomFunction
-    const prop = room.tags?.roomProperties
-    const distTag = room.district
-
-    let kind: NpcKind =
-      prop === 'Infected' ? 'Skeleton' : func === 'Workshop' ? 'Catoctopus' : func === 'Storage' ? 'Bobr' : 'Wurglepup'
-
-    if (distTag === 'Ruin' && rng.next() < 0.35) kind = 'Skeleton'
-    if (distTag === 'Core' && kind === 'Wurglepup' && rng.next() < 0.25) kind = 'Catoctopus'
+    const onPath = pathCells.has(keyOf(pos))
+    const kind = pickNpcKindFromTable(
+      { floorType, floorProperties, room, idx, isNear, isOnEntranceExitShortestPath: onPath },
+      rng,
+    )
 
     const status: GenNpc['status'] = kind === 'Skeleton' ? 'hostile' : isNear ? 'neutral' : rng.next() < 0.25 ? 'hostile' : 'neutral'
     const language = langList[(idx * 17 + (kind.charCodeAt(0) % 7)) % langList.length]
@@ -142,22 +155,16 @@ export function spawnNpcsAndItems(args: {
     occupied.add(keyOf(npc.pos))
   }
 
-  const itemForFunc: Partial<Record<'Passage' | 'Habitat' | 'Workshop' | 'Communal' | 'Storage', ItemDefId>> = {
-    Habitat: 'Mushrooms',
-    Workshop: 'Ash',
-    Storage: 'Stone',
-    Communal: 'Foodroot',
-  }
-
   const itemRooms = candidates
     .filter((x) => x.d > 0)
     .map((x) => x.r)
     .slice(0, 6)
   for (const r of itemRooms) {
     if (floorItems.length >= 4) break
-    const func = r.tags?.roomFunction
-    let defId = (func && itemForFunc[func]) || (rng.next() < 0.5 ? 'Stick' : 'Stone')
-    if (r.district === 'EastWing' && rng.next() < 0.3) defId = 'Sulfur'
+    const defId = pickFloorItemDefFromTable(
+      { floorProperties, room: r, isOnEntranceExitShortestPath: pathCells.has(keyOf(r.center)) },
+      rng,
+    )
     const pos = r.center
     if (!isFreeFloor(pos)) continue
     floorItems.push({ defId, pos, qty: 1 })

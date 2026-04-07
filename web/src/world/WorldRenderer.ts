@@ -1,7 +1,12 @@
 import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
 import type { GameState, NpcKind, PoiKind } from '../game/types'
-import { makeCeilTexture, makeFloorTexture, makeWallTexture } from './procTextures'
+import type { DistrictTag, GenRoom } from '../procgen/types'
+import {
+  DUNGEON_CEILING_TEXTURE_SRC,
+  DUNGEON_FLOOR_TEXTURE_SRC,
+  DUNGEON_WALL_TEXTURE_SRC,
+} from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import { POI_SPRITE_SRC, POI_WELL_DRAINED_SRC, POI_WELL_GLOW_SRC, POI_WELL_SPARKLE_FRAMES } from '../game/poi/poiDefs'
 
@@ -56,9 +61,13 @@ export class WorldRenderer {
   private readonly raycaster = new THREE.Raycaster()
   private readonly ndc = new THREE.Vector2()
 
-  private floorMat: THREE.MeshStandardMaterial | null = null
-  private wallMat: THREE.MeshStandardMaterial | null = null
-  private ceilMat: THREE.MeshStandardMaterial | null = null
+  private floorMat: THREE.MeshLambertMaterial | null = null
+  private wallMat: THREE.MeshLambertMaterial | null = null
+  private ceilMat: THREE.MeshLambertMaterial | null = null
+
+  private dungeonFloorTex: THREE.Texture | null = null
+  private dungeonWallTex: THREE.Texture | null = null
+  private dungeonCeilTex: THREE.Texture | null = null
 
   private readonly textureLoader = new THREE.TextureLoader()
   private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
@@ -76,6 +85,9 @@ export class WorldRenderer {
   private wellSparkleMat: THREE.SpriteMaterial | null = null
   private wellSparkleTextures: THREE.Texture[] = []
   private wellDecorSprites: Array<{ main: THREE.Sprite; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
+
+  private procgenDebugGroup: THREE.Group | null = null
+  private lastProcgenDebugKey = ''
 
   constructor(renderer: THREE.WebGLRenderer) {
     this.renderer = renderer
@@ -145,6 +157,18 @@ export class WorldRenderer {
     }
     for (const t of this.wellSparkleTextures) t.dispose()
     this.wellSparkleTextures = []
+    if (this.dungeonFloorTex) {
+      this.dungeonFloorTex.dispose()
+      this.dungeonFloorTex = null
+    }
+    if (this.dungeonWallTex) {
+      this.dungeonWallTex.dispose()
+      this.dungeonWallTex = null
+    }
+    if (this.dungeonCeilTex) {
+      this.dungeonCeilTex.dispose()
+      this.dungeonCeilTex = null
+    }
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
       if (mesh.geometry) mesh.geometry.dispose?.()
@@ -155,6 +179,7 @@ export class WorldRenderer {
     this.rt?.dispose()
     this.rt = null
     this.lastSize = { w: 0, h: 0 }
+    this.disposeProcgenDebugOverlay()
   }
 
   /** Ensure the offscreen buffer matches the game viewport in layout CSS px (ignores ancestor `transform: scale`). */
@@ -288,7 +313,9 @@ export class WorldRenderer {
   }
 
   private syncScene(state: GameState) {
-    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')+','+(p.drained?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}`
+    const th = state.floor.gen?.theme
+    const themeKey = th ? `${th.id}:${th.floorColor}:${th.wallColor}:${th.ceilColor}` : 'default'
+    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')+','+(p.drained?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}:${themeKey}`
     if (key !== this.lastGeomKey) {
       this.lastGeomKey = key
       if (this.geoGroup) this.scene.remove(this.geoGroup)
@@ -357,6 +384,8 @@ export class WorldRenderer {
     this.camera.position.set(x, y, z)
     this.camera.rotation.set(pitch, yawThree, roll)
 
+    this.syncProcgenDebugOverlay(state)
+
     // Lantern is camera-attached; offsets are in camera-local space (forward is -Z).
     this.lantern.position.set(0, state.render.lanternVerticalOffset, -state.render.lanternForwardOffset)
     this.lanternBeam.position.copy(this.lantern.position)
@@ -366,6 +395,36 @@ export class WorldRenderer {
     this.lanternBeamTarget.position.set(0, 0, -Math.min(6, beamDist))
   }
 
+  private getDungeonFloorTexture(): THREE.Texture {
+    if (this.dungeonFloorTex) return this.dungeonFloorTex
+    const tex = this.textureLoader.load(DUNGEON_FLOOR_TEXTURE_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(1, 1)
+    this.dungeonFloorTex = tex
+    return tex
+  }
+
+  private getDungeonWallTexture(): THREE.Texture {
+    if (this.dungeonWallTex) return this.dungeonWallTex
+    const tex = this.textureLoader.load(DUNGEON_WALL_TEXTURE_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(1, 1)
+    this.dungeonWallTex = tex
+    return tex
+  }
+
+  private getDungeonCeilingTexture(): THREE.Texture {
+    if (this.dungeonCeilTex) return this.dungeonCeilTex
+    const tex = this.textureLoader.load(DUNGEON_CEILING_TEXTURE_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(1, 1)
+    this.dungeonCeilTex = tex
+    return tex
+  }
+
   private buildGeometry(state: GameState) {
     const g = new THREE.Group()
     this.pickables = []
@@ -373,16 +432,33 @@ export class WorldRenderer {
     this.poiSprites = []
     this.wellDecorSprites = []
 
-    const wallTex = makeWallTexture(state.floor.seed ^ 0x111)
-    const floorTex = makeFloorTexture(state.floor.seed ^ 0x222)
-    const ceilTex = makeCeilTexture(state.floor.seed ^ 0x333)
+    const wallTex = this.getDungeonWallTexture()
+    const floorTex = this.getDungeonFloorTexture()
+    const ceilTex = this.getDungeonCeilingTexture()
+
+    const theme = state.floor.gen?.theme
 
     // Small emissive lift so the scene never becomes pure-black,
     // but low enough that the lantern still changes visibility.
     const base = Math.max(0, state.render.baseEmissive)
-    this.floorMat = new THREE.MeshStandardMaterial({ map: floorTex, roughness: 1, metalness: 0, emissive: new THREE.Color('#101018'), emissiveIntensity: base * 1.0 })
-    this.wallMat = new THREE.MeshStandardMaterial({ map: wallTex, roughness: 1, metalness: 0, emissive: new THREE.Color('#161210'), emissiveIntensity: base * 0.8 })
-    this.ceilMat = new THREE.MeshStandardMaterial({ map: ceilTex, roughness: 1, metalness: 0, emissive: new THREE.Color('#05050a'), emissiveIntensity: base * 0.6 })
+    this.floorMat = new THREE.MeshLambertMaterial({
+      map: floorTex,
+      color: new THREE.Color(theme?.floorColor ?? '#ffffff'),
+      emissive: new THREE.Color('#101018'),
+      emissiveIntensity: base * 1.0,
+    })
+    this.wallMat = new THREE.MeshLambertMaterial({
+      map: wallTex,
+      color: new THREE.Color(theme?.wallColor ?? '#ffffff'),
+      emissive: new THREE.Color('#161210'),
+      emissiveIntensity: base * 0.8,
+    })
+    this.ceilMat = new THREE.MeshLambertMaterial({
+      map: ceilTex,
+      color: new THREE.Color(theme?.ceilColor ?? '#ffffff'),
+      emissive: new THREE.Color('#05050a'),
+      emissiveIntensity: base * 0.6,
+    })
 
     const floorGeo = new THREE.BoxGeometry(1, 0.1, 1)
     const wallGeo = new THREE.BoxGeometry(1, 1.2, 1)
@@ -417,12 +493,10 @@ export class WorldRenderer {
           g.add(c)
 
           const doorGeo = new THREE.BoxGeometry(0.9, 1.1, 0.15)
-          const doorMat = new THREE.MeshStandardMaterial({
+          const doorMat = new THREE.MeshLambertMaterial({
             color: t === 'lockedDoor' ? new THREE.Color('#7a2a18') : new THREE.Color('#6a4a20'),
             emissive: new THREE.Color('#120a06'),
             emissiveIntensity: base * 0.4,
-            roughness: 0.9,
-            metalness: 0.05,
           })
           const d = new THREE.Mesh(doorGeo, doorMat)
           d.position.set(wx, 0.55, wz)
@@ -820,6 +894,127 @@ export class WorldRenderer {
       h = Math.imul(h, 16777619)
     }
     return h >>> 0
+  }
+
+  private disposeProcgenDebugOverlay() {
+    if (!this.procgenDebugGroup) return
+    this.scene.remove(this.procgenDebugGroup)
+    const seenGeom = new Set<THREE.BufferGeometry>()
+    this.procgenDebugGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh
+      if (mesh.geometry && !seenGeom.has(mesh.geometry)) {
+        seenGeom.add(mesh.geometry)
+        mesh.geometry.dispose()
+      }
+      const mat = mesh.material as THREE.Material | THREE.Material[] | undefined
+      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.())
+      else mat?.dispose?.()
+    })
+    this.procgenDebugGroup = null
+  }
+
+  private syncProcgenDebugOverlay(state: GameState) {
+    const mode = state.ui.procgenDebugOverlay
+    const { w, h, tiles } = state.floor
+    const gen = state.floor.gen
+    const key = `${mode ?? ''}|${w}|${h}|${tiles.join('')}|${gen?.meta?.inputSeed ?? 0}|${gen?.meta?.attempt ?? 0}|${gen?.missionGraph?.nodes?.length ?? 0}`
+    if (key === this.lastProcgenDebugKey) return
+
+    this.disposeProcgenDebugOverlay()
+    this.lastProcgenDebugKey = key
+
+    if (!mode || !gen?.rooms?.length) return
+
+    const group = new THREE.Group()
+    const findRoomAt = (gx: number, gy: number): GenRoom | undefined =>
+      gen.rooms.find(
+        (r) => gx >= r.rect.x && gx < r.rect.x + r.rect.w && gy >= r.rect.y && gy < r.rect.y + r.rect.h,
+      )
+
+    if (mode === 'districts') {
+      const colors: Record<DistrictTag, string> = {
+        NorthWing: '#5ad65a',
+        SouthWing: '#d65a8e',
+        EastWing: '#5a8ed6',
+        WestWing: '#d6b05a',
+        Core: '#9a5aff',
+        Ruin: '#888888',
+      }
+      const planeGeo = new THREE.PlaneGeometry(0.9, 0.9)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const t = tiles[x + y * w]
+          if (t !== 'floor' && t !== 'door' && t !== 'lockedDoor') continue
+          const room = findRoomAt(x, y)
+          const tag = room?.district ?? 'Core'
+          const hex = colors[tag] ?? '#6688aa'
+          const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(hex),
+            transparent: true,
+            opacity: 0.38,
+            depthWrite: false,
+          })
+          const mesh = new THREE.Mesh(planeGeo, mat)
+          mesh.rotation.x = -Math.PI / 2
+          mesh.position.set(x - w / 2, 0.03, y - h / 2)
+          group.add(mesh)
+        }
+      }
+    } else if (mode === 'roomTags') {
+      const funcColors: Record<string, string> = {
+        Passage: '#8899aa',
+        Habitat: '#44aa66',
+        Workshop: '#cc8844',
+        Communal: '#8877cc',
+        Storage: '#aa6666',
+      }
+      const planeGeo = new THREE.PlaneGeometry(0.9, 0.9)
+      for (let y = 0; y < h; y++) {
+        for (let x = 0; x < w; x++) {
+          const t = tiles[x + y * w]
+          if (t !== 'floor' && t !== 'door' && t !== 'lockedDoor') continue
+          const room = findRoomAt(x, y)
+          const rf = room?.tags?.roomFunction
+          const hex = (rf && funcColors[rf]) || '#445566'
+          const mat = new THREE.MeshBasicMaterial({
+            color: new THREE.Color(hex),
+            transparent: true,
+            opacity: 0.4,
+            depthWrite: false,
+          })
+          const mesh = new THREE.Mesh(planeGeo, mat)
+          mesh.rotation.x = -Math.PI / 2
+          mesh.position.set(x - w / 2, 0.03, y - h / 2)
+          group.add(mesh)
+        }
+      }
+    } else if (mode === 'mission' && gen.missionGraph?.nodes) {
+      const roleColor: Record<string, string> = {
+        Entrance: '#00ff88',
+        Exit: '#ff4488',
+        Well: '#44aaff',
+        Bed: '#ffcc44',
+        Chest: '#ccaa44',
+        LockGate: '#ff2222',
+        KeyPickup: '#ffff44',
+      }
+      const boxGeo = new THREE.BoxGeometry(0.35, 0.08, 0.35)
+      for (const n of gen.missionGraph.nodes) {
+        const hex = roleColor[n.role] ?? '#ffffff'
+        const mat = new THREE.MeshBasicMaterial({
+          color: new THREE.Color(hex),
+          transparent: true,
+          opacity: 0.85,
+          depthWrite: false,
+        })
+        const mesh = new THREE.Mesh(boxGeo, mat)
+        mesh.position.set(n.pos.x - w / 2, 0.12, n.pos.y - h / 2)
+        group.add(mesh)
+      }
+    }
+
+    this.procgenDebugGroup = group
+    this.scene.add(group)
   }
 
 }

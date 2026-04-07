@@ -1,5 +1,7 @@
+import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import type { DistrictTag, FloorProperty, GenRoom } from './types'
+import { isWalkable } from './validate'
 
 const DISTRICT_POOL: DistrictTag[] = ['NorthWing', 'SouthWing', 'EastWing', 'WestWing', 'Core', 'Ruin']
 
@@ -77,5 +79,78 @@ export function tagRoomsWithQuotas(
     const tinies = sorted.filter((r) => r.tags?.size === 'tiny').sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
     const victim = tinies[0]
     if (victim?.tags) victim.tags.roomFunction = 'Storage'
+  }
+}
+
+function floorNeighborCount(tiles: Tile[], w: number, h: number, c: Vec2): number {
+  if (c.x < 0 || c.y < 0 || c.x >= w || c.y >= h) return 0
+  let n = 0
+  for (const [dx, dy] of [
+    [1, 0],
+    [-1, 0],
+    [0, 1],
+    [0, -1],
+  ] as const) {
+    const x = c.x + dx
+    const y = c.y + dy
+    if (x < 0 || y < 0 || x >= w || y >= h) continue
+    if (isWalkable(tiles[x + y * w])) n++
+  }
+  return n
+}
+
+function isDeadEndCenter(room: GenRoom, tiles: Tile[], w: number, h: number): boolean {
+  return floorNeighborCount(tiles, w, h, room.center) <= 1
+}
+
+function rectsShareEdge(a: GenRoom['rect'], b: GenRoom['rect']): boolean {
+  const ax2 = a.x + a.w
+  const ay2 = a.y + a.h
+  const bx2 = b.x + b.w
+  const by2 = b.y + b.h
+  const yOverlap = ay2 > b.y && by2 > a.y
+  const xOverlap = ax2 > b.x && bx2 > a.x
+  if (xOverlap && yOverlap) return false
+  if (yOverlap && (ax2 === b.x || bx2 === a.x)) return true
+  if (xOverlap && (ay2 === b.y || by2 === a.y)) return true
+  return false
+}
+
+/**
+ * Post-quota passes: prefer Storage in dead-end rooms; expand Flooded into a small cluster on Cursed floors.
+ */
+export function applyTagConstraints(
+  rooms: GenRoom[],
+  tiles: Tile[],
+  w: number,
+  h: number,
+  floorProperties: FloorProperty[] | undefined,
+  rng: Pick<Rng, 'next'>,
+): void {
+  const sorted = [...rooms].sort((a, b) => a.id.localeCompare(b.id))
+
+  const storageRooms = sorted.filter((r) => r.tags?.roomFunction === 'Storage')
+  const passageTiny = sorted.filter((r) => r.tags?.size === 'tiny' && r.tags?.roomFunction === 'Passage')
+  for (const s of storageRooms) {
+    if (isDeadEndCenter(s, tiles, w, h)) continue
+    const swap = passageTiny.find((p) => isDeadEndCenter(p, tiles, w, h))
+    if (swap?.tags && s.tags) {
+      s.tags = { ...s.tags, roomFunction: 'Passage' }
+      swap.tags = { ...swap.tags, roomFunction: 'Storage' }
+    }
+  }
+
+  const props = floorProperties ?? []
+  if (props.includes('Cursed')) {
+    const flooded = sorted.filter((r) => r.tags?.roomProperties === 'Flooded')
+    if (flooded.length) {
+      const seed = flooded.slice().sort((a, b) => a.id.localeCompare(b.id))[0]!
+      for (const r of sorted) {
+        if (r === seed || r.tags?.roomProperties === 'Flooded') continue
+        if (rectsShareEdge(seed.rect, r.rect) && rng.next() < 0.45) {
+          r.tags = { ...(r.tags ?? {}), roomProperties: 'Flooded' }
+        }
+      }
+    }
   }
 }
