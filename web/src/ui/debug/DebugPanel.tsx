@@ -138,6 +138,39 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'lanternBeamPenumbra', label: 'Lantern beam penumbra', min: 0, max: 1, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'torchIntensity', label: 'Torch intensity', min: 0, max: 30, step: 0.01 },
       { key: 'torchDistance', label: 'Torch distance', min: 1, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
+      {
+        key: 'torchPoiLightMax',
+        label: 'Torch POI lights max (nearest to player)',
+        min: 0,
+        max: 6,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'shadowLanternPoint',
+        label: 'Shadow: lantern point (0/1, cube map)',
+        min: 0,
+        max: 1,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'shadowLanternBeam',
+        label: 'Shadow: lantern beam when lit (0/1)',
+        min: 0,
+        max: 1,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
+      { key: 'shadowMapSize', label: 'Shadow map size (px)', min: 128, max: 512, step: 128, format: (v) => String(Math.round(v)) },
+      {
+        key: 'shadowFilter',
+        label: 'Shadow filter (0=basic, 1=pcf, 2=soft)',
+        min: 0,
+        max: 2,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
       { key: 'fogDensity', label: 'FogExp2 density', min: 0, max: 0.3, step: 0.001, format: (v) => v.toFixed(3) },
       { key: 'ditherStrength', label: 'Dither strength', min: 0, max: 1, step: 0.01 },
       { key: 'ditherColourPreserve', label: 'Dither colourPreserve', min: 0, max: 1, step: 0.01 },
@@ -233,6 +266,22 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </button>
         <button
           type="button"
+          onClick={() => dispatch({ type: 'floor/debugCycleRealizer' })}
+          title="Cycles Dungeon → Cave → Ruins for the next Regen"
+          style={{
+            border: '1px solid rgba(255,255,255,0.12)',
+            background: 'rgba(0,0,0,0.28)',
+            color: 'rgba(255,255,255,0.86)',
+            borderRadius: 10,
+            padding: '6px 10px',
+            fontFamily: 'var(--mono)',
+            fontSize: 11,
+          }}
+        >
+          Cycle type
+        </button>
+        <button
+          type="button"
           onClick={dumpFloorGen}
           title="Download the canonical procgen output (floor.gen) as JSON"
           style={{
@@ -255,6 +304,57 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search… (will matter later)"
       />
+
+      {(!q || 'procgen floor gen mission district score'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Procgen</div>
+          <div className={styles.row}>
+            <div className={styles.label}>floorType</div>
+            <div className={styles.value}>{state.floor.floorType}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>floorIndex</div>
+            <div className={styles.value}>{state.floor.floorIndex}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>floorProperties</div>
+            <div className={styles.value}>{state.floor.floorProperties.length ? state.floor.floorProperties.join(', ') : '—'}</div>
+            <div />
+          </div>
+          {state.floor.gen && (
+            <>
+              <div className={styles.row}>
+                <div className={styles.label}>genVersion</div>
+                <div className={styles.value}>{state.floor.gen.meta.genVersion}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>attempt</div>
+                <div className={styles.value}>{state.floor.gen.meta.attempt}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>layoutScore</div>
+                <div className={styles.value}>
+                  {state.floor.gen.meta.layoutScore !== undefined ? String(Math.round(state.floor.gen.meta.layoutScore)) : '—'}
+                </div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>missionGraph</div>
+                <div className={styles.value}>
+                  {state.floor.gen.missionGraph
+                    ? `${state.floor.gen.missionGraph.nodes.length} nodes, ${state.floor.gen.missionGraph.edges.length} edges`
+                    : '—'}
+                </div>
+                <div />
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {(!q || 'pose yaw direction playerdir camyaw'.includes(q)) && (
         <div className={styles.section}>

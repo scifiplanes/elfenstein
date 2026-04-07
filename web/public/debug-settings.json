@@ -45,7 +45,7 @@
     "portraitShakeMagnitudeScale": 3.31,
     "portraitShakeHz": 33.5,
     "npcFootLift": -0.035,
-    "npcGroundY_Wurglepup": 0,
+    "npcGroundY_Wurglepup": 0.15,
     "npcGroundY_Bobr": -0.15,
     "npcGroundY_Skeleton": -0.07,
     "npcGroundY_Catoctopus": 0,

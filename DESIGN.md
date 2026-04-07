@@ -15,7 +15,7 @@ Last updated: 2026-04-07
 - **Layout**: HUD and compositor are authored at **1920×1080** CSS px inside **`FixedStageViewport`** (`stageDesign.ts`). The **`.clip`** is exactly the scaled **1920×1080** content box (**`STAGE_CSS_*`** in **`stageDesign.ts`**). A **3px** white frame uses **`outline`** on **`.clip`** with negative **`outline-offset`** so it sits just inside that rectangle without changing layout size. The stage **uniformly scales** by **`s = min(1, viewportW/1920, viewportH/1080)`** (using **`visualViewport`** when present): on viewports **larger than 1080p** the box stays **1920×1080 CSS px** centered with black margins; smaller viewports **shrink** so everything remains visible. **All stage-internal layers (presenter canvas, interactive HUD hit layer, capture HUD) are stage-relative (positioned against the 1920×1080 stage), not browser-viewport fixed**, so letterboxing/margins can’t offset the 3D viewport vs HUD. **`FramePresenter`** / WebGL canvas and **HUD `html2canvas` capture use the same 1920×1080 CSS size**—not the browser viewport. **`getBoundingClientRect()` includes that outer scale**, so the compositor’s **`gameRectPx`** and the **3D render target** use **layout** sizes (divide by **`s`** where needed, and **`clientWidth` / `clientHeight`** for the game viewport) so the scene + UI map correctly inside the stage. In-game CSS uses **`--stage-w` / `--stage-h`** instead of **`100vw` / `100vh`** for max widths/heights where needed.
 - **Camera**: first-person, grid movement; no looking up/down; pits can exist but player can’t fall in. **Game yaw** (from `playerDir` / `view.camYaw`) uses forward \((\sin y,\,-\cos y)\) on the XZ plane; **Three.js** `camera.rotation.y` is set to **`-y`** so the rendered view matches that forward (Three’s Y rotation would otherwise flip the X component of view direction).
 - **Renderer**: Three.js/WebGL for dungeon geometry.
-- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift). Includes a small **Pose** readout (playerDir and camera yaw values) for diagnosing orientation issues. **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
+- **Debug (F2)**: sliders for render/audio tuning, including **camera** (eye height, field of view, optional pitch for development) and **lighting** (lantern/beam/torch intensity + distance, base emissive lift, **shadow** toggles for point/beam, shadow map size and filter, max **nearest** POI torch lights). Includes a small **Pose** readout (playerDir and camera yaw values) for diagnosing orientation issues. **Portrait**: portrait shake envelope (**hold/decay**) + amplitude, mouth flicker (**Hz** + **amount**), and min/max gap (ms) between Igor **idle** flashes and min/max **flash** duration (ms). **Audio** includes **master music** volume, spatial emitter mix, and **munch** SFX (volume, noise **LP sweep** endpoints, **HP** corner and **HP/LP Q**, duration, thump Hz, tremolo). Values load from `web/public/debug-settings.json` and, during **Vite dev**, edits are debounced back into that file so tuning persists in the repo. There are **no always-on on-screen debug overlays** during play; debug UI is accessed via **F2** (and renderer-only debugging uses explicit query params when needed). Pitch is a debug aid only; core UX remains yaw-on-grid.
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
@@ -171,8 +171,9 @@ The party has **up to 4** character portrait slots.
   - NPC billboards **preserve the sprite PNG aspect ratio** (no squashing); sprite **height** is set by per-kind tuning and width is derived from the texture aspect.
   - F2 Debug exposes per-kind **NPC size (height)** and deterministic **±% size variation**; values persist via `web/public/debug-settings.json`.
   - NPC sprite placement aligns the **feet/ground point** with the **floor surface** so NPCs appear grounded. F2 Debug exposes a small global lift (`npcFootLift`) plus per-kind ground pivot offsets (`npcGroundY_*`) to compensate for transparent padding differences across NPC art.
-  - The NPC dialog shows a small matching sprite next to the NPC’s name.
-  - Until per-kind art exists for every `NpcKind`, missing NPC sprites are satisfied by **binary copies** of **`Placeholders/Placeholder_NPC.png`** under `web/public/content/` at the URL expected by `NPC_SPRITE_SRC` (e.g. Wurglepup).
+  - The NPC dialog shows a small matching **base** sprite next to the NPC’s name (same path as the in-world primary frame).
+  - **Wurglepup** uses **`/content/npc_slime.png`** as its primary billboard (kind id stays `Wurglepup` in data). **Catoctopus** and **Wurglepup** alternate between base and **idle** PNGs (`npc_catoctopus_idle.png`, `npc_slime_idle.png`) on a short shared timer in `WorldRenderer` (one material per kind, so all instances share the same phase).
+  - Until per-kind art exists for every `NpcKind`, any remaining missing URLs are still satisfied by **binary copies** of **`Placeholders/Placeholder_NPC.png`** under `web/public/content/` at the path expected by `NPC_SPRITE_SRC` / `POI_SPRITE_SRC`.
 
 **Statuses**: Aggressive, Neutral, Friendly
 
@@ -207,45 +208,48 @@ The party has **up to 4** character portrait slots.
 - **Room function**: Passage, Habitat, Workshop, Communal, Storage
 - **Room properties**: Burning, Flooded, Infected (cause resistance check; fail can cause damage)
 - **Room status**: Overgrown, Destroyed, Collapsed
-- **Doors/keys**: passages can be blocked by door types requiring appropriate keys
+- **Doors/keys**: passages can be blocked by door types requiring appropriate keys; procgen records **`keyDefId`** per locked door in **`floor.gen.doors`** (gameplay opens a door only if the party holds a matching item, e.g. **IronKey** / **BrassKey**).
 
 ### 8.2 Starting algorithm (prototype baseline)
-Initial starting point to iterate:
-1. BSP partition (min leaf ~6×6; depth ~6)
-2. Room carve (~45–70% of leaf, random offset; preserves separating walls)
-3. Corridor stitch (L-bends connect **sibling BSP subtrees**; guarantees baseline connectivity)
-4. Connectivity repair (connect any remaining disconnected components deterministically)
-5. CA smoothing (1–2 wall passes for alcoves/softening; current implementation is a mild **carve-only** wall→floor pass)
-6. Exit selection (pick an exit as the **farthest reachable** floor cell from the entrance by BFS distance)
-7. Minimal lock/key pass: scan the entrance→exit shortest path (from near-exit toward entrance) and place a `lockedDoor` only where it **fully separates** the exit from the entrance (no alternate walkable route while the lock is closed). Spawn an `IronKey` on the entrance side of that door. If no path cell qualifies (e.g. redundant corridors), skip lock/key for that attempt. (Planned to expand into a full mission/lock graph.)
-8. Room tagging (assign basic room tags; planned to evolve into quotas/adjacency solve)
-9. Population pass:
-   - place POIs using tags + entrance/exit heuristics
-   - spawn a small set of NPCs and floor items using room tags (MVP tables), with deterministic ids and positions
-10. Theme injection (tile variants + palette by theme; planned)
+**Floor type** (`Dungeon` | `Cave` | `Ruins`) selects a **geometry realizer**, then shared post-passes and population:
 
-**First load**: the game does not use a separate hand-authored map. `makeInitialState` runs the same `generateDungeon` pipeline as `floor/regen` (**31×31** dimensions) with a **fresh random 32-bit** `floor.seed` each cold start (via `crypto.getRandomValues` when available), stores the result in `floor.gen`, and places the party at **`gen.entrance`** with the camera snapped to that cell. Given that seed, the floor is fully deterministic (same as regen with an explicit seed).
-Default floor dimensions are **31×31** (large enough for BSP to split into multiple rooms); `floor/regen` keeps the current `floor.w/h`.
+1. **Layout (per `floorType`)**
+   - **Dungeon**: BSP partition (min leaf ~6×6; depth ~6), room carve (~45–70% of leaf), sibling **L-corridor** stitch.
+   - **Cave**: seeded worm carve + occasional widen, then a single **GenRoom** from the floor bounding box of carved cells (fallback box if empty).
+   - **Ruins**: ~5×5 macro-cell stamps with random doorways between cells; multiple **GenRoom** entries from stamped chambers.
+2. Connectivity repair (deterministic), then CA **carve-only** smoothing (one pass).
+3. Exit selection (exit = **farthest** reachable floor cell from the entrance by BFS).
+4. **Districts**: seeded Voronoi on room centers → **`district`** tags (`NorthWing`, `SouthWing`, …) for spawn bias.
+5. **Room tagging**: quota-aware function assignment (e.g. try to keep at least one **Storage** among tiny rooms) plus rolls from **`floorProperties`** (Infested/Cursed/Destroyed/Overgrown).
+6. Population pass:
+   - POIs (**Well** / **Bed** / **Chest**) from entrance–exit heuristics + storage-room bias for chest
+   - NPCs and floor items from room tags **and** district (e.g. **Ruin** → more skeletons)
+7. **Lock/key pass** on the entrance→exit **shortest path**: place **ordered** separating `lockedDoor` tiles when possible. Long paths may get **two** gates (**A** + **IronKey**, **B** + **BrassKey**); shorter paths use **one** (**A** + **IronKey**); otherwise skip locks. Keys carry **`forLockId`** in **`floor.gen.floorItems`** for validation/debug.
+8. **`missionGraph`**: serializes nodes (entrance, exit, POIs, locks, keys) and rough edges for debug and future mission logic.
+9. Theme injection (tile variants + palette by theme; still planned for renderer).
+
+**First load**: `makeInitialState` runs the same `generateDungeon` pipeline as `floor/regen` (**31×31**), with **`floor.seed`** (random on cold start), **`floor.floorIndex`** (0 on first floor), **`floor.floorType`** (default **Dungeon**), and **`floor.floorProperties`** (default empty). The canonical bundle is **`floor.gen`** (`genVersion` 2); the party spawns at **`gen.entrance`**. **`floorIndex`** is mixed into the procgen seed so deeper floors can diverge without changing the stored **floor seed** semantics.
+Default floor dimensions are **31×31**; `floor/regen` keeps the current **`floor.w` / `floor.h`** and reapplies **`floorType` / `floorProperties` / `floorIndex`** from state unless you add UI to change them.
 
 ### 8.3 Determinism requirement
 Generation should be **seeded** and phase-stable (changes to one phase shouldn’t ripple unpredictably into others) to support future host-synced multiplayer.
 
-Validation is part of generation: the generator runs **bounded deterministic rerolls** (derived from the input seed) when lock/key constraints fail (e.g. key not reachable, exit reachable before “unlocking” when a lock is present). The **accepted** output is always a **full BSP layout** with a non-empty `rooms` list from the last attempt (or a tiny carved fallback room if generation fails catastrophically). The generator does **not** discard the dungeon and return an empty room list solely because validation failed.
+Validation is part of generation: the generator runs **bounded deterministic rerolls** when **ordered** lock/key constraints fail. Among attempts that pass validation, the run picks the one with the highest **soft `layoutScore`** (reachable floor mass, dead-end penalty, path length bonus); if none validate, it returns the **last** attempt (still full geometry) like before. Output always has a non-empty **`rooms`** list except catastrophic fallback (single carved room).
 
-The final output should record which **attempt** was accepted (attempt seed + attempt index) so a generated floor can be reproduced and debugged exactly.
+**Meta** records **`inputSeed`**, **`attemptSeed`**, **`attempt`**, **`layoutScore`**, and **phase streams** (`layout`, `tags`, `population`, `locks`, `districts`, `score`).
 
 ### 8.4 Reference pipeline (expanded)
 See `Dungeon_generation_plan_summary.md` for an expanded phased pipeline (mission graph → lock correctness → geometry → districts → tagging solve → population → validation → debug overlays).
 
-**Debuggability**: the F2 Debug panel includes a “Dump `floor.gen`” action to download the canonical procgen output JSON for a given seed/attempt.
+**Debuggability**: the F2 Debug panel includes a **Procgen** readout (**floorType**, **floorIndex**, **genVersion**, **attempt**, **layoutScore**, **missionGraph** size), **Cycle type** (Dungeon→Cave→Ruins for the next regen), and **Dump `floor.gen`** to download the canonical JSON.
 
 ## 9) Points of interest (POIs)
 Static interactables, triggered by dragging items onto them, clicking, or walking into them.
 
-- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well** uses `npc_well.png`; **Chest**, **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** has its own **`poiGroundY_Well`** in F2, while placeholder POI kinds follow **`npcGroundY_Wurglepup`** (matching the shared placeholder texture).
+- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest**, **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** has its own **`poiGroundY_Well`** in F2, while placeholder POI kinds follow **`npcGroundY_Wurglepup`** (matching the shared placeholder texture).
 
 Initial POIs:
-- **Well**: save point (clear notification); used to fill Waterbag
+- **Well**: save point (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); save still works when drained
 - **Chest**: opens (sprite change) and drops random item
 - **Bed**: restores full HP and Stamina
 
@@ -263,12 +267,12 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 - Anti-aliasing **off**; pixel ratio capped at **1.5×** (sharp edges, dither-friendly).
 - Lighting:
   - warm **PointLight** on camera (“lantern”)
-  - subtle forward **SpotLight** “beam” aligned to camera direction (lantern readability in fog)
-  - up to **six** wall torch PointLights within visible radius
+  - optional forward **SpotLight** “beam” aligned to camera direction (tunable; often off via intensity scale). When effective beam intensity is zero, the spot is **not visible** and does **not** cast shadows (no wasted shadow pass).
+  - POI **torch** PointLights: up to **`torchPoiLightMax`** (F2), choosing the **nearest** POIs to the player by Manhattan grid distance (0 disables torches)
   - torch flicker via per-torch sine intensity
-  - shadow mapping enabled; lantern lights cast shadows; dungeon geometry receives them
+  - **Shadow mapping** is enabled only while at least one lantern light has shadows on: **point** shadows (expensive cube map) and **beam** shadows are separate F2 toggles (`shadowLanternPoint`, `shadowLanternBeam`). **Shadow map size** and **filter** (basic / PCF / PCF soft) are tunable in F2. Dungeon geometry casts/receives where applicable.
   - low emissive lift on dungeon materials; the lantern is the primary visibility driver
-  - `FogExp2` is **optional** for depth falloff; **disabled by default** (can be enabled in F2 debug)
+  - `FogExp2` is **optional** for depth falloff; **disabled by default** (can be enabled in F2 debug); the renderer reuses one fog instance instead of allocating every frame
 - Post-process: ordered dithering as shader pass (EffectComposer), controls:
   - Strength
   - Colour preserve

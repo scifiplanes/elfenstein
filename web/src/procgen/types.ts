@@ -9,15 +9,21 @@ export type FloorGenInput = {
   seed: number
   w: number
   h: number
+  /** 0-based; mixed into attempt seed for stable per-floor variation. */
+  floorIndex?: number
   floorType: FloorType
   floorProperties?: FloorProperty[]
 }
+
+export type DistrictTag = 'NorthWing' | 'SouthWing' | 'EastWing' | 'WestWing' | 'Core' | 'Ruin'
 
 export type GenRoom = {
   id: string
   rect: { x: number; y: number; w: number; h: number }
   center: Vec2
   leafDepth: number
+  /** Voronoi / seeded region for spawn bias. */
+  district?: DistrictTag
   tags?: {
     roomFunction?: 'Passage' | 'Habitat' | 'Workshop' | 'Communal' | 'Storage'
     roomProperties?: 'Burning' | 'Flooded' | 'Infected'
@@ -29,8 +35,42 @@ export type GenRoom = {
 export type GenDoor = {
   pos: Vec2
   locked: boolean
-  /** Lock id such as "A" for future key/lock graphs. */
+  /** Lock id such as "A" / "B" for key matching. */
   lockId?: string
+  /** Item def that opens this door when locked (defaults to IronKey in gameplay if omitted). */
+  keyDefId?: ItemDefId
+  /** Order along the critical path (entrance → exit) for multi-lock validation. */
+  orderOnPath?: number
+}
+
+export type MissionNodeRole =
+  | 'Entrance'
+  | 'Exit'
+  | 'Well'
+  | 'Bed'
+  | 'Chest'
+  | 'LockGate'
+  | 'KeyPickup'
+
+export type MissionGraphNode = {
+  id: string
+  role: MissionNodeRole
+  pos: Vec2
+  lockId?: string
+  poiId?: string
+  itemDefId?: ItemDefId
+}
+
+export type MissionGraphEdge = {
+  fromId: string
+  toId: string
+  kind: 'path' | 'locked'
+  lockId?: string
+}
+
+export type MissionGraph = {
+  nodes: MissionGraphNode[]
+  edges: MissionGraphEdge[]
 }
 
 export type FloorGenMeta = {
@@ -45,19 +85,25 @@ export type FloorGenMeta = {
   h: number
   /**
    * Phase-separated deterministic seeds used to derive RNG streams.
-   * Convention (initial):
-   * - layout: 1
-   * - tags: 2
-   * - population: 3
-   * - locks: 4
    */
-  streams: { layout: number; tags: number; population: number; locks: number }
+  streams: {
+    layout: number
+    tags: number
+    population: number
+    locks: number
+    districts: number
+    score: number
+  }
+  /** Soft layout score (higher = more loops / fewer dead-ends heuristic). */
+  layoutScore?: number
 }
 
 export type GenFloorItem = {
   defId: ItemDefId
   pos: Vec2
   qty?: number
+  /** When set, this floor item is the key for procgen lock `lockId`. */
+  forLockId?: string
 }
 
 export type GenNpc = {
@@ -81,5 +127,6 @@ export type FloorGenOutput = {
   entrance: Vec2
   exit: Vec2
   meta: FloorGenMeta
+  /** Progression + POI anchor graph for debug / future mission logic. */
+  missionGraph?: MissionGraph
 }
-

@@ -105,8 +105,10 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
     const hook = def.useOnPoi?.Well
     if (hook?.transformTo) {
       const nextItem = { ...item, defId: hook.transformTo }
+      const pois = state.floor.pois.map((x) => (x.id === poiId && x.kind === 'Well' ? { ...x, drained: true } : x))
       return {
         ...state,
+        floor: { ...state.floor, pois },
         party: { ...state.party, items: { ...state.party.items, [itemId]: nextItem } },
         ui: {
           ...state.ui,

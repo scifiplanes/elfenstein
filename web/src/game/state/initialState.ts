@@ -64,7 +64,17 @@ export function makeInitialState(_content: ContentDB): GameState {
 
   const w = DEFAULT_FLOOR_W
   const h = DEFAULT_FLOOR_H
-  const gen = generateDungeon({ seed: floorSeed, w, h, floorType: 'Dungeon', floorProperties: [] })
+  const floorIndex = 0
+  const floorType = 'Dungeon' as const
+  const floorProperties = [] as import('../../procgen/types').FloorProperty[]
+  const gen = generateDungeon({
+    seed: floorSeed,
+    w,
+    h,
+    floorIndex,
+    floorType,
+    floorProperties,
+  })
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(DEFAULT_RENDER, gen.floorItems, floorSeed)
   const playerPos = { ...gen.entrance }
   const playerDir = 0 as const
@@ -77,6 +87,9 @@ export function makeInitialState(_content: ContentDB): GameState {
     view: snapViewToGrid(w, h, defaultCamEyeHeight, playerPos, playerDir),
     floor: {
       seed: floorSeed,
+      floorIndex,
+      floorType,
+      floorProperties,
       w,
       h,
       tiles: gen.tiles,

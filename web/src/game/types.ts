@@ -44,6 +44,8 @@ export type FloorPoi = {
   kind: PoiKind
   pos: Vec2
   opened?: boolean
+  /** Well only: no water VFX; base sprite switches to drained art after a successful fill. */
+  drained?: boolean
 }
 
 export type InventoryItem = {
@@ -112,6 +114,19 @@ export type RenderTuning = {
   lanternBeamPenumbra: number
   torchIntensity: number
   torchDistance: number
+  /** 0/1: lantern PointLight casts shadows (cube map; expensive). */
+  shadowLanternPoint: number
+  /**
+   * 0/1: lantern SpotLight may cast shadows when beam intensity is nonzero.
+   * When the beam is off (e.g. intensity scale 0), no spot shadow maps run.
+   */
+  shadowLanternBeam: number
+  /** Per-side shadow map resolution for lantern lights (point light uses this for each cube face). */
+  shadowMapSize: 128 | 256 | 512
+  /** 0 = BasicShadowMap, 1 = PCFShadowMap, 2 = PCFSoftShadowMap */
+  shadowFilter: 0 | 1 | 2
+  /** Max POI torch lights; picks nearest POIs to the player by Manhattan grid distance. 0 disables. */
+  torchPoiLightMax: number
   /** 0/1: fog is fully disabled unless explicitly enabled (debug). */
   fogEnabled: number
   fogDensity: number
@@ -254,6 +269,12 @@ export type GameState = {
 
   floor: {
     seed: number
+    /** 0-based floor index (mixed into procgen seed). */
+    floorIndex: number
+    /** Procgen taxonomy: same as `FloorGenInput.floorType`. */
+    floorType: import('../procgen/types').FloorType
+    /** Procgen taxonomy: infested/cursed/etc. */
+    floorProperties: import('../procgen/types').FloorProperty[]
     w: number
     h: number
     tiles: Tile[]
