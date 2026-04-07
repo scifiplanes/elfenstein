@@ -1,7 +1,7 @@
 .root {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr) auto;
-  gap: 8px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 6px;
   height: 100%;
   min-height: 0;
 }
@@ -135,6 +135,35 @@
   color: rgba(255, 255, 255, 0.78);
   display: grid;
   gap: 2px;
+}
+
+.statsOverlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 6px 8px 7px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.1;
+  letter-spacing: -0.1px;
+  color: rgba(255, 255, 255, 0.82);
+  display: grid;
+  gap: 2px;
+  pointer-events: none;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0));
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
+}
+
+.vitalsLine {
+  white-space: nowrap;
+}
+
+.statusLine {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(255, 255, 255, 0.75);
 }
 
 .btn {

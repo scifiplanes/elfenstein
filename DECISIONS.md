@@ -613,3 +613,18 @@ The prior layout keyed the frame size to the image aspect ratio, which could lea
 ### Consequences
 - Portraits may show small letterboxing if the sprite aspect ratio doesn’t match the frame, but they will occupy more of the available panel slot overall.
 - Interactive target regions (eyes/mouth overlays) remain defined in portrait-relative percentages and continue to align with the portrait frame.
+
+---
+
+## ADR-0043 — Compact portrait stats overlay
+Date: 2026-04-07
+
+### Decision
+Move portrait vitals + status text into a **compact bottom overlay inside the portrait frame** and keep status text **single-line truncated** when long.
+
+### Rationale
+The portrait art is the primary information in the character panel; dedicating a separate panel row to stats reduced portrait size and made the HUD feel cramped.
+
+### Consequences
+- Portraits get more vertical space across all party slots.
+- Status detail is de-emphasized (ellipsis truncation) but remains accessible via tooltip/title on hover.

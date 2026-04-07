@@ -86,6 +86,7 @@ The party has **up to 4** character portrait slots.
     - Mouth: `Content/frosh_mouth_open.png`
     - Idle overlay: `Content/frosh_idle.png`
 - **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame).
+- **Portrait stats presentation**: character vitals + status are shown as a **compact bottom overlay inside the portrait frame** (two-line readout). Long status lists are **single-line truncated** to preserve portrait space.
 - **Portrait blinking**: the eyes layer is **occasionally hidden briefly** to simulate blinking.
 - **Portrait inspect hover**: while **dragging** an item and hovering the **eyes** target area, the portrait swaps to an **inspect eyes** sprite (if available). Inspect hover **overrides blink hiding**.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
