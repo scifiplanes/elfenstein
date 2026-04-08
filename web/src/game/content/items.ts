@@ -1,0 +1,62 @@
+import type { ItemDef } from './contentDb'
+
+export const DEFAULT_ITEMS: ItemDef[] = [
+  {
+    id: 'Mushrooms',
+    name: 'Mushrooms',
+    icon: { kind: 'emoji', value: '🍄' },
+    tags: ['food'],
+    feed: {
+      hunger: 18,
+      stamina: 6,
+      hp: 4,
+      statusChances: [
+        { status: 'Blessed', pct: 4, onlySpecies: 'Mycyclops' },
+        { status: 'Sick', pct: 6 },
+      ],
+    },
+  },
+  { id: 'Foodroot', name: 'Foodroot', icon: { kind: 'emoji', value: '🥕' }, tags: ['food'], feed: { hunger: 24, stamina: 6, hp: 10 } },
+  {
+    id: 'WaterbagEmpty',
+    name: 'Waterbag (Empty)',
+    icon: { kind: 'emoji', value: '🫙' },
+    tags: ['container'],
+    useOnPoi: { Well: { transformTo: 'WaterbagFull', toast: 'Filled the waterbag.' } },
+  },
+  { id: 'WaterbagFull', name: 'Waterbag (Full)', icon: { kind: 'emoji', value: '💧' }, tags: ['container', 'food'], feed: { hunger: 0, thirst: 30 } },
+  { id: 'Stone', name: 'Stone', icon: { kind: 'emoji', value: '🪨' }, tags: ['material', 'weapon'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Stick', name: 'Stick', icon: { kind: 'emoji', value: '🪵' }, tags: ['material', 'weapon'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Club', name: 'Club', icon: { kind: 'emoji', value: '🏏' }, tags: ['weapon'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Spear', name: 'Spear', icon: { kind: 'emoji', value: '🗡️' }, tags: ['weapon'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'IronKey', name: 'Iron key', icon: { kind: 'emoji', value: '🗝️' }, tags: ['quest'] },
+  { id: 'BrassKey', name: 'Brass key', icon: { kind: 'emoji', value: '🗝️' }, tags: ['quest'] },
+  // Remedies are edible so `feedCharacter` can apply cure effects then consume.
+  { id: 'BandageStrip', name: 'Bandage strip', icon: { kind: 'emoji', value: '🩹' }, tags: ['food'], feed: { hunger: 0 } },
+  { id: 'AntitoxinVial', name: 'Antitoxin vial', icon: { kind: 'emoji', value: '🧪' }, tags: ['food'], feed: { hunger: 0 } },
+  { id: 'HerbPoultice', name: 'Herb poultice', icon: { kind: 'emoji', value: '🌿' }, tags: ['food'], feed: { hunger: 0 } },
+  { id: 'ClothScrap', name: 'Cloth scrap', icon: { kind: 'emoji', value: '🧵' }, tags: ['material'] },
+  { id: 'Twine', name: 'Twine', icon: { kind: 'emoji', value: '🪢' }, tags: ['material', 'tool'] },
+  { id: 'HerbLeaf', name: 'Herb leaf', icon: { kind: 'emoji', value: '🍃' }, tags: ['material'] },
+  { id: 'BitterHerb', name: 'Bitter herb', icon: { kind: 'emoji', value: '🌱' }, tags: ['material'] },
+  { id: 'GlassVial', name: 'Glass vial', icon: { kind: 'emoji', value: '🧴' }, tags: ['material', 'container'] },
+  { id: 'Chisel', name: 'Chisel', icon: { kind: 'emoji', value: '🪓' }, tags: ['tool'] },
+  { id: 'StoneShard', name: 'Stone shard', icon: { kind: 'emoji', value: '🪨' }, tags: ['tool', 'weapon'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Ash', name: 'Ash', icon: { kind: 'emoji', value: '⚫️' }, tags: ['material'] },
+  { id: 'Sulfur', name: 'Sulfur', icon: { kind: 'emoji', value: '🟡' }, tags: ['material'] },
+  { id: 'Firebolt', name: 'Firebolt', icon: { kind: 'emoji', value: '🔥' }, tags: ['weapon'] },
+  { id: 'Fireshield', name: 'Fireshield', icon: { kind: 'emoji', value: '🛡️' }, tags: ['tool'] },
+  { id: 'Sling', name: 'Sling', icon: { kind: 'emoji', value: '🪃' }, tags: ['weapon', 'tool'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Bolas', name: 'Bolas', icon: { kind: 'emoji', value: '🪢' }, tags: ['weapon', 'tool'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'Bow', name: 'Bow', icon: { kind: 'emoji', value: '🏹' }, tags: ['weapon', 'tool'], equipSlots: ['handLeft', 'handRight'] },
+  { id: 'MortarMeal', name: 'Mortar meal', icon: { kind: 'emoji', value: '🥣' }, tags: ['food'], feed: { hunger: 12, stamina: 4 } },
+  { id: 'Flourball', name: 'Flourball', icon: { kind: 'emoji', value: '🍞' }, tags: ['food'], feed: { hunger: 22, stamina: 8, hp: 4 } },
+  { id: 'HerbTea', name: 'Herb tea', icon: { kind: 'emoji', value: '🫖' }, tags: ['food', 'container'], feed: { hunger: 0, thirst: 18, stamina: 3 } },
+
+  // Hive/Swarm ecosystem (Elfenstein_notes).
+  { id: 'Hive', name: 'Hive', icon: { kind: 'emoji', value: '🪺' }, tags: ['tool'] },
+  { id: 'SwarmQueen', name: 'Swarm Queen', icon: { kind: 'emoji', value: '👑' }, tags: ['quest'] },
+  { id: 'SwarmBasket', name: 'Swarm basket', icon: { kind: 'emoji', value: '🧺' }, tags: ['tool'] },
+  { id: 'CapturedSwarm', name: 'Captured swarm', icon: { kind: 'emoji', value: '🫧' }, tags: ['tool'] },
+]
+

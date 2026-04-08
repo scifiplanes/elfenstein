@@ -5,34 +5,23 @@ function pointInRect(p: Vec2, r: { x: number; y: number; w: number; h: number })
   return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h
 }
 
-function nearestRoomIndexByCenter(rooms: GenRoom[], p: Vec2): number {
-  let best = -1
-  let bestD = 1e9
-  for (let i = 0; i < rooms.length; i++) {
-    const c = rooms[i].center
-    const d = Math.abs(c.x - p.x) + Math.abs(c.y - p.y)
-    if (d < bestD) {
-      bestD = d
-      best = i
-    }
-  }
-  return best
-}
-
-function roomIndexForPoint(rooms: GenRoom[], p: Vec2): number {
-  for (let i = 0; i < rooms.length; i++) {
-    if (pointInRect(p, rooms[i].rect)) return i
-  }
-  return nearestRoomIndexByCenter(rooms, p)
-}
-
 export type ActiveRoomProperty = NonNullable<GenRoom['tags']>['roomProperties']
 
-export function roomPropertyUnderPlayer(state: GameState): ActiveRoomProperty | null {
+/**
+ * Same containment rule as `roomForCell` in `reducer.ts`: first room whose rect contains the cell, else null.
+ * (No “nearest room” fallback — corridors must not inherit a neighbor room’s `roomProperties` or telegraph flickers.)
+ */
+export function roomContainingPlayer(state: GameState): GenRoom | null {
   const rooms = state.floor.gen?.rooms
   if (!rooms?.length) return null
-  const idx = roomIndexForPoint(rooms, state.floor.playerPos)
-  if (idx < 0 || idx >= rooms.length) return null
-  return rooms[idx]?.tags?.roomProperties ?? null
+  const p = state.floor.playerPos
+  for (const r of rooms) {
+    if (pointInRect(p, r.rect)) return r
+  }
+  return null
+}
+
+export function roomPropertyUnderPlayer(state: GameState): ActiveRoomProperty | null {
+  return roomContainingPlayer(state)?.tags?.roomProperties ?? null
 }
 
