@@ -8,7 +8,7 @@ import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
 import { selectMusicTrack } from '../ui/audio/musicRules'
-import { loadDebugSettingsFromProject, saveDebugSettingsToProject } from './debugSettingsPersistence'
+import { loadDebugSettingsFromLocal, loadDebugSettingsFromProject, saveDebugSettingsToLocal } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
 
@@ -24,6 +24,10 @@ export function GameApp() {
       if (data?.render || data?.audio) {
         dispatch({ type: 'debug/loadTuning', render: data.render, audio: data.audio })
       }
+      const local = loadDebugSettingsFromLocal()
+      if (local?.render || local?.audio) {
+        dispatch({ type: 'debug/loadTuning', render: local.render, audio: local.audio })
+      }
       setDebugTuningHydrated(true)
     })
     return () => {
@@ -34,7 +38,7 @@ export function GameApp() {
   useEffect(() => {
     if (!debugTuningHydrated) return
     const t = window.setTimeout(() => {
-      void saveDebugSettingsToProject(state.render, state.audio)
+      saveDebugSettingsToLocal(state.render, state.audio)
     }, 450)
     return () => window.clearTimeout(t)
   }, [debugTuningHydrated, state.render, state.audio])

@@ -1673,7 +1673,6 @@ POI sprites (especially chests) are large billboards; strict “closest mesh win
 Click/hover/drag on a stack along one ray favors the **floor item**; NPCs and doors only win when **no** floor item is intersected on that ray. Grid **step-into-tile** resolution (**`attemptMoveTo`**) is unchanged (POI use still runs before NPC dialogue when walking onto a POI cell).
 
 ---
-
 ## ADR-0109 — Inventory HUD: no title, larger slot icons
 Date: 2026-04-08
 
@@ -1912,3 +1911,70 @@ Same **Google Fonts** / **`display=swap`** / optional synthetic **700** behavior
 
 ---
 
+## ADR-0126 — POI sprite brightness tuning (`poiSpriteBoost`)
+Date: 2026-04-08
+
+### Decision
+Add `render.poiSpriteBoost` (default **1.2**) to multiply POI `THREE.SpriteMaterial.color` so POI billboards can be brightened independently of NPC sprites.
+
+### Rationale
+POI sprites were reading consistently darker than other billboard sprites in the 3D viewport. A material color multiplier is asset-agnostic, cheap, and easy to tune live without changing texture encoding or post-process settings.
+
+### Consequences
+- F2 Debug exposes **POI sprite boost** and the value persists via `web/public/debug-settings.json`.
+- Glow/sparkle overlays remain authored brightness; only the main POI billboard materials are boosted.
+
+---
+
+## ADR-0127 — Post-dither gain debug slider
+Date: 2026-04-08
+
+### Decision
+Add `render.postDitherLevels` (default **1.0**) to apply a simple **post-dither gain/levels** adjustment **after** the ordered-dither pass, exposed as an F2 debug slider and persisted via `web/public/debug-settings.json` and local storage.
+
+### Rationale
+We need a fast “overall brightness/levels” knob that affects **both** the 3D scene and the captured HUD uniformly, without retuning lighting or palette settings.
+
+### Consequences
+- `RenderTuning` gains a new persisted field (`postDitherLevels`) clamped to **[0, 3]**.
+- The dither shader has a new uniform and applies the adjustment at the end of the post-process.
+
+---
+
+## ADR-0128 — Expand post-dither tuning to lift/gain/gamma (F2)
+Date: 2026-04-08
+
+### Decision
+Expand post-dither tuning from a single gain knob to a classic **lift/gain/gamma** set, applied after ordered dithering:
+- `render.postDitherLift` (default **0.0**)
+- `render.postDitherLevels` (interpreted as **gain**, default **1.0**)
+- `render.postDitherGamma` (default **1.0**)
+
+Expose all three as F2 debug sliders and persist them via `web/public/debug-settings.json` and local storage.
+
+### Rationale
+Gain alone is useful but not enough to tune readability and mood across different palettes and lighting baselines. Lift and gamma provide more control while still being a tiny, cheap post-process that affects HUD + 3D uniformly.
+
+### Consequences
+- `RenderTuning` schema grows by two fields; values are clamped to safe ranges.
+- The dither shader applies lift/gain and then gamma as the final post-dither step.
+
+---
+
+## ADR-0129 — Debug settings: auto-save local, explicit save-to-project
+Date: 2026-04-08
+
+### Decision
+Stop auto-writing F2 debug tuning into `web/public/debug-settings.json`. Debug tuning now persists in two tiers:
+- **Local auto-save**: render/audio tuning is debounced into browser storage for convenience.
+- **Project save**: under `vite dev`, the Debug (F2) panel provides an explicit **Save to project** button that writes `web/public/debug-settings.json` via the existing dev-server endpoint.
+
+On startup, the app loads `web/public/debug-settings.json` as a baseline and then applies locally saved overrides (when present).
+
+### Rationale
+Auto-writing into a git-tracked file created accidental churn and made it too easy to commit “random slider fiddling”. We still want quick iteration (local persistence) while keeping the repo snapshot intentional.
+
+### Consequences
+- Tuning changes survive reloads by default (local), but **won’t** modify the repo unless you click **Save to project**.
+- `web/public/debug-settings.json` remains the shareable baseline for the team/repo; local overrides can diverge per machine.
+- Production/static preview continues to load the JSON but has no write endpoint.
