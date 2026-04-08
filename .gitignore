@@ -2,3 +2,6 @@
 Thumbs.db
 *.swp
 *.swo
+
+# Local Python deps (e.g. Pillow) for one-off scripts; do not vendor into git
+web/.pydeps/

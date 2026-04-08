@@ -809,6 +809,21 @@ User mockup: on a **3840×2160** canvas, **1920×1080** “content” sits **cen
 
 ---
 
+## ADR-0155 — Treat portrait idle pulse as a HUD-capture burst trigger
+Date: 2026-04-08
+
+### Decision
+When `ui.portraitIdlePulse` is active (portrait-frame tap), treat it like a **high-FPS UI moment** for the HUD capture pipeline so the next `html2canvas` capture runs **immediately**.
+
+### Rationale
+The idle overlay itself is drawn as a compositor-time overlay, but the underlying eyes layer lives in the captured HUD texture. Without an immediate capture, the compositor can show a **stale** HUD frame for one capture interval, making eyes appear to “close” late under the idle overlay.
+
+### Consequences
+- Slightly higher capture cost during the short idle pulse window (same burst behavior as shake/mouth moments).
+- Portrait idle pulses read as **instant** in the composited output even when normal HUD capture is throttled/backed off.
+
+---
+
 ## ADR-0056 — Viewport-fit stage scale + stage-sized max dimensions
 Date: 2026-04-07
 
@@ -2411,3 +2426,142 @@ A short TTL keeps the viewport corner readable without a permanent backlog; tyin
 
 ### Consequences
 **`DESIGN.md`** activity-log bullet documents TTL, cap, and death pause; **`activityLog.ts`** exports **`ACTIVITY_LOG_ENTRY_TTL_MS`** and **`pruneExpiredActivityLog`**.
+
+---
+
+## ADR-0156 — Trigger portrait idle pulse on press (no paperdoll)
+Date: 2026-04-08
+
+### Decision
+Trigger the portrait idle overlay pulse (`ui.portraitIdlePulse`) on **portrait frame press** (`pointerdown`), and **do not** open a paperdoll from portrait clicks.
+
+### Rationale
+Release-based (`pointerup`) portrait activation adds perceptible latency and can be delayed or lost during drag interactions. Press-triggered pulses match the compositor-time responsiveness of other portrait interactions.
+
+### Consequences
+- Portrait idle visuals appear immediately on press.
+- If the press becomes a drag or exceeds movement slop, the pulse is cancelled (`ui/portraitIdleCancel`) to avoid a stuck overlay.
+
+---
+
+## ADR-0157 — Sync portrait idle press across compositor + captured HUD
+Date: 2026-04-08
+
+### Decision
+Derive a shared **pressed portrait character** signal from cursor pointer state and use it consistently to:
+- Drive compositor-time portrait idle overlays immediately on press.
+- Hide portrait eye layers immediately on press (so eyes can’t lag under the idle overlay).
+- Mark the capture HUD dirty via the capture `hudKey` so `html2canvas` refreshes promptly during the press interaction.
+
+### Rationale
+Portrait idle is rendered in two places (captured HUD + compositor overlays). If the compositor reacts to press immediately but the captured HUD doesn’t, layered portrait elements (notably eyes) can appear to “disappear late.” A single pressed-portrait signal keeps the two paths visually consistent while preserving instant feedback.
+
+### Consequences
+- Adds a shared helper to compute `pressedPortraitCharacterId` from cursor state.
+- Capture HUD scheduling treats portrait press as an interaction burst (ASAP capture) and includes a `press=` key component so the capture texture updates on press transitions.
+
+---
+
+## ADR-0158 — Make hazard rooms apply a strong color telegraph
+Date: 2026-04-08
+
+### Decision
+When standing in a room tagged with a hazard room property (`Burning` / `Flooded` / `Infected`), apply a **strong, full-viewport color theme** over the 3D viewport region (compositor tint), instead of a subtle vignette-only cue.
+
+### Rationale
+Hazard “grids” need to be readable instantly while moving; a subtle tint is easy to miss under dither, dark lighting, and capture/postprocess.
+
+### Consequences
+- The compositor telegraph defaults to higher strength and more saturated multipliers per hazard type.
+- Debug telegraph override continues to work (force mode + strength) for tuning.
+
+---
+
+## ADR-0159 — Hazard telegraph is multiply tint only (no opaque colorize)
+Date: 2026-04-08
+
+### Decision
+Room-property hazard feedback in the compositor must use **RGB multiply** (`scene * tint`, blended by telegraph strength + vignette), not **blend toward a solid target color**, so the effect reads as **color grading** that overrides the floor theme without washing the scene flat.
+
+### Rationale
+Blending toward a fixed RGB reads as an **opaque overlay** and hides detail; multiply preserves luminance relationships while still allowing strong per-channel bias to dominate the main theme.
+
+### Consequences
+- `CompositeShader` drops the separate “override/colorize” telegraph path; `telegraphColor` is always a multiplier (clamped for safety).
+
+---
+
+## ADR-0160 — Fix hazard telegraph flicker (room lookup + uniform tint)
+Date: 2026-04-08
+
+### Decision
+- Resolve `roomProperties` for telegraph using the **same containment rule** as gameplay hazards (`roomForCell`): **first room whose rect contains the player cell**, otherwise **no** room (no nearest-room fallback).
+- For hazard telegraph, apply tint at **uniform strength across the 3D viewport** (compositor: `telegraphVignette.x < 0` disables radial weighting). Radial vignette previously went to **zero at corners** (outer clamped to 1), which read as the effect “disappearing.”
+- Treat debug **telegraph strength** override as “missing” only when `undefined`/`null` (not when `0`).
+- Keep the presenter **RAF** loop rendering while `roomPropertyUnderPlayer` is non-null so telegraph stays painted even if React effect scheduling glitches.
+
+### Rationale
+Nearest-room fallback could attribute the wrong room in corridors; radial vignette made tint invisible at viewport edges; `??` on strength mishandled explicit `0`; continuous RAF avoids a one-frame-only cue.
+
+### Consequences
+- `roomTelemetry` exports `roomContainingPlayer` and drops nearest-room fallback for `roomPropertyUnderPlayer`.
+
+---
+
+## ADR-0161 — Hazard telegraph: luma tint override, no vignette
+Date: 2026-04-08
+
+### Decision
+Hazard room feedback uses compositor **`telegraphTintMode = 1`**: blend the 3D scene toward **`tintRgb * f(luma)`** (Rec.709 luma from the source pixel), with **no radial vignette** and **no multiply-only grade** (multiply remains available as mode `0` for debug/legacy).
+
+### Rationale
+Multiply grading stayed too subtle on dark or strongly themed scenes; solid RGB blends read as opaque overlays. Luma-scaled tint preserves readability and reads as a deliberate **color cast override**.
+
+### Consequences
+- `CompositeShader` drops `telegraphVignette`; adds `telegraphTintMode`.
+
+---
+
+## ADR-0162 — Burning hazard telegraph: ember vs ruins_umber
+Date: 2026-04-08
+
+### Decision
+Shift **`Burning`** compositor tint toward **ember/amber** (higher green, yellower) so it does not read like **`ruins_umber`** floor theme intent (`#ff2f00` red-orange).
+
+### Rationale
+Players could not distinguish hazard rooms from umber-themed floors when both skewed to the same red-orange family.
+
+### Consequences
+- `DitheredFrameRoot` hazard RGB for `Burning` is tuned yellower; `DESIGN.md` notes the separation intent.
+- **Superseded** for separation strategy and `Burning` hue by **ADR-0163** (brown `ruins_umber` + red `Burning` + pulse).
+
+---
+
+## ADR-0163 — Hazard telegraph pulse; Burning red; ruins_umber brown
+Date: 2026-04-08
+
+### Decision
+- Modulate hazard telegraph with a **slow sine pulse** while `Burning` / `Flooded` / `Infected` is active (implementation: see **ADR-0164** — scale graded tint, not blend weight).
+- Restore **`Burning`** hazard tint to a **red** read (high R, low G/B).
+- Retune **`ruins_umber`** **light intent** to **brown umber** (`#9a6240` class) with slightly relaxed mix/torch/lantern multipliers so it no longer matches hazard fire.
+
+### Rationale
+Umber floors should read as **earth pigment**, not **flame**; pulsing makes hazards noticeable and “breathing” without matching camera shake cadence.
+
+### Consequences
+- `themeTuning.ts` `ruins_umber` preset changes; `DitheredFrameRoot` telegraph math gains pulse factor.
+- **Pulse mechanics** revised in **ADR-0164** (scale graded tint, not `telegraphStrength`).
+
+---
+
+## ADR-0164 — Hazard pulse: single-hue (scale graded tint, not blend weight)
+Date: 2026-04-08
+
+### Decision
+Replace pulsing **`telegraphStrength`** with a new compositor uniform **`telegraphTintPulse`** that **only scales** the luma-matched graded tint (`tc * L * pulse`). **`telegraphStrength`** stays fixed per hazard.
+
+### Rationale
+Varying blend weight mixes more/less with the underlying scene, which shifts **perceived hue** across unrelated colors. Scaling along a fixed `telegraphColor` vector preserves chromaticity.
+
+### Consequences
+- `CompositeShader` adds `telegraphTintPulse`; `FramePresenter` / `DitheredFrameRoot` pass it for tint mode hazards.

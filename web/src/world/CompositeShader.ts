@@ -41,10 +41,13 @@ export const CompositeShader = {
     tNavPushed: { value: null },
     resolution: { value: { x: 1, y: 1 } },
     gameRectPx: { value: { x: 0, y: 0, z: 1, w: 1 } }, // left, top, width, height in pixels
-    // Standing-in-room telegraph (vignette+tint over 3D scene only).
-    telegraphStrength: { value: 0.0 }, // 0..1
-    telegraphColor: { value: { x: 1.0, y: 1.0, z: 1.0 } }, // rgb multiplier
-    telegraphVignette: { value: { x: 0.35, y: 0.95 } }, // inner/outer radius in normalized scene-uv (0..1)
+    // Room telegraph: full-viewport color tint over 3D scene only (no vignette).
+    telegraphStrength: { value: 0.0 }, // 0..1 blend weight
+    telegraphColor: { value: { x: 1.0, y: 1.0, z: 1.0 } },
+    // 0 = multiply grade (debug/legacy), 1 = luma-preserving tint override (hazard rooms)
+    telegraphTintMode: { value: 0.0 },
+    /** Tint mode only: scales graded color (same hue); 1 = no pulse */
+    telegraphTintPulse: { value: 1.0 },
     debugSceneMode: { value: 0.0 }, // 1 = show scene fullscreen; 2 = show center sample fullscreen
     debugSceneFlipY: { value: 1.0 }, // 1 = flip scene uv y
     debugRect: { value: 0.0 }, // 1 = draw gameRectPx outline
@@ -99,7 +102,8 @@ uniform vec2 resolution;
 uniform vec4 gameRectPx;
 uniform float telegraphStrength;
 uniform vec3 telegraphColor;
-uniform vec2 telegraphVignette;
+uniform float telegraphTintMode;
+uniform float telegraphTintPulse;
 uniform float debugSceneMode;
 uniform float debugSceneFlipY;
 uniform float debugRect;
@@ -153,7 +157,22 @@ vec4 samplePortraitOverlay(
     float v = (localPx.y - portraitArtNudgeYPx) / max(1.0, rectH);
     if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0) {
       v = 1.0 - v; // top-origin to texture UV
-      c = over(c, texture2D(tIdle, vec2(u, v)));
+      vec4 idleS = texture2D(tIdle, vec2(u, v));
+
+      // Force-occlude the portrait "eyes" band during idle so captured eye sprites
+      // can't show through due to HUD capture latency or idle sprite transparency.
+      // This matches the DOM hitbox for eyes: left 12% width 76%, top 20% height 28%.
+      vec2 local01 = vec2(localPx.x / max(1.0, rectW), localPx.y / max(1.0, rectH));
+      bool inEyesBand =
+        local01.x >= 0.12 && local01.x <= (0.12 + 0.76) &&
+        local01.y >= 0.20 && local01.y <= (0.20 + 0.28);
+      if (inEyesBand) {
+        // Make the idle overlay fully cover the eyes band during idle, but only where the
+        // idle sprite already has coverage. This avoids a rectangular “bar” at silhouette edges.
+        if (idleS.a > 0.001) idleS.a = 1.0;
+      }
+
+      c = over(c, idleS);
     }
   }
 
@@ -270,18 +289,23 @@ void main() {
     scene = vec4(mix(vec3(0.6, 0.0, 0.0), vec3(0.9, 0.0, 0.3), s), 1.0);
   }
 
-  // Room-property telegraph: subtle vignette+tint inside the 3D viewport only.
+  // Room-property telegraph: uniform blend over the 3D viewport (no radial vignette).
   float teleS = clamp(telegraphStrength, 0.0, 1.0);
   if (teleS > 1e-5) {
-    vec2 d = sceneUv - vec2(0.5);
-    // Normalize so corners are ~1.0 (sqrt(0.5^2+0.5^2) == 0.7071).
-    float r = length(d) / 0.70710678;
-    float inner = clamp(telegraphVignette.x, 0.0, 1.0);
-    float outer = clamp(max(inner + 1e-4, telegraphVignette.y), 0.0, 1.0);
-    float edge = smoothstep(inner, outer, r);
-    float vignette = 1.0 - edge;
-    float a = teleS * vignette;
-    scene.rgb = mix(scene.rgb, scene.rgb * clamp(telegraphColor, 0.0, 4.0), a);
+    float a = teleS;
+    if (telegraphTintMode > 0.5) {
+      // Luma-preserving color tint: overrides floor/theme cast without a flat opaque overlay.
+      // Pulse scales `graded` only (fixed tc ratios) so hue does not swing toward scene colors.
+      float L = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722));
+      vec3 tc = clamp(telegraphColor, 0.0, 1.0);
+      float pulse = clamp(telegraphTintPulse, 0.35, 1.35);
+      vec3 graded = tc * clamp(L * 1.45, 0.06, 1.0) * pulse;
+      scene.rgb = mix(scene.rgb, graded, a);
+    } else {
+      vec3 mul = clamp(telegraphColor, 0.0, 4.0);
+      vec3 tinted = scene.rgb * mul;
+      scene.rgb = mix(scene.rgb, tinted, a);
+    }
   }
 
   gl_FragColor = scene * (1.0 - ui.a) + ui;

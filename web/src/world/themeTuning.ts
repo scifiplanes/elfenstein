@@ -18,7 +18,8 @@ const PRESETS: Record<string, ThemeLightIntent> = {
   cave_damp: { intentHex: '#00ffd1', mix: 0.97, torchIntensityMult: 0.95, lanternIntensityMult: 1.05 },
   cave_deep: { intentHex: '#1e3cff', mix: 0.985, torchIntensityMult: 0.9, lanternIntensityMult: 1.12 },
   ruins_bleach: { intentHex: '#fff1c2', mix: 0.93, torchIntensityMult: 1.25, lanternIntensityMult: 1.12 },
-  ruins_umber: { intentHex: '#ff2f00', mix: 0.98, torchIntensityMult: 1.3, lanternIntensityMult: 1.08 },
+  // Earth umber (sienna/brown) — not fire red; keeps room-hazard Burning reads distinct.
+  ruins_umber: { intentHex: '#9a6240', mix: 0.93, torchIntensityMult: 1.12, lanternIntensityMult: 1.06 },
 }
 
 export function getThemeLightIntent(themeId: string | undefined): ThemeLightIntent {

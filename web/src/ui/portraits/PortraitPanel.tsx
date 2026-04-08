@@ -5,6 +5,7 @@ import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useEffect, useState } from 'react'
 import { useCursor } from '../cursor/useCursor'
+import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { loadImage, prefetchImages } from '../assets/imageCache'
 import styles from './PortraitPanel.module.css'
@@ -316,9 +317,11 @@ export function PortraitPanel(props: {
 
   const pulse = state.ui.portraitIdlePulse
   const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > nowMs
+  const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
+  const pressIdle = pressedPortraitCharacterId === characterId
   // Idle art itself is compositor-rendered in capture mode, but the base portrait eye sprites
   // still need to hide during idle so the composition matches the original DOM behavior.
-  const showIdleForEyes = idleFlash || pulseIdle
+  const showIdleForEyes = idleFlash || pulseIdle || pressIdle
   const showIdleSprite = captureForPostprocess ? false : showIdleForEyes
   const idleHideEyes = showIdleForEyes && !showEyesInspect
 
@@ -373,7 +376,12 @@ export function PortraitPanel(props: {
                 />
               </>
             ) : (
-              <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
+              <img
+                className={`${styles.sprite} ${blinkHideEyes || idleHideEyes ? styles.eyesHidden : ''}`}
+                src={portrait.eyesSrc}
+                alt=""
+                draggable={false}
+              />
             )}
             {captureForPostprocess ? null : portrait.mouthClosedSrc && !mouthOpenActive ? (
               <img className={styles.sprite} src={portrait.mouthClosedSrc} alt="" draggable={false} />

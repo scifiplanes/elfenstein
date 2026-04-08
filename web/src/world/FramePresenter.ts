@@ -87,7 +87,10 @@ export class FramePresenter {
     gameRectPx: { left: number; top: number; width: number; height: number }
     telegraphStrength?: number
     telegraphColor?: { r: number; g: number; b: number }
-    telegraphVignette?: { inner: number; outer: number }
+    /** 0 = multiply, 1 = luma-preserving tint override */
+    telegraphTintMode?: 0 | 1
+    /** Tint mode: scales graded rgb (same hue); default 1 */
+    telegraphTintPulse?: number
     portraitRectsPx?: Array<{ left: number; top: number; width: number; height: number }>
     portraitMouthTex?: Array<THREE.Texture | null>
     portraitIdleTex?: Array<THREE.Texture | null>
@@ -110,7 +113,8 @@ export class FramePresenter {
       gameRectPx: { value: { x: number; y: number; z: number; w: number } }
       telegraphStrength?: { value: number }
       telegraphColor?: { value: { x: number; y: number; z: number } }
-      telegraphVignette?: { value: { x: number; y: number } }
+      telegraphTintMode?: { value: number }
+      telegraphTintPulse?: { value: number }
       portraitRectPx0?: { value: { x: number; y: number; z: number; w: number } }
       portraitRectPx1?: { value: { x: number; y: number; z: number; w: number } }
       portraitRectPx2?: { value: { x: number; y: number; z: number; w: number } }
@@ -168,11 +172,8 @@ export class FramePresenter {
       u.telegraphColor.value.y = Number(c?.g ?? 1)
       u.telegraphColor.value.z = Number(c?.b ?? 1)
     }
-    if (u.telegraphVignette) {
-      const v = args.telegraphVignette
-      u.telegraphVignette.value.x = Number(v?.inner ?? 0.35)
-      u.telegraphVignette.value.y = Number(v?.outer ?? 0.95)
-    }
+    if (u.telegraphTintMode) u.telegraphTintMode.value = args.telegraphTintMode === 1 ? 1 : 0
+    if (u.telegraphTintPulse) u.telegraphTintPulse.value = Number(args.telegraphTintPulse ?? 1)
 
     // Portrait reaction overlay uniforms (optional).
     const rects = args.portraitRectsPx ?? []
