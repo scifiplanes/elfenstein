@@ -2055,6 +2055,7 @@ A **persistent, readable** feed of actions matches the “what the player did”
 
 ---
 
+<<<<<<< Updated upstream
 ## ADR-0134 — Show current-cell properties in F2 Debug
 Date: 2026-04-08
 
@@ -2187,3 +2188,116 @@ As the POI set grows (more kinds and more placement passes), cell collisions bec
 - Some POIs may be dropped if they collide with a higher-priority POI.
 - Procgen’s `occupied` set and downstream systems (NPC/item placement, mission graph, rendering/picking) operate on a position-unique POI list.
 - In DEV builds we surface collisions via a warning so conflicts are noticed during iteration.
+=======
+## ADR-0134 — Portrait vitals: icon + value only (no HP/STA/HUN/THR labels)
+Date: 2026-04-08
+
+### Decision
+In **`PortraitPanel`**’s bottom stats overlay, each vital row shows only the **emoji icon** and **numeric value**; remove the **short text labels** (**HP**, **STA**, **HUN**, **THR**). Adjust **`statRow`** grid to two columns and drop unused **`.statName`** styling.
+
+### Rationale
+Player request: cleaner character widgets; icons already identify the stat.
+
+### Consequences
+Slightly less explicit labeling for new players; **`DESIGN.md`** §7.1 portrait stats bullet updated.
+
+---
+
+## ADR-0135 — Portrait vital row icons: `ui_char_*` PNGs replace emoji
+Date: 2026-04-08
+
+### Decision
+Use **`Content/ui/ui_char_health.png`**, **`ui_char_stamina.png`**, **`ui_char_hunger.png`**, **`ui_char_thirst.png`** (64×64 source art) in **`PortraitPanel`** stat rows instead of emoji. Serve via **`/content/ui/…`** with **`web/public/content/ui/`** copies; CSS displays them at **16×16** px with **`image-rendering: pixelated`**. **`prefetchImages`** loads the four URLs on mount.
+
+### Rationale
+Player-provided HUD iconography replaces inconsistent emoji rendering across platforms.
+
+### Consequences
+New/changed vital art must stay mirrored under **`public/`** until a single asset pipeline exists. **`DESIGN.md`** §7.1 updated.
+
+---
+
+## ADR-0136 — Portrait vital rows: revert `ui_char_*` PNGs to emoji
+Date: 2026-04-08
+
+### Decision
+Restore **`PortraitPanel`** vital rows to **emoji** (❤️ / ⚡ / 🍖 / 💧) with the prior **`.statIcon`** typography (**14px** sans, centered). Remove **`PORTRAIT_VITAL_ICON_SRC`**, the on-mount **`prefetchImages`** for those URLs, and **`<img>`** stat icons.
+
+### Rationale
+The PNG treatment did not read well in the portrait overlay on target layouts.
+
+### Consequences
+**`ui_char_*.png`** may remain under **`Content/ui/`** and **`web/public/content/ui/`** for future use; the HUD no longer references them. **`DESIGN.md`** §7.1 updated.
+
+---
+
+## ADR-0137 — Portrait vitals: emoji + 0–100 fill bars (no numbers)
+Date: 2026-04-08
+
+### Decision
+Replace portrait vital **numeric values** with **bars**: each row is **emoji**, **~20px** `column-gap`, then a **flexing** track (**`min-width: 0`**, **`1fr`**) with **black** background and a fill whose width matches **clamped 0–100** vital values. Fill colors: **health** red, **stamina** white, **hunger** green, **thirst** blue. Track height **11px**, slight radius.
+
+### Rationale
+Player request: bars instead of numbers, specified colors and spacing.
+
+### Consequences
+Exact current values are not shown on portraits (paperdoll/debug may still expose them elsewhere if present). **`DESIGN.md`** §7.1 updated.
+
+---
+
+## ADR-0138 — Portrait vital bars: full fill until max/current exists
+Date: 2026-04-08
+
+### Decision
+**`PortraitPanel`** vital bars keep the same **emoji + track + color** layout but the inner fill is **always `width: 100%`**. **`Character`** (and related sim rules) do not yet expose per-vital **maximum** alongside **current**; until they do, the UI assumes the displayed proportion is **current/max with max pinned to the current snapshot**, i.e. **fully filled** bars.
+
+### Rationale
+Player request: treat today’s values as the ceiling so bars read as full now; wire real **current/max** ratios after schema work.
+
+### Consequences
+Portrait bars are **not** a live damage/resource readout until **`Character`** (or helpers) supply maxima and **`PortraitPanel`** divides **current/max**. **`DESIGN.md`** §7.1 notes the interim behavior.
+
+---
+
+## ADR-0139 — Revert portrait bar padding/size experiments
+Date: 2026-04-08
+
+### Decision
+Restore **`PortraitPanel`** stats chrome after padding/size trials: **`.statBarTrack`** **11px** tall / **3px** radius (fill **2px** radius), **`.statsOverlay`** **`padding: 6px 70px 20px`** and **`right: 0`**, **`.portrait`** **`overflow: hidden`**, remove the extra **`.spriteStack`** / **`.layer`** clipping rules added for **`right: -30px`**, remove **`char1`–`char4`** **`overflow: visible`** overrides in **`HudLayout`**. Update **`DESIGN.md`** §7.1 accordingly.
+
+### Rationale
+Player request: undo the **~10px** track, **15px** / **−30px** right-edge overlay layout, and related **`overflow: visible`** exceptions.
+
+### Consequences
+Portrait vitals again use **symmetric ~70px** horizontal inset and default **`.panel`** clipping.
+
+---
+
+## ADR-0140 — Portrait vital rows: black panel + inventory-matched border
+Date: 2026-04-08
+
+### Decision
+Style each **`PortraitPanel`** **`.statRow`** with **`background: #000`**, **`border: 2px solid rgba(171, 136, 107, 0.75)`** (same literal as **`InventoryPanel`** **`.slot`**), **`border-radius: 0`**, **`box-sizing: border-box`**, and modest inner **`padding`** (**`5px 8px`**).
+
+### Rationale
+Player request: attribute rows read as discrete black tiles with the inventory slot outline color.
+
+### Consequences
+**`DESIGN.md`** §7.1 updated. If the shared border color should become a **CSS variable**, inventory and portrait should migrate together.
+
+---
+
+## ADR-0141 — Portrait vitals: **2×2** grid (HP/STA, HUN/THR)
+Date: 2026-04-08
+
+### Decision
+Replace the four **stacked** vital rows with a **`2×2`** **`CSS grid`**: **Health**, **Stamina** on the first row; **Hunger**, **Thirst** on the second (**`.vitalGrid`** under **`PortraitPanel`**). Each tile keeps the black panel + inventory-**`border`** treatment (**`.statCell`**); emoji-to-bar gap tightens to **`8px`** for half-width cells. **`statsOverlay`** uses **`flex` + `column` + `gap: 3px`** above the status line.
+
+### Rationale
+Player request: two rows × two columns composition.
+
+### Consequences
+**`DESIGN.md`** §7.1 updated. **`PORTRAIT_VITAL_CELLS`** order must stay **hp → sta → hun → thr** for natural grid auto-placement.
+
+---
+>>>>>>> Stashed changes
