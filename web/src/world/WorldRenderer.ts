@@ -85,6 +85,7 @@ export class WorldRenderer {
   private readonly poiSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
   private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
   private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
+  private lastPoiSpriteBoost = NaN
 
   private wellDrainedMat: THREE.SpriteMaterial | null = null
   private chestOpenMat: THREE.SpriteMaterial | null = null
@@ -697,10 +698,28 @@ export class WorldRenderer {
       this.torchLights[i].intensity = state.render.torchIntensity * tf
     }
 
+    this.syncPoiSpriteBoost(state)
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
     this.syncNpcIdleFrames(state)
     this.syncWellSparkleFrame(state)
+  }
+
+  private syncPoiSpriteBoost(state: GameState) {
+    const next = Math.max(0, Number(state.render.poiSpriteBoost ?? 1.0))
+    if (next === this.lastPoiSpriteBoost) return
+    this.lastPoiSpriteBoost = next
+
+    for (const mat of Object.values(this.poiSpriteMats)) {
+      if (!mat) continue
+      mat.color.setScalar(next)
+    }
+    if (this.wellDrainedMat) this.wellDrainedMat.color.setScalar(next)
+    if (this.chestOpenMat) this.chestOpenMat.color.setScalar(next)
+  }
+
+  private currentPoiSpriteBoost() {
+    return Number.isFinite(this.lastPoiSpriteBoost) ? this.lastPoiSpriteBoost : 1.0
   }
 
   private getWellDrainedMat(): THREE.SpriteMaterial {
@@ -716,6 +735,7 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
     this.wellDrainedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.wellDrainedMat.color.setScalar(this.currentPoiSpriteBoost())
     return this.wellDrainedMat
   }
 
@@ -732,6 +752,7 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
     this.chestOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.chestOpenMat.color.setScalar(this.currentPoiSpriteBoost())
     return this.chestOpenMat
   }
 
@@ -787,6 +808,7 @@ export class WorldRenderer {
     tex.generateMipmaps = false
 
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    mat.color.setScalar(this.currentPoiSpriteBoost())
     this.poiSpriteMats[kind] = mat
     return mat
   }

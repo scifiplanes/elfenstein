@@ -9,6 +9,12 @@ export const DitherShader = {
     palette: { value: 0.0 }, // 0..4
     /** When palette is 0 (warm dungeon): 0 = quantised dither only, 1 = full warm snap. */
     palette0Mix: { value: 1.0 },
+    /** Post-dither contrast/levels. 1 = neutral. */
+    postLevels: { value: 1.0 },
+    /** Post-dither lift (additive). 0 = neutral. */
+    postLift: { value: 0.0 },
+    /** Post-dither gamma. 1 = neutral. */
+    postGamma: { value: 1.0 },
   },
   vertexShader: /* glsl */ `
 varying vec2 vUv;
@@ -26,6 +32,9 @@ uniform float levels;
 uniform float matrixSize;
 uniform float palette;
 uniform float palette0Mix;
+uniform float postLevels;
+uniform float postLift;
+uniform float postGamma;
 varying vec2 vUv;
 
 float bayer2(vec2 p) {
@@ -156,6 +165,12 @@ void main() {
   }
 
   vec3 outc = mix(src.rgb, snapped, clamp(strength, 0.0, 1.0));
+  // Post-dither lift/gain/gamma (classic levels). All are neutral at 0/1/1.
+  float gain = max(0.0, postLevels);
+  float lift = postLift;
+  float gamma = max(1e-6, postGamma);
+  outc = clamp(outc * gain + lift, 0.0, 1.0);
+  outc = pow(outc, vec3(1.0 / gamma));
   gl_FragColor = vec4(outc, 1.0);
 }
 `,
