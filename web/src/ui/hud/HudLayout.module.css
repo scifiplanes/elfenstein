@@ -169,23 +169,3 @@
   margin: 0 0 8px;
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
 }
-
-.toast {
-  position: absolute;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
-  padding: 10px 12px;
-  border-radius: 10px;
-  background: rgba(0, 0, 0, 0.65);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  color: rgba(255, 255, 255, 0.88);
-  font-family: var(--mono);
-  font-size: 12px;
-  pointer-events: none;
-  white-space: nowrap;
-  max-width: min(calc(var(--stage-w, 1920px) * 0.9), 920px);
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-

@@ -2022,3 +2022,17 @@ Keeps modal/button label styling consistent and makes the project’s chosen “
 New UI that needs the same look should prefer **`--buttonTitle*`** over ad hoc rules; changing the style updates all consumers. **`DESIGN.md`** §7.2 documents the tokens.
 
 ---
+
+## ADR-0133 — Viewport activity log replaces centered toast
+Date: 2026-04-08
+
+### Decision
+**Player-facing text feedback** (formerly a single timed **`ui.toast`** banner centered on the game panel) now **appends** to **`ui.activityLog`** and renders in a **bottom-right** panel inside the **game viewport** (at most **four** newest lines visible), using the **button-title** face (**`--buttonTitle*`** tokens except weight) at **`calc(--buttonTitleFontSize - 5px)`** and **regular** weight. The **`ui/toast`** action **only** appends a line (optional **`ms`** ignored). **NPC Pet** dispatches **`npc/pet`** and logs **`You pet {name}.`** Initial log is **empty** (no bootstrap line).
+
+### Rationale
+A **persistent, readable** feed of actions matches the “what the player did” goal better than one ephemeral centered message.
+
+### Consequences
+**No timed toast UI**; history is capped (**`ACTIVITY_LOG_MAX_ENTRIES`**). All prior toast producers were migrated through **`pushActivityLog`**. **`DESIGN.md`** §6.3 / §7.5 updated.
+
+---

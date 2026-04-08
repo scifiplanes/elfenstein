@@ -81,7 +81,8 @@ export type UiState = {
   procgenDebugOverlay?: ProcgenDebugOverlayMode
   paperdollFor?: CharacterId
   npcDialogFor?: Id
-  toast?: { id: Id; text: string; untilMs: number }
+  /** Persistent lines inside the game viewport activity log (newest last; capped). */
+  activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
   sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }>
   /** Short-lived portrait “mouth visible” interaction cue. */

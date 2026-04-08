@@ -83,7 +83,7 @@ export function makeInitialState(_content: ContentDB): GameState {
 
   return {
     nowMs,
-    ui: { debugOpen: false, sfxQueue: [], procgenDebugOverlay: undefined },
+    ui: { debugOpen: false, sfxQueue: [], procgenDebugOverlay: undefined, activityLog: [] },
     render: { ...DEFAULT_RENDER },
     audio: { ...DEFAULT_AUDIO },
     view: snapViewToGrid(w, h, defaultCamEyeHeight, playerPos, playerDir),
