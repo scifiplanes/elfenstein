@@ -1,5 +1,6 @@
 import type { GameState, ItemDefId, ItemId } from '../types'
 import { consumeItem } from './inventory'
+import { pushActivityLog } from './activityLog'
 
 export type Recipe = {
   a: ItemDefId
@@ -27,21 +28,23 @@ export function findRecipe(defA: ItemDefId, defB: ItemDefId): Recipe | null {
 export function startCrafting(state: GameState, srcItemId: ItemId, dstItemId: ItemId, recipe: Recipe): GameState {
   if (state.ui.crafting) return state
   const startedAtMs = state.nowMs
-  return {
-    ...state,
-    ui: {
-      ...state.ui,
-      crafting: {
-        startedAtMs,
-        endsAtMs: startedAtMs + recipe.craftMs,
-        srcItemId,
-        dstItemId,
-        resultDefId: recipe.result,
-        failDestroyChancePct: recipe.failDestroyChancePct,
+  return pushActivityLog(
+    {
+      ...state,
+      ui: {
+        ...state.ui,
+        crafting: {
+          startedAtMs,
+          endsAtMs: startedAtMs + recipe.craftMs,
+          srcItemId,
+          dstItemId,
+          resultDefId: recipe.result,
+          failDestroyChancePct: recipe.failDestroyChancePct,
+        },
       },
-      toast: { id: `t_${state.nowMs}`, text: 'Crafting…', untilMs: state.nowMs + 700 },
     },
-  }
+    'Crafting…',
+  )
 }
 
 export function maybeFinishCrafting(state: GameState): GameState {
@@ -52,7 +55,7 @@ export function maybeFinishCrafting(state: GameState): GameState {
   const src = state.party.items[c.srcItemId]
   const dst = state.party.items[c.dstItemId]
   if (!src || !dst) {
-    return { ...state, ui: { ...state.ui, crafting: undefined, toast: { id: `t_${state.nowMs}`, text: 'Craft canceled.', untilMs: state.nowMs + 900 } } }
+    return pushActivityLog({ ...state, ui: { ...state.ui, crafting: undefined } }, 'Craft canceled.')
   }
 
   // Deterministic roll derived from floor seed + stable ids (multiplayer-sane direction).
@@ -70,25 +73,29 @@ export function maybeFinishCrafting(state: GameState): GameState {
       const destroySrc = ((seed >>> 16) & 1) === 0
       next = consumeItem(next, destroySrc ? c.srcItemId : c.dstItemId)
       const q = next.ui.sfxQueue ?? []
-      return {
+      return pushActivityLog(
+        {
+          ...next,
+          ui: {
+            ...next.ui,
+            sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]),
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 180, magnitude: 0.35 },
+          },
+        },
+        'Craft failed. Something broke.',
+      )
+    }
+    const q = next.ui.sfxQueue ?? []
+    return pushActivityLog(
+      {
         ...next,
         ui: {
           ...next.ui,
-          toast: { id: `t_${state.nowMs}`, text: 'Craft failed. Something broke.', untilMs: state.nowMs + 1200 },
           sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]),
-          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 180, magnitude: 0.35 },
         },
-      }
-    }
-    const q = next.ui.sfxQueue ?? []
-    return {
-      ...next,
-      ui: {
-        ...next.ui,
-        toast: { id: `t_${state.nowMs}`, text: 'Craft failed.', untilMs: state.nowMs + 1000 },
-        sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]),
       },
-    }
+      'Craft failed.',
+    )
   }
 
   // Success: consume both and mint result item into an inventory slot.
@@ -102,15 +109,17 @@ export function maybeFinishCrafting(state: GameState): GameState {
   const nextSlots = inv.slots.slice()
   if (free >= 0) nextSlots[free] = newId
 
-  return {
-    ...next,
-    party: { ...next.party, items, inventory: { ...inv, slots: nextSlots } },
-    ui: {
-      ...next.ui,
-      toast: { id: `t_${state.nowMs}`, text: `Crafted ${c.resultDefId}.`, untilMs: state.nowMs + 1200 },
-      sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
+  return pushActivityLog(
+    {
+      ...next,
+      party: { ...next.party, items, inventory: { ...inv, slots: nextSlots } },
+      ui: {
+        ...next.ui,
+        sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
+      },
     },
-  }
+    `Crafted ${c.resultDefId}.`,
+  )
 }
 
 function hashStr(s: string) {

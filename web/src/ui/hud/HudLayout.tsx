@@ -9,6 +9,7 @@ import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { StatuePanel } from '../statue/StatuePanel'
+import { ActivityLog } from './ActivityLog'
 import { useCursor } from '../cursor/useCursor'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 
@@ -110,7 +111,7 @@ export function HudLayout(props: {
         {captureForPostprocess ? null : (
           <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
         )}
-        {state.ui.toast ? <div className={styles.toast}>{state.ui.toast.text}</div> : null}
+        <ActivityLog entries={state.ui.activityLog ?? []} />
       </section>
 
       <section className={`${styles.panel} ${styles.statueR}`}>

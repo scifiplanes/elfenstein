@@ -2008,3 +2008,31 @@ Avoid “black” **void** / phantom grid squares; show **only** cells that exis
 Near floor edges the minimap looks **gapped** or asymmetric inside the circle. **`DESIGN.md`** §6.4 updated accordingly.
 
 ---
+
+## ADR-0132 — Centralize “button title” Jim Nightshade typography
+Date: 2026-04-08
+
+### Decision
+Define shared **CSS custom properties** in **`web/src/index.css`** (`--buttonTitleFontFamily` … `--buttonTitleTextShadow`) for the **Jim Nightshade** headline stack used on **button primary labels** at **25 CSS px**, matching weight, spacing, color, and shadow. The NPC dialog **Pet** control consumes these variables via **`NpcDialogModal.module.css`**.
+
+### Rationale
+Keeps modal/button label styling consistent and makes the project’s chosen “button title” face and metrics easy to reuse without copy-pasting declarations.
+
+### Consequences
+New UI that needs the same look should prefer **`--buttonTitle*`** over ad hoc rules; changing the style updates all consumers. **`DESIGN.md`** §7.2 documents the tokens.
+
+---
+
+## ADR-0133 — Viewport activity log replaces centered toast
+Date: 2026-04-08
+
+### Decision
+**Player-facing text feedback** (formerly a single timed **`ui.toast`** banner centered on the game panel) now **appends** to **`ui.activityLog`** and renders in a **bottom-right** panel inside the **game viewport** (at most **four** newest lines visible), using the **button-title** face (**`--buttonTitle*`** tokens except weight) at **`calc(--buttonTitleFontSize - 5px)`** and **regular** weight. The **`ui/toast`** action **only** appends a line (optional **`ms`** ignored). **NPC Pet** dispatches **`npc/pet`** and logs **`You pet {name}.`** Initial log is **empty** (no bootstrap line).
+
+### Rationale
+A **persistent, readable** feed of actions matches the “what the player did” goal better than one ephemeral centered message.
+
+### Consequences
+**No timed toast UI**; history is capped (**`ACTIVITY_LOG_MAX_ENTRIES`**). All prior toast producers were migrated through **`pushActivityLog`**. **`DESIGN.md`** §6.3 / §7.5 updated.
+
+---

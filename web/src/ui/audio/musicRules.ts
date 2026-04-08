@@ -1,17 +1,16 @@
 import type { GameState } from '../../game/types'
-import { MUSIC_TRACKS } from './musicTracks'
+import { MUSIC_SETS, type MusicSet } from './musicTracks'
 
 /**
- * Priority-ordered music rules. The first rule whose `active` predicate
- * returns true wins. Add new entries above the existing ones to give them
- * higher priority, or below to give them lower priority.
+ * Priority-ordered rules. First matching rule wins.
+ * Add entries here to introduce new triggers — nothing else needs to change.
  */
 const RULES: Array<{
-  track: string
+  set: MusicSet
   active: (state: GameState) => boolean
 }> = [
   {
-    track: MUSIC_TRACKS.safeHaven,
+    set: MUSIC_SETS.safeHaven,
     active: ({ floor }) =>
       floor.npcs.some(
         (npc) => npc.name === 'Bobr' && manhattan(floor.playerPos, npc.pos) <= 4,
@@ -19,9 +18,9 @@ const RULES: Array<{
   },
 ]
 
-/** Returns the URL of the track that should be playing given the current game state. */
-export function selectMusicTrack(state: GameState): string {
-  return RULES.find((r) => r.active(state))?.track ?? MUSIC_TRACKS.dungeon
+/** Returns the MusicSet that should be active for the given game state. */
+export function selectMusicSet(state: GameState): MusicSet {
+  return RULES.find((r) => r.active(state))?.set ?? MUSIC_SETS.dungeon
 }
 
 function manhattan(a: { x: number; y: number }, b: { x: number; y: number }) {
