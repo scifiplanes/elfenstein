@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { GameState } from '../../game/types'
 import { MusicPlayer } from './MusicPlayer'
 import { ALL_MUSIC_TRACKS, type MusicSet } from './musicTracks'
@@ -47,8 +47,10 @@ export function MusicLayer(props: { state: GameState; musicSet: MusicSet }) {
     [player],
   )
 
-  // Keep ref in sync so the timer callback always has the latest function.
-  startVariationRef.current = startVariation
+  // Keep ref in sync after every render so the timer callback always has the latest function.
+  useLayoutEffect(() => {
+    startVariationRef.current = startVariation
+  })
 
   // Mount: preload all tracks, attach gesture listeners for autoplay policy.
   useEffect(() => {

@@ -55,7 +55,7 @@ export type Action =
   | { type: 'ui/closeNpcDialog' }
   | { type: 'ui/toast'; text: string; ms?: number }
   | { type: 'ui/shake'; magnitude: number; ms?: number }
-  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }
+  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }
   | { type: 'audio/set'; key: keyof GameState['audio']; value: number }
   | { type: 'time/tick'; nowMs: number }
   | { type: 'player/turn'; dir: -1 | 1 }
@@ -112,15 +112,23 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'ui/closePaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
-    case 'ui/openNpcDialog':
+    case 'ui/openNpcDialog': {
+      const npc = state.floor.npcs.find((n) => n.id === action.npcId)
+      const q = state.ui.sfxQueue ?? []
+      const sfxQueue =
+        npc?.kind === 'Skeleton'
+          ? q.concat([{ id: `s_${state.nowMs}_bones`, kind: 'bones' as const }])
+          : q
       return {
         ...state,
         ui: {
           ...state.ui,
           npcDialogFor: action.npcId,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+          sfxQueue,
         },
       }
+    }
     case 'ui/closeNpcDialog':
       return { ...state, ui: { ...state.ui, npcDialogFor: undefined } }
     case 'ui/toast':

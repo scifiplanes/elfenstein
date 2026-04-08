@@ -84,7 +84,7 @@ export type UiState = {
   /** Persistent lines inside the game viewport activity log (newest last; capped). */
   activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
-  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }>
+  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }>
   /** Short-lived portrait “mouth visible” interaction cue. */
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
   /** Short-lived portrait frame shake (inspect/feed resolution). */
