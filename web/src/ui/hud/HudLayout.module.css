@@ -71,6 +71,27 @@
   background: transparent;
 }
 
+/* Same box model as `GameViewport.module.css` `.root` (absolute fill of `.panel.game`). */
+.gameViewportCaptureShell {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+/* NPC dialog (capture): same box as the 3D view; top + horizontal center for html2canvas. */
+.npcCaptureLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 10px 6px 0;
+  pointer-events: none;
+}
+
 .root[data-capture='true'] .panel.game {
   background: transparent;
   border-color: transparent;

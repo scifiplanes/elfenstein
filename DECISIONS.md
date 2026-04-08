@@ -2046,7 +2046,7 @@ Near floor edges the minimap looks **gapped** or asymmetric inside the circle. *
 Date: 2026-04-08
 
 ### Decision
-Define shared **CSS custom properties** in **`web/src/index.css`** (`--buttonTitleFontFamily` … `--buttonTitleTextShadow`) for the **Jim Nightshade** headline stack used on **button primary labels** at **25 CSS px**, matching weight, spacing, color, and shadow. The NPC dialog **Pet** control consumes these variables via **`NpcDialogModal.module.css`**.
+Define shared **CSS custom properties** in **`web/src/index.css`** (`--buttonTitleFontFamily` … `--buttonTitleTextShadow`) for the **Jim Nightshade** headline stack used on **button primary labels** at **25 CSS px**, matching weight, spacing, color, and shadow. **`NpcDialogModal`** uses these tokens for dialog copy and **Close** (see **`DESIGN.md`**).
 
 ### Rationale
 Keeps modal/button label styling consistent and makes the project’s chosen “button title” face and metrics easy to reuse without copy-pasting declarations.
@@ -2060,7 +2060,7 @@ New UI that needs the same look should prefer **`--buttonTitle*`** over ad hoc r
 Date: 2026-04-08
 
 ### Decision
-**Player-facing text feedback** (formerly a single timed **`ui.toast`** banner centered on the game panel) now **appends** to **`ui.activityLog`** and renders in a **bottom-right** panel inside the **game viewport** (at most **four** newest lines visible), using the **button-title** face (**`--buttonTitle*`** tokens except weight) at **`calc(--buttonTitleFontSize - 5px)`** and **regular** weight. The **`ui/toast`** action **only** appends a line (optional **`ms`** ignored). **NPC Pet** dispatches **`npc/pet`** and logs **`You pet {name}.`** Initial log is **empty** (no bootstrap line).
+**Player-facing text feedback** (formerly a single timed **`ui.toast`** banner centered on the game panel) now **appends** to **`ui.activityLog`** and renders in a **bottom-right** panel inside the **game viewport** (at most **four** newest lines visible), using the **button-title** face (**`--buttonTitle*`** tokens except weight) at **`calc(--buttonTitleFontSize - 5px)`** and **regular** weight. The **`ui/toast`** action **only** appends a line (optional **`ms`** ignored). Initial log is **empty** (no bootstrap line).
 
 ### Rationale
 A **persistent, readable** feed of actions matches the “what the player did” goal better than one ephemeral centered message.
@@ -2449,7 +2449,7 @@ The previous layout used a **percentage of the full modal backdrop**, which did 
 Date: 2026-04-08
 
 ### Decision
-**`NpcDialogModal`** vertical position subtracts **`viewportHeight * (100 / STAGE_CSS_HEIGHT)`** from the previous top anchor (plus small inset), so the shift matches **100 CSS px** when the game viewport height equals **1080**. The **fallback** (no measure) uses **`top: calc(18% - 9.259vh)`**. The main modal **panel** uses **`border-radius: 0`** (square corners); **Close** / **Pet** keep their existing radii.
+**`NpcDialogModal`** vertical position subtracts **`viewportHeight * (100 / STAGE_CSS_HEIGHT)`** from the previous top anchor (plus small inset), so the shift matches **100 CSS px** when the game viewport height equals **1080**. The **fallback** (no measure) uses **`top: calc(18% - 9.259vh)`**. The main modal **panel** uses **`border-radius: 0`** (square corners); **Close** kept its own radius at the time (**Pet** was later removed—**ADR-0173**).
 
 ### Rationale
 Keeps the dialog **horizontally centered** on the game viewport while nudging it **up** in a resolution-aware way. Square outer chrome matches the requested look for the popup background.
@@ -2621,4 +2621,150 @@ Varying blend weight mixes more/less with the underlying scene, which shifts **p
 
 ### Consequences
 - `CompositeShader` adds `telegraphTintPulse`; `FramePresenter` / `DitheredFrameRoot` pass it for tint mode hazards.
->>>>>>> origin/main
+
+---
+
+## ADR-0165 — NPC dialog in HUD capture + invisible hit layer (dither parity)
+Date: 2026-04-08
+
+### Decision
+Render **`NpcDialogModal`** in the **offscreen `html2canvas`** subtree (capture variant) so the popup is part of the **UI texture** and receives **ordered dither**. Keep a **second** interactive instance **portaled** to **`document.body`** with **`opacity: 0`** for **pointer hit-testing** and drag/drop, matching the **HUD** split (visible bitmap from capture + invisible interactive layer).
+
+### Rationale
+DOM modals above the presenter stayed **undithered**; players saw a clean vector UI on a dithered game+Hud.
+
+### Consequences
+- `html2canvas` targets the **`data-capture-root`** wrapper that includes **`HudLayout`** plus capture **`NpcDialogModal`**.
+- Capture **`HudLayout`** receives **`gameViewportRef`** so the NPC panel can anchor to the capture **game** cell.
+- **`ADR-0087`** remains true for **Paperdoll**; NPC is the exception documented in **`DESIGN.md`**.
+
+---
+
+## ADR-0166 — NPC dialog: stage width + no full-screen dimmer
+Date: 2026-04-08
+
+### Decision
+NPC dialog **panel width** follows **`min(620px, var(--stage-w) − 24px)`** (CSS), centered on the **game viewport**; do **not** clamp width to the game cell. Remove the **full-bleed semi-transparent backdrop** so the HUD and 3D region stay undimmed; keep an invisible full-screen hit layer for outside-click close and drag routing.
+
+### Rationale
+Measuring width from the game cell had shrunk the panel vs the long-standing stage-based cap; the dim layer read as washing out the whole framed game/HUD behind the popup.
+
+### Consequences
+- **`NpcDialogModal`**: inline layout sets **position** (viewport center + **`translate(-50%, -50%)`**), not **width**.
+- **`.backdrop`**: no dimming fill; panel chrome unchanged.
+
+---
+
+## ADR-0167 — NPC dialog centered in game viewport
+Date: 2026-04-08
+
+### Decision
+Position the NPC dialog panel at the **2D center** of the **`GameViewport`** rect (interactive: **`fixed`** + **`translate(-50%, -50%)`**; capture: **absolute** in capture HUD space with the same math). Remove the prior **top-of-viewport** offsets (**`100 / STAGE_CSS_HEIGHT`**, **`30 / STAGE_CSS_HEIGHT`**, and the **`18%` / `vh` CSS fallback**).
+
+### Rationale
+The popup should read as **centered over the 3D view**, not hugging the top band.
+
+### Consequences
+- **`NpcDialogModal.module.css`**: no-measure fallback is **`left/top: 50%`** with **`translate(-50%, -50%)`**.
+- Older ADR bullets that describe **top-anchored** NPC placement are **superseded** for layout (behavior in **`DESIGN.md`** is authoritative).
+
+---
+
+## ADR-0168 — Capture HUD: game cell shell for `gameViewportRef`
+Date: 2026-04-08
+
+### Decision
+When **`captureForPostprocess`**, render an **empty absolutely positioned shell** in the **game** panel (same **`inset: 0`** fill as **`GameViewport`’s** root) and attach **`gameViewportRef`** to it instead of mounting **`GameViewport`**.
+
+### Rationale
+Capture HUD intentionally omits **`GameViewport`**, so **`captureGameViewportRef`** never pointed at a node; **`NpcDialogModal`** capture variant had **`viewportRect === null`**, **`modalCapture`** had no **`left`/`top`/`transform`**, and the dithered dialog stuck to the **top-left**.
+
+### Consequences
+- **`HudLayout`**: conditional **`gameViewportCaptureShell`**; **`DESIGN.md`** notes the capture behavior.
+
+---
+
+## ADR-0169 — NPC dialog capture: mount inside game cell (flex center)
+Date: 2026-04-08
+
+### Decision
+Render the capture (**`html2canvas`**) **`NpcDialogModal`** **inside** the capture **`HudLayout`** **game** panel via **`captureNpcOverlay`** and a **`npcCaptureLayer`** (**`position: absolute; inset: 0; display: flex`**, top + horizontal center — see **ADR-0170**). Remove capture-only **`getBoundingClientRect`** / **`captureHudRootRef`** positioning and the prior sibling-of-**`HudLayout`** mount.
+
+### Rationale
+Offscreen capture coordinates and **`html2canvas`** cloning remained unreliable; **`viewportRect`** could stay empty or wrong so the panel rendered at **(0,0)** in the bitmap (top-left of the frame). Flex layout inside the **same DOM box** as the 3D viewport cell matches the intended **game-widget-aligned** layout without fragile global rect math.
+
+### Consequences
+- **`HudLayout`** gains **`captureNpcOverlay`**; **`DitheredFrameRoot`** passes the capture **`NpcDialogModal`** there instead of beside **`HudLayout`**.
+- **`NpcDialogModal`**: capture variant is a small wrapper + **`modalCapture`** only; **`backdropCapture`** unused/removed.
+
+---
+
+## ADR-0170 — NPC dialog: top of game viewport (horizontal center)
+Date: 2026-04-08
+
+### Decision
+Place the NPC dialog at the **top** of the **3D game viewport** with **10 CSS px** inset: interactive uses **`top: rect.top + 10`** and **`translateX(-50%)`**; capture uses **`npcCaptureLayer`** with **`align-items: flex-start`**, **`padding-top: 10px`**, and **`justify-content: center`**. No-measure CSS fallback: **`top: 10%`** with **`translateX(-50%)`**.
+
+### Rationale
+Vertical centering was correct mechanically but the panel reads better **anchored under the top** of the dungeon view while staying **horizontally centered**.
+
+### Consequences
+- **`ADR-0167`** (full viewport center) is **superseded** for vertical placement; **`DESIGN.md`** is authoritative.
+
+---
+
+## ADR-0171 — CursorLayer: no pointer capture on descendants
+Date: 2026-04-08
+
+### Decision
+Set **`pointer-events: none`** on **all** **`CursorLayer`** descendants (CSS **`.layer *`**) so the hand sprite and overlays never become the **topmost hit target** under the cursor.
+
+### Rationale
+The layer root already had **`pointer-events: none`**, but children defaulted to **`auto`**, so the **~56×56 hand** at **`(clientX, clientY)`** sat above modals with lower **`z-index`** (e.g. NPC dialog at **2200**) and **ate clicks**—**Close** and similar controls never received **`click`**.
+
+### Consequences
+- **`CursorLayer.module.css`**: **`.layer * { pointer-events: none }`**; cursor remains visual-only for hit-testing.
+
+---
+
+## ADR-0172 — NPC dialog hit layer above `CursorLayer`
+Date: 2026-04-08
+
+### Decision
+Raise **`NpcDialogModal`** **`.backdrop`** from **`z-index: 2200`** to **`10100`** (above **`CursorLayer`’s** **`9999`**).
+
+### Rationale
+**`pointer-events: none`** on cursor descendants should prevent hit stealing, but any future child override or engine quirk could regress **Close**. Stacking the **invisible** NPC portal **above** the cursor layer makes hits **unambiguous**; **`opacity: 0`** keeps the overlay visually transparent so the hand still reads correctly through compositing.
+
+### Consequences
+- **`NpcDialogModal`**: **`.backdrop`** **`z-index: 10100`**.
+
+---
+
+## ADR-0173 — Remove Pet control from NPC dialog
+Date: 2026-04-08
+
+### Decision
+Remove the **Pet** button and footer from **`NpcDialogModal`**. Keep the **`npc/pet`** reducer case for now (no UI dispatch from the modal).
+
+### Rationale
+Scope reduction for the dialog chrome; petting is not required as a first-class modal action.
+
+### Consequences
+- **`NpcDialogModal.module.css`**: drop **`.footer`** / **`.pet`**.
+- **`DESIGN.md`** §7.5: dialog no longer exposes **Pet**; **`ADR-0133`** historical note about dialog **Pet** is obsolete for current UI.
+
+---
+
+## ADR-0174 — NPC dialog: no title portrait sprite
+Date: 2026-04-08
+
+### Decision
+Remove the **base NPC sprite** (`<img>` / **`NPC_SPRITE_SRC`**) beside the dialog title; header is **text-only** (**`{name} · {status}`**).
+
+### Rationale
+Simpler chrome; iconography is redundant with the **3D billboard** and busy at large title sizes.
+
+### Consequences
+- **`NpcDialogModal.tsx`**: no **`npcDefs`** sprite import for the modal.
+- **`NpcDialogModal.module.css`**: remove **`.portrait`**; **`DESIGN.md`** §7.5 updated.

@@ -1,4 +1,4 @@
-import { type Dispatch, type RefObject, useRef } from 'react'
+import { type Dispatch, type ReactNode, type RefObject, useRef } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { GameState } from '../../game/types'
 import type { Action } from '../../game/reducer'
@@ -25,6 +25,8 @@ export function HudLayout(props: {
   webglError?: string | null
   navPadPressedId: NavPadButtonId | null
   onNavPadVisualPress: (id: NavPadButtonId) => void
+  /** Capture HUD only: centered in the game cell (e.g. dithered NPC dialog). */
+  captureNpcOverlay?: ReactNode
 }) {
   const {
     state,
@@ -38,6 +40,7 @@ export function HudLayout(props: {
     webglError,
     navPadPressedId,
     onNavPadVisualPress,
+    captureNpcOverlay,
   } = props
   const cursor = useCursor()
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
@@ -135,10 +138,18 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.game}`}>
-        {captureForPostprocess ? null : (
+        {captureForPostprocess ? (
+          // `GameViewport` is omitted in capture HUD (3D is not rasterized here). Keep a same-sized
+          // shell so `gameViewportRef` (e.g. `captureGameViewportRef`) attaches and NPC dialog / layout
+          // math match the interactive `GameViewport` box.
+          <div ref={gameViewportRef} className={styles.gameViewportCaptureShell} aria-hidden />
+        ) : (
           <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
         )}
         <ActivityLog entries={state.ui.activityLog ?? []} />
+        {captureForPostprocess && captureNpcOverlay ? (
+          <div className={styles.npcCaptureLayer}>{captureNpcOverlay}</div>
+        ) : null}
       </section>
 
       <section className={`${styles.panel} ${styles.statueR}`}>
