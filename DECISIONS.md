@@ -2397,3 +2397,17 @@ We have a complete Afonso portrait art set (base/eyes/inspect/mouth/idle). Wirin
 ### Consequences
 - `Species` union expands; any code that switches on species must handle `Afonso`.
 - The Afonso PNGs must be mirrored to `web/public/content/` so `/content/Afonso_*.png` loads reliably at runtime.
+
+---
+
+## ADR-0155 — Activity log lines expire after 10 seconds
+Date: 2026-04-08
+
+### Decision
+**`ui.activityLog`** entries are **removed** when **`state.nowMs - entry.atMs` ≥ `ACTIVITY_LOG_ENTRY_TTL_MS` (10s)** during **`time/tick`**. While **`ui.death`** is set, **pruning is skipped** so the death screen recap does not drain. **Checkpoint restore** **refreshes** each restored line’s **`atMs`** to **`state.nowMs`** so lines saved long ago are not all cleared on the first tick.
+
+### Rationale
+A short TTL keeps the viewport corner readable without a permanent backlog; tying expiry to **`time/tick`** matches existing simulation time. Death and checkpoint cases need explicit handling so UX stays coherent.
+
+### Consequences
+**`DESIGN.md`** activity-log bullet documents TTL, cap, and death pause; **`activityLog.ts`** exports **`ACTIVITY_LOG_ENTRY_TTL_MS`** and **`pruneExpiredActivityLog`**.

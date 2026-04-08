@@ -24,7 +24,7 @@ import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
-import { pushActivityLog } from './state/activityLog'
+import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
 import { descendToNextFloor } from './state/floorProgression'
 import { applyXp } from './state/runProgression'
 
@@ -168,7 +168,8 @@ export function reduce(state: GameState, action: Action): GameState {
           screen: snap.ui.screen,
           debugOpen: snap.ui.debugOpen,
           procgenDebugOverlay: snap.ui.procgenDebugOverlay,
-          activityLog: snap.ui.activityLog ?? [],
+          // Refresh timestamps so TTL pruning does not wipe restored lines on the first tick.
+          activityLog: (snap.ui.activityLog ?? []).map((e) => ({ ...e, atMs: state.nowMs })),
           knownRecipes: snap.ui.knownRecipes,
           // Clear transient/blocking UI bits.
           death: undefined,
@@ -241,7 +242,7 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'audio/set':
       return { ...state, audio: { ...state.audio, [action.key]: action.value } }
     case 'time/tick': {
-      const next: GameState = { ...state, nowMs: action.nowMs }
+      const next: GameState = pruneExpiredActivityLog({ ...state, nowMs: action.nowMs })
       const withDecay = applyStatusDecay(next)
       const withCrafting = maybeFinishCrafting(withDecay)
       let withAnim = tickViewAnimation(withCrafting)
