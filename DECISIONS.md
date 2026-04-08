@@ -1856,3 +1856,17 @@ Emoji glyphs may clip slightly in the smallest cells if grid columns are narrow;
 
 ---
 
+## ADR-0122 — Inventory hover: item name tooltip in CursorLayer
+Date: 2026-04-08
+
+### Decision
+When the cursor hovers an **occupied** inventory slot, show the item’s **`def.name`** in a compact label positioned **above** the slot using **`hoverRect`** from **`CursorProvider`**. Implementation lives in **`CursorLayer`** (new **`itemNameTooltip`** styles in **`CursorLayer.module.css`**). The tooltip is **hidden while a drag is active** (started hold-drag) so it does not stack on the ghost and affordance.
+
+### Rationale
+The HUD inventory grid under **`.interactiveHud`** is **`opacity: 0`** for compositor capture/hit testing, so a tooltip rendered only inside **`InventoryPanel`** would not be visible; **`CursorLayer`** already draws visible viewport-aligned overlays.
+
+### Consequences
+Inventory naming UX is coupled to cursor hover state; long names truncate with ellipsis (**`max-width`**). **`DESIGN.md`** §7.2 documents the behavior.
+
+---
+
