@@ -1758,3 +1758,101 @@ Slightly taller overlay; **`PortraitPanel.module.css`** uses **`statRow` / `stat
 
 ---
 
+## ADR-0115 — Inventory grid slot border (#342a22, 2 px)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border is **2 px solid `#342a22`** (replaces **1 px** light **`rgba`** rim).
+
+### Rationale
+User request: stronger, palette-aligned slot framing on the HUD inventory grid.
+
+### Consequences
+Hover still uses **`outline`** on **`.slot[data-hover='true']`**; tune border vs outline together if drop feedback feels busy. **`DESIGN.md`** §7.2 notes the slot border spec.
+
+---
+
+## ADR-0116 — Inventory slots: square corners (no border-radius)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** uses **`border-radius: 0`** (was **10 px**).
+
+### Rationale
+User request: sharp slot corners instead of rounded cells.
+
+### Consequences
+Grid reads more “tile-like” and matches a crisp HUD frame; **`DESIGN.md`** §7.2 updated.
+
+---
+
+## ADR-0117 — Inventory slot border color `#ab886b`
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border color **`#ab886b`** (was **`#342a22`** per **ADR-0115**).
+
+### Rationale
+User request: warmer, lighter rim on inventory cells.
+
+### Consequences
+**`DESIGN.md`** §7.2 hex updated.
+
+---
+
+## ADR-0118 — Inventory slot border: `#ab886b` at 50% alpha
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border uses **`rgba(171, 136, 107, 0.5)`** (same hue as **`#ab886b`**, **ADR-0117**).
+
+### Rationale
+User request: softer rim via **0.5** border opacity.
+
+### Consequences
+**`DESIGN.md`** §7.2 notes opacity; stack behind the slot shows through the border color.
+
+---
+
+## ADR-0119 — Inventory slot border alpha 0.75 (was 0.5)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border **`rgba(171, 136, 107, 0.75)`** (was **0.5**, **ADR-0118**).
+
+### Rationale
+User request: stronger rim while keeping partial transparency.
+
+### Consequences
+**`DESIGN.md`** §7.2 opacity value updated.
+
+---
+
+## ADR-0120 — HUD inventory panel padding 20 px
+Date: 2026-04-08
+
+### Decision
+**`HudLayout.module.css`**: **`.inventory`** **`padding: 20px`** on all sides (was **10 px**).
+
+### Rationale
+User request: more inset around the inventory grid in the bottom HUD row.
+
+### Consequences
+Slightly smaller grid footprint inside the **285 px** bottom row; **`DESIGN.md`** §7.2 notes the inset.
+
+---
+
+## ADR-0121 — Inventory slot icon font +25% (44 → 55 CSS px)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.item`** **`font`** size **55 px** (was **44 px**; **ADR-0109** had doubled **22 → 44**).
+
+### Rationale
+User request: **25%** larger item icons in the HUD inventory grid.
+
+### Consequences
+Emoji glyphs may clip slightly in the smallest cells if grid columns are narrow; **`DESIGN.md`** §7.2 notes **~55 px**. **`CursorLayer`** drag ghost sizing unchanged unless separately tuned.
+
+---
+

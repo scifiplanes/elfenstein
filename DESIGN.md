@@ -123,7 +123,8 @@ The party has **up to 4** character portrait slots.
 
 ### 7.2 Inventory
 - **Shared inventory** across party (one pool).
-- Inventory is a **large grid panel** for management.
+- On the HUD, the **inventory** panel has **20 px** padding on all sides around the grid.
+- Inventory is a **large grid panel** for management; each cell has a **square** shape with a **2 px** border tinted **`#ab886b`** at **0.75** opacity (no corner rounding). **Emoji** item icons in slots use **~55 CSS px** font size (**+25%** vs the prior **44 px**).
 - **Capacity**: number of grid cells is informed by **total party Endurance**.
 - Inventory UI is **scrollable in sections** (paged), not continuous.
 - Dragging inventory item into empty 3D space drops it onto the floor (cell).

@@ -80,7 +80,7 @@
 
 .inventory {
   grid-area: inventory;
-  padding: 10px;
+  padding: 20px;
 }
 
 .map {
