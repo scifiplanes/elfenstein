@@ -125,6 +125,10 @@ export class MusicPlayer {
     if (this.currentUrl === url) this.currentUrl = null
   }
 
+  getDuration(url: string): number | null {
+    return this.buffers.get(url)?.duration ?? null
+  }
+
   setVolume(volume: number) {
     if (!this.outputGain || !this.ctx) return
     if (this.ctx.state === 'suspended') void this.ctx.resume()
