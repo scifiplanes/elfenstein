@@ -5,6 +5,8 @@ import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
 import { getThemeLightIntent } from '../../world/themeTuning'
+import { BG_NOISE_LABELS, BG_NOISE_TRACKS } from '../audio/musicTracks'
+import { selectBgTrack } from '../audio/musicRules'
 import styles from './DebugPanel.module.css'
 
 const TAU = Math.PI * 2
@@ -952,6 +954,35 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             </div>
           )
         })}
+      </div>
+
+      <div className={styles.section}>
+        <div className={styles.sectionTitle}>Background music</div>
+        <div className={styles.row}>
+          <div className={styles.label}>Now playing</div>
+          <div className={styles.value}>
+            {BG_NOISE_LABELS[state.ui.debugBgTrack ?? selectBgTrack(state)] ?? '?'}
+            {state.ui.debugBgTrack ? ' (override)' : ''}
+          </div>
+        </div>
+        <div className={styles.audioBtns}>
+          {Object.values(BG_NOISE_TRACKS).map((url) => (
+            <button
+              key={url}
+              type="button"
+              className={styles.audioBtn}
+              style={{ fontWeight: state.ui.debugBgTrack === url ? 'bold' : undefined }}
+              onClick={() =>
+                dispatch({
+                  type: 'ui/setDebugBgTrack',
+                  track: state.ui.debugBgTrack === url ? undefined : url,
+                })
+              }
+            >
+              {BG_NOISE_LABELS[url] ?? url}
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className={styles.section}>
