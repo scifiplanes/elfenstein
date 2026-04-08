@@ -295,7 +295,7 @@ void main() {
     float a = teleS;
     if (telegraphTintMode > 0.5) {
       // Luma-preserving color tint: overrides floor/theme cast without a flat opaque overlay.
-      // Pulse scales `graded` only (fixed tc ratios) so hue does not swing toward scene colors.
+      // Pulse scales graded only (fixed tc ratios) so hue does not swing toward scene colors.
       float L = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722));
       vec3 tc = clamp(telegraphColor, 0.0, 1.0);
       float pulse = clamp(telegraphTintPulse, 0.35, 1.35);

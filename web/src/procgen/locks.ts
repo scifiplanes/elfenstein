@@ -1,12 +1,15 @@
-import type { Tile, Vec2 } from '../game/types'
+import type { ItemDefId, Tile, Vec2 } from '../game/types'
 import type { FloorGenDifficulty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
+import { findNearestUnusedFloor } from './layoutPasses'
 import { allReachable, bfsDistances, isWalkable, shortestPathLatticeStats } from './validate'
+
+/** Keys placed by `placeLocksOnPath` (for content coverage audits). */
+export const PROCgen_LOCK_KEY_ITEM_DEF_IDS: ItemDefId[] = ['IronKey', 'BrassKey']
 
 /** Hard validation: Well must be within this many steps of entrance (see DESIGN §8). */
 const SAFETY_WELL_MAX_BFS = 3
 /** Hard validation: Bed must be within this many steps of entrance (POIs target ~45% along exit BFS). */
 const SAFETY_BED_MAX_BFS = 48
-import { findNearestUnusedFloor } from './layoutPasses'
 
 function clampInt(v: number, lo: number, hi: number) {
   return Math.max(lo, Math.min(hi, Math.round(v)))

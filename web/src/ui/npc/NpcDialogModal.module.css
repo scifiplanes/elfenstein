@@ -7,14 +7,17 @@
 }
 
 .modal {
-  position: absolute;
+  /* Default when no game viewport ref / measure yet (e.g. tests). */
+  box-sizing: border-box;
+  position: fixed;
   left: 50%;
-  top: 18%;
+  /* Mirrors TS: ~(100−30)/1080 of viewport height vs 18% baseline; at 1080px-tall vh, −9.259vh+2.778vh ≈ −70px from 18% */
+  top: calc(18% - 9.259vh + 2.778vh);
   transform: translateX(-50%);
   width: min(620px, calc(var(--stage-w, 1920px) - 24px));
   background: rgba(18, 20, 28, 0.92);
   border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 14px;
+  border-radius: 0;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
   padding: 12px 12px 14px;
 }

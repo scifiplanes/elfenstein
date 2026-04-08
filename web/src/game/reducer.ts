@@ -86,6 +86,7 @@ export type Action =
   /** Debug: toggle a procgen floor property. Regen/descend separately to materialize. */
   | { type: 'floor/debugToggleFloorProperty'; property: FloorProperty }
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
+  | { type: 'ui/setDebugBgTrack'; track: string | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'floor/toggleChest'; poiId: string }
@@ -109,6 +110,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'time/tick':
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
+      case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
       case 'audio/set':
@@ -127,6 +129,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'time/tick':
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
+      case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
       case 'audio/set':
@@ -191,6 +194,8 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
     case 'ui/setProcgenDebugOverlay':
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
+    case 'ui/setDebugBgTrack':
+      return { ...state, ui: { ...state.ui, debugBgTrack: action.track } }
     case 'ui/openPaperdoll':
       // Paperdoll popup disabled (global).
       return state

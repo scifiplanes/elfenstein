@@ -129,10 +129,10 @@ export class MusicPlayer {
     return this.buffers.get(url)?.duration ?? null
   }
 
-  setVolume(volume: number) {
+  setVolume(volume: number, tauSec = 0.05) {
     if (!this.outputGain || !this.ctx) return
     if (this.ctx.state === 'suspended') void this.ctx.resume()
-    this.outputGain.gain.setTargetAtTime(Math.max(0, volume), this.ctx.currentTime, 0.05)
+    this.outputGain.gain.setTargetAtTime(Math.max(0, volume), this.ctx.currentTime, tauSec)
   }
 
   stop() {

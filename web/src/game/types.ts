@@ -84,6 +84,8 @@ export type UiState = {
   debugOpen: boolean
   /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
   procgenDebugOverlay?: ProcgenDebugOverlayMode
+  /** F2-only: override which bg ambient track plays (URL string). */
+  debugBgTrack?: string
   /** Present when the entire party is dead; blocks gameplay until a new run starts. */
   death?: { atMs: number; runId: string; floorIndex: number; level: number }
   paperdollFor?: CharacterId
