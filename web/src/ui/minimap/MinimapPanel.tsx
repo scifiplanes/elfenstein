@@ -2,8 +2,10 @@ import type { ReactNode } from 'react'
 import type { GameState } from '../../game/types'
 import styles from './MinimapPanel.module.css'
 
-const MINIMAP_VIEW_W = 12
-const MINIMAP_VIEW_H = 12
+const MINIMAP_VIEW_W = 10
+const MINIMAP_VIEW_H = 10
+/** Edge length of one minimap cell in CSS px (grid tracks + `.cell` size). */
+const MINIMAP_CELL_PX = 14
 
 export function MinimapPanel(props: { state: GameState }) {
   const { state } = props
@@ -44,8 +46,9 @@ export function MinimapPanel(props: { state: GameState }) {
       <div
         className={styles.map}
         style={{
-          gridTemplateColumns: `repeat(${vw}, 10px)`,
-          gridTemplateRows: `repeat(${vh}, 10px)`,
+          ['--minimap-cell' as string]: `${MINIMAP_CELL_PX}px`,
+          gridTemplateColumns: `repeat(${vw}, ${MINIMAP_CELL_PX}px)`,
+          gridTemplateRows: `repeat(${vh}, ${MINIMAP_CELL_PX}px)`,
         }}
       >
         {cells}

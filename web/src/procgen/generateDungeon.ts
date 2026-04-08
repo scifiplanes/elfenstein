@@ -1,18 +1,33 @@
 import { mulberry32, splitSeed } from './seededRng'
-import type { FloorGenInput, FloorGenOutput, GenRoom } from './types'
+import {
+  normalizeFloorGenDifficulty,
+  type FloorGenDifficulty,
+  type FloorGenInput,
+  type FloorGenOutput,
+  type GenRoom,
+} from './types'
 import { pickEntranceExit, repairConnectivity, smoothWallsCarveOnly, center, carveRect, type Rect } from './layoutPasses'
 import { placeLocksOnPath, validateGen } from './locks'
-import { assignDistrictsToRooms, tagRoomsWithQuotas } from './districtsTags'
+import { assignDistrictsToRooms, applyTagConstraints, tagRoomsWithQuotas } from './districtsTags'
+import { pickFloorTheme } from './floorTheme'
 import { placePois, spawnNpcsAndItems } from './population'
 import { buildMissionGraph } from './missionGraph'
+import { planMissionBeforeGeometry } from './missionFirst'
 import { scoreLayout } from './scoreLayout'
 import { runDungeonBspLayout } from './realizeDungeonBsp'
 import { runCaveLayout } from './realizeCave'
 import { runRuinsLayout } from './realizeRuins'
 import type { Tile } from '../game/types'
 
+function maxAttemptsForDifficulty(d: FloorGenDifficulty): number {
+  if (d === 0) return 8
+  if (d === 2) return 5
+  return 6
+}
+
 export function generateDungeon(input: FloorGenInput): FloorGenOutput {
-  const maxAttempts = 6
+  const difficulty = normalizeFloorGenDifficulty(input.difficulty)
+  const maxAttempts = maxAttemptsForDifficulty(difficulty)
   const inputSeed = input.seed >>> 0
   const mixedSeed = splitSeed(inputSeed, 31_337 + (input.floorIndex ?? 0))
 
@@ -29,9 +44,9 @@ export function generateDungeon(input: FloorGenInput): FloorGenOutput {
 
   if (valid.length) {
     let best = valid[0]
-    let bestS = scoreLayout(best, input.w, input.h)
+    let bestS = scoreLayout(best, input.w, input.h, difficulty)
     for (let i = 1; i < valid.length; i++) {
-      const s = scoreLayout(valid[i], input.w, input.h)
+      const s = scoreLayout(valid[i], input.w, input.h, difficulty)
       if (s > bestS) {
         bestS = s
         best = valid[i]
@@ -46,12 +61,14 @@ export function generateDungeon(input: FloorGenInput): FloorGenOutput {
   const fallback = last ?? generateDungeonFallback({ ...input, seed: mixedSeed }, inputSeed)
   return {
     ...fallback,
-    meta: { ...fallback.meta, layoutScore: scoreLayout(fallback, input.w, input.h) },
+    meta: { ...fallback.meta, layoutScore: scoreLayout(fallback, input.w, input.h, difficulty) },
   }
 }
 
 function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInputSeed: number): FloorGenOutput {
   const { seed, w, h, floorType, floorProperties } = input
+  const difficulty = normalizeFloorGenDifficulty(input.difficulty)
+  const floorProps = floorProperties ?? []
   const attemptSeed = attempt === 0 ? seed : splitSeed(seed, 1000 + attempt)
   const streams = {
     layout: splitSeed(attemptSeed, 1),
@@ -60,12 +77,17 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     locks: splitSeed(attemptSeed, 4),
     districts: splitSeed(attemptSeed, 5),
     score: splitSeed(attemptSeed, 6),
+    theme: splitSeed(attemptSeed, 7),
+    mission: splitSeed(attemptSeed, 8),
   }
   const layoutRng = mulberry32(streams.layout)
   const tagsRng = mulberry32(streams.tags)
   const popRng = mulberry32(streams.population)
   const locksRng = mulberry32(streams.locks)
   const districtRng = mulberry32(streams.districts)
+  const themeRng = mulberry32(streams.theme)
+  const missionRng = mulberry32(streams.mission)
+  void planMissionBeforeGeometry(input, missionRng)
 
   let tiles: Tile[]
   let genRooms: GenRoom[]
@@ -85,6 +107,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
 
   assignDistrictsToRooms(genRooms, w, h, districtRng)
   tagRoomsWithQuotas(genRooms, floorProperties, tagsRng)
+  applyTagConstraints(genRooms, tiles, w, h, floorProperties, tagsRng)
 
   const pois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
   const occupied = new Set<string>(pois.map((p) => `${p.pos.x},${p.pos.y}`))
@@ -98,6 +121,8 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     exit,
     occupied,
     rng: popRng,
+    floorType,
+    floorProperties: floorProps,
   })
 
   const { doors, floorItems: lockItems } = placeLocksOnPath({
@@ -108,11 +133,14 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     exit,
     rng: locksRng,
     occupied,
+    difficulty,
   })
   for (const d of doors) occupied.add(`${d.pos.x},${d.pos.y}`)
   for (const it of lockItems) occupied.add(`${it.pos.x},${it.pos.y}`)
   for (const it of popItems) occupied.add(`${it.pos.x},${it.pos.y}`)
   for (const n of npcs) occupied.add(`${n.pos.x},${n.pos.y}`)
+
+  const theme = pickFloorTheme({ floorType, floorProperties, rng: themeRng })
 
   const out: FloorGenOutput = {
     tiles,
@@ -123,14 +151,16 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     npcs,
     entrance,
     exit,
+    theme,
     meta: {
-      genVersion: 2,
+      genVersion: 5,
       inputSeed: recordedInputSeed,
       attemptSeed,
       attempt,
       w,
       h,
       streams,
+      difficulty,
     },
     missionGraph: undefined,
   }
@@ -139,7 +169,8 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
 }
 
 function generateDungeonFallback(input: FloorGenInput, recordedInputSeed: number): FloorGenOutput {
-  const { seed, w, h } = input
+  const { seed, w, h, floorType, floorProperties } = input
+  const difficulty = normalizeFloorGenDifficulty(input.difficulty)
   const streams = {
     layout: splitSeed(seed, 1),
     tags: splitSeed(seed, 2),
@@ -147,7 +178,11 @@ function generateDungeonFallback(input: FloorGenInput, recordedInputSeed: number
     locks: splitSeed(seed, 4),
     districts: splitSeed(seed, 5),
     score: splitSeed(seed, 6),
+    theme: splitSeed(seed, 7),
+    mission: splitSeed(seed, 8),
   }
+  const themeRng = mulberry32(streams.theme)
+  const theme = pickFloorTheme({ floorType, floorProperties, rng: themeRng })
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   const rw = Math.max(3, Math.min(w - 2, 9))
   const rh = Math.max(3, Math.min(h - 2, 9))
@@ -167,7 +202,17 @@ function generateDungeonFallback(input: FloorGenInput, recordedInputSeed: number
     npcs: [],
     entrance,
     exit,
-    meta: { genVersion: 2, inputSeed: recordedInputSeed, attemptSeed: seed >>> 0, attempt: 0, w, h, streams },
+    theme,
+    meta: {
+      genVersion: 5,
+      inputSeed: recordedInputSeed,
+      attemptSeed: seed >>> 0,
+      attempt: 0,
+      w,
+      h,
+      streams,
+      difficulty,
+    },
     missionGraph: {
       nodes: [
         { id: 'mission_entrance', role: 'Entrance', pos: { ...entrance } },

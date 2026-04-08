@@ -123,6 +123,7 @@ export class FramePresenter {
       levels: { value: number }
       matrixSize: { value: number }
       palette: { value: number }
+      palette0Mix: { value: number }
     }
     u.strength.value = t.ditherStrength
     u.colourPreserve.value = t.ditherColourPreserve
@@ -130,6 +131,7 @@ export class FramePresenter {
     u.levels.value = t.ditherLevels
     u.matrixSize.value = t.ditherMatrixSize
     u.palette.value = t.ditherPalette
+    u.palette0Mix.value = t.ditherPalette0Mix
   }
 
   render() {

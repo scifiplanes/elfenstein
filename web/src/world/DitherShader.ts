@@ -7,6 +7,8 @@ export const DitherShader = {
     levels: { value: 10.0 },
     matrixSize: { value: 4.0 }, // 2, 4, 8
     palette: { value: 0.0 }, // 0..4
+    /** When palette is 0 (warm dungeon): 0 = quantised dither only, 1 = full warm snap. */
+    palette0Mix: { value: 1.0 },
   },
   vertexShader: /* glsl */ `
 varying vec2 vUv;
@@ -23,6 +25,7 @@ uniform float pixelSize;
 uniform float levels;
 uniform float matrixSize;
 uniform float palette;
+uniform float palette0Mix;
 varying vec2 vUv;
 
 float bayer2(vec2 p) {
@@ -142,7 +145,15 @@ void main() {
   vec3 q = quantize(col + d / s, s);
 
   int pal = int(floor(palette + 0.5));
-  vec3 snapped = (pal >= 4) ? q : snapToPalette(q, pal);
+  vec3 snapped;
+  if (pal >= 4) {
+    snapped = q;
+  } else if (pal == 0) {
+    vec3 warm = snapToPalette(q, 0);
+    snapped = mix(q, warm, clamp(palette0Mix, 0.0, 1.0));
+  } else {
+    snapped = snapToPalette(q, pal);
+  }
 
   vec3 outc = mix(src.rgb, snapped, clamp(strength, 0.0, 1.0));
   gl_FragColor = vec4(outc, 1.0);

@@ -1,6 +1,11 @@
 import type { Tile, Vec2 } from '../game/types'
-import type { GenDoor, GenFloorItem, FloorGenOutput } from './types'
-import { allReachable, isWalkable } from './validate'
+import type { FloorGenDifficulty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
+import { allReachable, bfsDistances, isWalkable, shortestPathLatticeStats } from './validate'
+
+/** Hard validation: Well must be within this many steps of entrance (see DESIGN §8). */
+const SAFETY_WELL_MAX_BFS = 3
+/** Hard validation: Bed must be within this many steps of entrance (POIs target ~45% along exit BFS). */
+const SAFETY_BED_MAX_BFS = 48
 import { findNearestUnusedFloor } from './layoutPasses'
 
 function clampInt(v: number, lo: number, hi: number) {
@@ -73,6 +78,20 @@ function idxToPos(i: number, w: number): Vec2 {
   return { x: i % w, y: (i / w) | 0 }
 }
 
+function lockThresholds(difficulty: FloorGenDifficulty): {
+  minPathAnyLock: number
+  minPathTwoLock: number
+  allowTwoLock: boolean
+} {
+  if (difficulty === 0) {
+    return { minPathAnyLock: 10, minPathTwoLock: 14, allowTwoLock: false }
+  }
+  if (difficulty === 2) {
+    return { minPathAnyLock: 5, minPathTwoLock: 11, allowTwoLock: true }
+  }
+  return { minPathAnyLock: 6, minPathTwoLock: 14, allowTwoLock: true }
+}
+
 /**
  * Place up to two ordered locks on the entrance→exit shortest path with matching keys.
  * Returns doors + key floor items; mutates `tiles` in place (lockedDoor cells).
@@ -85,14 +104,17 @@ export function placeLocksOnPath(args: {
   exit: Vec2
   rng: { next(): number }
   occupied: Set<string>
+  difficulty?: FloorGenDifficulty
 }): { doors: GenDoor[]; floorItems: GenFloorItem[] } {
   const { tiles, w, h, entrance, exit, rng, occupied } = args
+  const difficulty = args.difficulty ?? 1
+  const { minPathAnyLock, minPathTwoLock, allowTwoLock } = lockThresholds(difficulty)
 
   const path = shortestPathIndices(tiles, w, h, entrance, exit)
-  if (!path || path.length < 6) return { doors: [], floorItems: [] }
+  if (!path || path.length < minPathAnyLock) return { doors: [], floorItems: [] }
 
   // Try two-lock configuration first (longer paths).
-  if (path.length >= 14) {
+  if (allowTwoLock && path.length >= minPathTwoLock) {
     for (let i2 = path.length - 3; i2 >= 8; i2--) {
       for (let i1 = i2 - 4; i1 >= 2; i1--) {
         const c1 = path[i1]
@@ -196,6 +218,11 @@ export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean 
 
   if (locked.length === 0) return true
 
+  {
+    const { shortestLen: L, latticeCells } = shortestPathLatticeStats(gen.tiles, w, h, gen.entrance, gen.exit)
+    if (L < 3 || latticeCells <= L + 2) return false
+  }
+
   for (const d of locked) {
     const k = keys.find((it) => it.forLockId === d.lockId)
     if (!k) return false
@@ -214,6 +241,20 @@ export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean 
 
   const allOpen = tilesWithFirstKLocksOpen(gen, w, h, locked.length)
   if (!allReachable(allOpen, w, h, gen.entrance, [gen.exit])) return false
+
+  const distFromEntrance = bfsDistances(gen.tiles, w, h, gen.entrance)
+  const well = gen.pois.find((p) => p.kind === 'Well')
+  if (well) {
+    const wi = well.pos.x + well.pos.y * w
+    const d = wi >= 0 && wi < distFromEntrance.length ? distFromEntrance[wi] : -1
+    if (d < 0 || d > SAFETY_WELL_MAX_BFS) return false
+  }
+  const bed = gen.pois.find((p) => p.kind === 'Bed')
+  if (bed) {
+    const bi = bed.pos.x + bed.pos.y * w
+    const d = bi >= 0 && bi < distFromEntrance.length ? distFromEntrance[bi] : -1
+    if (d < 0 || d > SAFETY_BED_MAX_BFS) return false
+  }
 
   return true
 }

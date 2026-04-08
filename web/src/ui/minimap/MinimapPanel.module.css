@@ -9,23 +9,26 @@
 
 .map {
   display: grid;
-  gap: 2px;
+  gap: 3px;
+  /* Overridden inline from `MinimapPanel` for grid track sizing */
+  --minimap-cell: 14px;
 }
 
 .cell {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  background: rgba(0, 0, 0, 0.4);
+  width: var(--minimap-cell);
+  height: var(--minimap-cell);
+  border-radius: 4px;
+  /* Wall / void: dark but not as harsh as peak contrast */
+  background: rgb(36, 40, 52);
 }
 
 .cell[data-kind='floor'] {
-  background: rgba(255, 255, 255, 0.14);
+  background: rgb(188, 194, 208);
 }
 
 .cell[data-kind='player'] {
   position: relative;
-  background: rgba(255, 230, 130, 0.9);
+  background: rgb(244, 212, 118);
 }
 
 .cell[data-kind='player']::after {
@@ -35,9 +38,9 @@
   top: 50%;
   width: 0;
   height: 0;
-  border-left: 3.5px solid transparent;
-  border-right: 3.5px solid transparent;
-  border-bottom: 6px solid rgba(40, 28, 10, 0.95);
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-bottom: 8px solid rgb(42, 32, 20);
   transform: translate(-50%, -55%) rotate(0deg);
   transform-origin: center;
   z-index: 1;
@@ -61,14 +64,14 @@
 }
 
 .cell[data-kind='poi'] {
-  background: rgba(130, 200, 255, 0.9);
+  background: rgb(88, 158, 218);
 }
 
 .cell[data-kind='door'] {
-  background: rgba(200, 184, 154, 0.65);
+  background: rgb(178, 158, 118);
 }
 
 .cell[data-kind='lockedDoor'] {
-  background: rgba(200, 57, 43, 0.75);
+  background: rgb(178, 62, 52);
 }
 

@@ -1,5 +1,13 @@
 import { ContentDB } from './content/contentDb'
-import type { DragPayload, DragTarget, EquipmentSlot, GameState, ItemId, RenderTuning } from './types'
+import type {
+  DragPayload,
+  DragTarget,
+  EquipmentSlot,
+  GameState,
+  ItemId,
+  ProcgenDebugOverlayMode,
+  RenderTuning,
+} from './types'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
@@ -8,6 +16,7 @@ import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
 import type { FloorType } from '../procgen/types'
+import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
@@ -57,6 +66,9 @@ export type Action =
   | { type: 'floor/regen'; seed?: number }
   /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
+  /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
+  | { type: 'floor/debugCycleDifficulty' }
+  | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'floor/toggleChest'; poiId: string }
@@ -71,6 +83,8 @@ export function reduce(state: GameState, action: Action): GameState {
   switch (action.type) {
     case 'ui/toggleDebug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
+    case 'ui/setProcgenDebugOverlay':
+      return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/openPaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: action.characterId } }
     case 'ui/portraitFrameTap': {
@@ -201,6 +215,19 @@ export function reduce(state: GameState, action: Action): GameState {
         },
       }
     }
+    case 'floor/debugCycleDifficulty': {
+      const cur = normalizeFloorGenDifficulty(state.floor.difficulty)
+      const next = ((cur + 1) % 3) as 0 | 1 | 2
+      const label = next === 0 ? 'easy' : next === 1 ? 'normal' : 'hard'
+      return {
+        ...state,
+        floor: { ...state.floor, difficulty: next },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: `Next regen uses difficulty: ${label} (${next}).`, untilMs: state.nowMs + 1400 },
+        },
+      }
+    }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
       const w = state.floor.w
@@ -212,6 +239,7 @@ export function reduce(state: GameState, action: Action): GameState {
         floorIndex: state.floor.floorIndex,
         floorType: state.floor.floorType,
         floorProperties: state.floor.floorProperties,
+        difficulty: normalizeFloorGenDifficulty(state.floor.difficulty),
       })
       const playerPos = { ...gen.entrance }
       const playerDir = 0 as const
@@ -456,6 +484,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const m = Math.round(r.ditherMatrixSize)
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
   const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
+  const ditherPalette0Mix = Math.max(0, Math.min(1, Number(r.ditherPalette0Mix ?? 1)))
   const fogEnabled = Number(r.fogEnabled ?? 0) > 0 ? 1 : 0
   const fogDensity = Math.max(0, Math.min(0.3, Number(r.fogDensity ?? 0)))
   const lanternBeamPenumbra = Math.max(0, Math.min(1, r.lanternBeamPenumbra))
@@ -501,6 +530,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcGroundY_Skeleton = clampNpcGroundY(r.npcGroundY_Skeleton ?? 0)
   const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
   const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
+  const poiGroundY_Chest = clampNpcGroundY(r.poiGroundY_Chest ?? 0)
 
   const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
   const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
@@ -514,6 +544,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     ...r,
     ditherMatrixSize,
     ditherPalette: p as RenderTuning['ditherPalette'],
+    ditherPalette0Mix,
     fogEnabled,
     fogDensity,
     lanternBeamPenumbra,
@@ -554,6 +585,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcGroundY_Skeleton,
     npcGroundY_Catoctopus,
     poiGroundY_Well,
+    poiGroundY_Chest,
     npcSize_Wurglepup,
     npcSizeRand_Wurglepup,
     npcSize_Bobr,

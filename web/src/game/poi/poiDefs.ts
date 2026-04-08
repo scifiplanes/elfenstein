@@ -5,9 +5,12 @@ export const POI_WELL_FILLED_SRC = '/content/npc_well.png'
 /** Dry well base after drawing water (no glow/sparkle stack). */
 export const POI_WELL_DRAINED_SRC = '/content/npc_well_drained.png'
 
+export const POI_CHEST_CLOSED_SRC = '/content/chest_closed.png'
+export const POI_CHEST_OPEN_SRC = '/content/chest_open.png'
+
 export const POI_SPRITE_SRC: Record<PoiKind, string> = {
   Well: POI_WELL_FILLED_SRC,
-  Chest: '/content/poi_placeholder.png',
+  Chest: POI_CHEST_CLOSED_SRC,
   Bed: '/content/poi_placeholder.png',
   Shrine: '/content/poi_placeholder.png',
   CrackedWall: '/content/poi_placeholder.png',

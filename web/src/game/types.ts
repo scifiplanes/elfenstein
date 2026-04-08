@@ -73,8 +73,12 @@ export type Character = {
   equipment: Partial<Record<EquipmentSlot, ItemId>>
 }
 
+export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
+
 export type UiState = {
   debugOpen: boolean
+  /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
+  procgenDebugOverlay?: ProcgenDebugOverlayMode
   paperdollFor?: CharacterId
   npcDialogFor?: Id
   toast?: { id: Id; text: string; untilMs: number }
@@ -158,6 +162,11 @@ export type RenderTuning = {
   ditherLevels: number
   ditherMatrixSize: 2 | 4 | 8
   ditherPalette: 0 | 1 | 2 | 3 | 4
+  /**
+   * When `ditherPalette` is **0** (warm dungeon): blend between quantised dither only (0) and full warm palette snap (1).
+   * Ignored for other palette indices.
+   */
+  ditherPalette0Mix: number
   /** Drop placement distance ahead of the player (in grid cells). */
   dropAheadCells: number
   /** In-cell jitter radius for floor items (world units; 1.0 == one full cell). */
@@ -208,6 +217,8 @@ export type RenderTuning = {
   npcGroundY_Catoctopus: number
   /** POI Well billboard ground pivot (same units as `npcGroundY_*`). */
   poiGroundY_Well: number
+  /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
+  poiGroundY_Chest: number
   npcSize_Wurglepup: number
   npcSizeRand_Wurglepup: number
   npcSize_Bobr: number
@@ -275,6 +286,8 @@ export type GameState = {
     floorType: import('../procgen/types').FloorType
     /** Procgen taxonomy: infested/cursed/etc. */
     floorProperties: import('../procgen/types').FloorProperty[]
+    /** Procgen pacing: 0 easy, 1 normal, 2 hard (see `FloorGenInput.difficulty`). */
+    difficulty: import('../procgen/types').FloorGenDifficulty
     w: number
     h: number
     tiles: Tile[]
