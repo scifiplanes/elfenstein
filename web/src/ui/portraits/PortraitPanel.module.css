@@ -1,7 +1,6 @@
 .root {
   display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 6px;
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
@@ -129,50 +128,58 @@
   display: none;
 }
 
-.stats {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.78);
-  display: grid;
-  gap: 2px;
-}
-
 .statsOverlay {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
-  padding: 6px 8px 7px;
+  transform: translateY(10px);
+  padding: 6px 70px 20px;
   font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1.1;
+  font-size: 13px;
+  line-height: 1.15;
   letter-spacing: -0.1px;
   color: rgba(255, 255, 255, 0.82);
   display: grid;
-  gap: 2px;
+  gap: 3px;
   pointer-events: none;
   background: linear-gradient(to top, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0.38) 55%, rgba(0, 0, 0, 0));
   text-shadow: 0 1px 0 rgba(0, 0, 0, 0.45);
 }
 
-.vitalsLine {
-  white-space: nowrap;
+.statRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  column-gap: 6px;
+  min-width: 0;
+}
+
+.statIcon {
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1;
+  text-align: center;
+}
+
+.statName {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.statValue {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: rgba(255, 255, 255, 0.92);
 }
 
 .statusLine {
+  margin-top: 1px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
   color: rgba(255, 255, 255, 0.75);
-}
-
-.btn {
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.25);
-  color: rgba(255, 255, 255, 0.85);
-  border-radius: 10px;
-  padding: 8px 10px;
-  cursor: none;
-  text-align: left;
 }
 

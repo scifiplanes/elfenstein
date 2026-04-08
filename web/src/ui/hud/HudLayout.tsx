@@ -103,7 +103,6 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.statueL}`}>
-        <h3 className={styles.title}>Area for statue</h3>
         <StatuePanel side="left" />
       </section>
 
@@ -115,7 +114,6 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.statueR}`}>
-        <h3 className={styles.title}>Area for statue</h3>
         <StatuePanel side="right" />
       </section>
 
@@ -137,7 +135,6 @@ export function HudLayout(props: {
         </section>
 
         <section className={`${styles.panel} ${styles.inventory}`}>
-          <h3 className={styles.title}>INVENTORY</h3>
           <InventoryPanel state={state} dispatch={dispatch} content={content} />
         </section>
 
