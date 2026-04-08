@@ -8,6 +8,18 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 // https://vite.dev/config/
 export default defineConfig({
+  server: {
+    host: '127.0.0.1',
+    port: 5173,
+    // Fail fast if 5173 is taken so we never accidentally run a second dev server on 5174+.
+    strictPort: true,
+    watch: {
+      // FSEvents sometimes misses edits under Desktop/iCloud or with certain save/atomic-replace
+      // patterns; polling keeps HMR reliable without needing manual restarts.
+      usePolling: true,
+      interval: 300,
+    },
+  },
   plugins: [
     react(),
     {

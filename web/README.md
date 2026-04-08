@@ -1,4 +1,16 @@
-# React + TypeScript + Vite
+# Elfenstein web (Vite + React)
+
+## Development
+
+From **`web/`**:
+
+```bash
+npm run dev
+```
+
+Serves **http://127.0.0.1:5173/**. Vite is configured with **`strictPort`** (only one dev server on 5173) and **polling-based file watching** so saves reliably trigger HMR even when native OS watchers miss events (common under **Desktop + iCloud**, some editors’ atomic save, etc.). If `npm run dev` says the port is in use, stop the other process instead of starting a second server on 5174.
+
+---
 
 This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
 

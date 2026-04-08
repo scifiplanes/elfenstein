@@ -282,6 +282,13 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
+  const vitalRows = [
+    { key: 'hp', icon: '❤️', label: 'HP', value: Math.round(c.hp) },
+    { key: 'sta', icon: '⚡', label: 'STA', value: Math.round(c.stamina) },
+    { key: 'hun', icon: '🍖', label: 'HUN', value: Math.round(c.hunger) },
+    { key: 'thr', icon: '💧', label: 'THR', value: Math.round(c.thirst) },
+  ] as const
+
   const pulse = state.ui.portraitIdlePulse
   const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > state.nowMs
   const showIdle = idleFlash || pulseIdle
@@ -296,20 +303,13 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
       }}
     >
-      <button
-        type="button"
-        className={styles.btn}
-        onClick={() => dispatch({ type: 'ui/portraitFrameTap', characterId })}
-      >
-        {c.name} · {c.species}
-      </button>
-
       <div
         className={styles.portrait}
         data-portrait-box="true"
         data-portrait-character-id={characterId}
         role="button"
         tabIndex={0}
+        aria-label={`${c.name}, ${c.species}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()
@@ -423,9 +423,15 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
         />
 
         <div className={styles.statsOverlay} aria-hidden="true">
-          <div className={styles.vitalsLine}>
-            HP {Math.round(c.hp)} · STA {Math.round(c.stamina)} · HUN {Math.round(c.hunger)} · THR {Math.round(c.thirst)}
-          </div>
+          {vitalRows.map((row) => (
+            <div key={row.key} className={styles.statRow}>
+              <span className={styles.statIcon} aria-hidden="true">
+                {row.icon}
+              </span>
+              <span className={styles.statName}>{row.label}</span>
+              <span className={styles.statValue}>{row.value}</span>
+            </div>
+          ))}
           <div className={styles.statusLine} title={statusText}>
             {statusText}
           </div>

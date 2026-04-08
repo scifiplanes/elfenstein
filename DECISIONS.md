@@ -1671,3 +1671,90 @@ POI sprites (especially chests) are large billboards; strict “closest mesh win
 
 ### Consequences
 Click/hover/drag on a stack along one ray favors the **floor item**; NPCs and doors only win when **no** floor item is intersected on that ray. Grid **step-into-tile** resolution (**`attemptMoveTo`**) is unchanged (POI use still runs before NPC dialogue when walking onto a POI cell).
+
+---
+
+## ADR-0109 — Inventory HUD: no title, larger slot icons
+Date: 2026-04-08
+
+### Decision
+Remove the **INVENTORY** heading from **`HudLayout`**; double **inventory** slot item **font-size** in **`InventoryPanel.module.css`** (**22 → 44 CSS px**) so emoji icons read larger in the grid.
+
+### Rationale
+Frees vertical space in the bottom HUD row and improves icon legibility without changing grid layout or interaction.
+
+### Consequences
+Drag **ghost** follows **`CursorLayer`** sizing (unchanged); only in-panel slot rendering is larger.
+
+---
+
+## ADR-0110 — Statue HUD slots: no placeholder titles
+Date: 2026-04-08
+
+### Decision
+Remove the **“Area for statue”** **`<h3>`** headings from **`statueL`** and **`statueR`** in **`HudLayout`**; **`StatuePanel`** is the sole content in those `<section>`s.
+
+### Rationale
+Placeholder labels clutter the shell art; map/nav/inventory/statue panels stay consistent without section titles.
+
+### Consequences
+**`StatuePanel`** layout receives the full slot height previously consumed by the title + margin.
+
+---
+
+## ADR-0111 — Vite dev: strictPort + polling watch
+Date: 2026-04-08
+
+### Decision
+Configure **`web/vite.config.ts`** **`server`**: fixed **`host: '127.0.0.1'`**, **`port: 5173`**, **`strictPort: true`**, and **`watch.usePolling: true`** (300 ms interval).
+
+### Rationale
+Native file watchers sometimes **skip change events** for this workspace layout (e.g. repo under **Desktop** with **iCloud**, editor **atomic** saves), so HMR appeared “stuck” until a manual dev-server restart. **`strictPort`** avoids a **second** **`npm run dev`** silently binding **5174+**, which made the browser keep talking to a **stale** first server.
+
+### Consequences
+Slightly higher idle CPU from polling; **`npm run dev`** fails if **5173** is busy (intentional). Documented in **`web/README.md`**.
+
+---
+
+## ADR-0112 — Portrait HUD: hide party display name in label
+Date: 2026-04-08
+
+### Decision
+**`PortraitPanel`**: the header **`button`** shows **`species`** only; party **`name`** (**Char1**, etc.) is omitted from visible text. Expose **`aria-label={`${c.name}, ${c.species}`}`** on that **`button`** for accessibility.
+
+### Rationale
+Reduces redundant chrome next to portrait art; species remains a quick readout.
+
+### Consequences
+**`DESIGN.md`** §7.4 updated. Paperdoll and other UI unchanged.
+
+---
+
+## ADR-0113 — Portrait HUD: remove name/species label row entirely
+Date: 2026-04-08
+
+### Decision
+Remove the portrait **header `button`** (species text). **`PortraitPanel`** grid is a single row; the **portrait** frame **`role="button"`** carries **`aria-label={`${c.name}, ${c.species}`}`**; paperdoll open remains **frame tap** / keyboard / **`HudLayout`** capture as before.
+
+### Rationale
+User request: no visible **name** or **species** chrome—portrait art + vitals overlay only.
+
+### Consequences
+**`.btn`** styles removed from **`PortraitPanel.module.css`**. **`DESIGN.md`** §7.4 updated.
+
+---
+
+## ADR-0114 — Portrait vitals: four icon/name/value rows
+Date: 2026-04-08
+
+### Decision
+**`PortraitPanel`** bottom overlay: replace the single **HP · STA · …** line with **four rows** (**HP**, **STA**, **HUN**, **THR**), each **`statRow`** = **emoji icon** + **short label** + **rounded stat**; **status** line remains underneath, truncated as before.
+
+### Rationale
+Clearer scanning and room for distinct affordances per attribute; matches requested structure.
+
+### Consequences
+Slightly taller overlay; **`PortraitPanel.module.css`** uses **`statRow` / `statIcon` / `statName` / `statValue`**. **`DESIGN.md`** §7.1 portrait stats bullet updated.
+
+---
+
