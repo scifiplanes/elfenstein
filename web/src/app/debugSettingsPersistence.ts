@@ -5,6 +5,8 @@ export type DebugSettingsFile = {
   audio?: Partial<AudioTuning>
 }
 
+const LOCAL_KEY = 'elfenstein.debugSettings'
+
 export async function loadDebugSettingsFromProject(): Promise<DebugSettingsFile | null> {
   try {
     const res = await fetch(`/debug-settings.json?${Date.now()}`, { cache: 'no-store' })
@@ -18,6 +20,31 @@ export async function loadDebugSettingsFromProject(): Promise<DebugSettingsFile 
     }
   } catch {
     return null
+  }
+}
+
+export function loadDebugSettingsFromLocal(): DebugSettingsFile | null {
+  try {
+    const raw = localStorage.getItem(LOCAL_KEY)
+    if (!raw) return null
+    const j: unknown = JSON.parse(raw) as unknown
+    if (!j || typeof j !== 'object') return null
+    const o = j as Record<string, unknown>
+    return {
+      render: o.render && typeof o.render === 'object' ? (o.render as Partial<RenderTuning>) : undefined,
+      audio: o.audio && typeof o.audio === 'object' ? (o.audio as Partial<AudioTuning>) : undefined,
+    }
+  } catch {
+    return null
+  }
+}
+
+export function saveDebugSettingsToLocal(render: RenderTuning, audio: AudioTuning): void {
+  try {
+    const data: DebugSettingsFile = { render, audio }
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(data))
+  } catch {
+    // ignore (storage disabled/quota/etc.)
   }
 }
 

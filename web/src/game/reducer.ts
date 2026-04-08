@@ -485,6 +485,9 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
   const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
   const ditherPalette0Mix = Math.max(0, Math.min(1, Number(r.ditherPalette0Mix ?? 1)))
+  const postDitherLevels = Math.max(0, Math.min(3, Number(r.postDitherLevels ?? 1.0)))
+  const postDitherLift = Math.max(-1, Math.min(1, Number(r.postDitherLift ?? 0.0)))
+  const postDitherGamma = Math.max(0.2, Math.min(3, Number(r.postDitherGamma ?? 1.0)))
   const fogEnabled = Number(r.fogEnabled ?? 0) > 0 ? 1 : 0
   const fogDensity = Math.max(0, Math.min(0.3, Number(r.fogDensity ?? 0)))
   const lanternBeamPenumbra = Math.max(0, Math.min(1, r.lanternBeamPenumbra))
@@ -531,6 +534,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
   const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
   const poiGroundY_Chest = clampNpcGroundY(r.poiGroundY_Chest ?? 0)
+  const poiSpriteBoost = Math.max(0, Math.min(3, Number(r.poiSpriteBoost ?? 1.0)))
 
   const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
   const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
@@ -545,6 +549,9 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     ditherMatrixSize,
     ditherPalette: p as RenderTuning['ditherPalette'],
     ditherPalette0Mix,
+    postDitherLevels,
+    postDitherLift,
+    postDitherGamma,
     fogEnabled,
     fogDensity,
     lanternBeamPenumbra,
@@ -586,6 +593,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcGroundY_Catoctopus,
     poiGroundY_Well,
     poiGroundY_Chest,
+    poiSpriteBoost,
     npcSize_Wurglepup,
     npcSizeRand_Wurglepup,
     npcSize_Bobr,

@@ -1,6 +1,7 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState, ProcgenDebugOverlayMode } from '../../game/types'
+import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import styles from './DebugPanel.module.css'
 
@@ -178,6 +179,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'ditherLevels', label: 'Dither levels', min: 2, max: 24, step: 1 },
       { key: 'ditherMatrixSize', label: 'Dither matrix', min: 2, max: 8, step: 2 },
       { key: 'ditherPalette', label: 'Palette (0-4)', min: 0, max: 4, step: 1 },
+      { key: 'postDitherLift', label: 'Post-dither lift', min: -1, max: 1, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'postDitherLevels', label: 'Post-dither gain', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'postDitherGamma', label: 'Post-dither gamma', min: 0.2, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
       {
         key: 'ditherPalette0Mix',
         label: 'Warm palette mix (0=quantised only, 1=full snap; palette 0)',
@@ -218,6 +222,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiGroundY_Chest', label: 'POI Chest groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 2.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
@@ -257,97 +262,70 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       onPointerCancel={cursor.cancelDrag}
     >
       <div className={styles.header}>
-        <div className={styles.title}>Debug (F2)</div>
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'floor/regen' })}
-          style={{
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.86)',
-            borderRadius: 10,
-            padding: '6px 10px',
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-          }}
-        >
-          Regen (seed {state.floor.seed})
-        </button>
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'floor/debugCycleRealizer' })}
-          title="Cycles Dungeon → Cave → Ruins for the next Regen"
-          style={{
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.86)',
-            borderRadius: 10,
-            padding: '6px 10px',
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-          }}
-        >
-          Cycle type
-        </button>
-        <button
-          type="button"
-          onClick={() => dispatch({ type: 'floor/debugCycleDifficulty' })}
-          title="Cycles easy (0) → normal (1) → hard (2) for the next Regen"
-          style={{
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.86)',
-            borderRadius: 10,
-            padding: '6px 10px',
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-          }}
-        >
-          Cycle difficulty ({state.floor.difficulty})
-        </button>
-        <button
-          type="button"
-          onClick={() => {
-            const order: Array<ProcgenDebugOverlayMode | undefined> = [
-              undefined,
-              'districts',
-              'roomTags',
-              'mission',
-            ]
-            const cur = state.ui.procgenDebugOverlay
-            const i = Math.max(0, order.indexOf(cur))
-            const next = order[(i + 1) % order.length]
-            dispatch({ type: 'ui/setProcgenDebugOverlay', mode: next })
-          }}
-          title="Cycle floor tint overlay in the 3D view (districts → room function → mission nodes → off)"
-          style={{
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.86)',
-            borderRadius: 10,
-            padding: '6px 10px',
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-          }}
-        >
-          Proc overlay: {state.ui.procgenDebugOverlay ?? 'off'}
-        </button>
-        <button
-          type="button"
-          onClick={dumpFloorGen}
-          title="Download the canonical procgen output (floor.gen) as JSON"
-          style={{
-            border: '1px solid rgba(255,255,255,0.12)',
-            background: 'rgba(0,0,0,0.28)',
-            color: 'rgba(255,255,255,0.86)',
-            borderRadius: 10,
-            padding: '6px 10px',
-            fontFamily: 'var(--mono)',
-            fontSize: 11,
-          }}
-        >
-          Dump floor.gen ({dumpTick ? 'ok' : 'json'})
-        </button>
+        <div className={styles.headerTop}>
+          <div className={styles.title}>Debug (F2)</div>
+        </div>
+        <div className={styles.headerBtns}>
+          <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'floor/regen' })}>
+            Regen (seed {state.floor.seed})
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => dispatch({ type: 'floor/debugCycleRealizer' })}
+            title="Cycles Dungeon → Cave → Ruins for the next Regen"
+          >
+            Cycle type
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => dispatch({ type: 'floor/debugCycleDifficulty' })}
+            title="Cycles easy (0) → normal (1) → hard (2) for the next Regen"
+          >
+            Cycle difficulty ({state.floor.difficulty})
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => {
+              const order: Array<ProcgenDebugOverlayMode | undefined> = [undefined, 'districts', 'roomTags', 'mission']
+              const cur = state.ui.procgenDebugOverlay
+              const i = Math.max(0, order.indexOf(cur))
+              const next = order[(i + 1) % order.length]
+              dispatch({ type: 'ui/setProcgenDebugOverlay', mode: next })
+            }}
+            title="Cycle floor tint overlay in the 3D view (districts → room function → mission nodes → off)"
+          >
+            Proc overlay: {state.ui.procgenDebugOverlay ?? 'off'}
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={dumpFloorGen}
+            title="Download the canonical procgen output (floor.gen) as JSON"
+          >
+            Dump floor.gen ({dumpTick ? 'ok' : 'json'})
+          </button>
+
+          {import.meta.env.DEV && (
+            <button
+              type="button"
+              className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
+              onClick={async () => {
+                try {
+                  await saveDebugSettingsToProject(state.render, state.audio)
+                  dispatch({ type: 'ui/toast', text: 'Saved debug settings to project.', ms: 1400 })
+                } catch {
+                  dispatch({ type: 'ui/toast', text: 'Failed to save debug settings to project.', ms: 1600 })
+                }
+              }}
+              title="Writes web/public/debug-settings.json (dev server only)"
+            >
+              Save to project
+            </button>
+          )}
+        </div>
       </div>
 
       <input

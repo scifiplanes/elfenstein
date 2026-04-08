@@ -1673,7 +1673,6 @@ POI sprites (especially chests) are large billboards; strict “closest mesh win
 Click/hover/drag on a stack along one ray favors the **floor item**; NPCs and doors only win when **no** floor item is intersected on that ray. Grid **step-into-tile** resolution (**`attemptMoveTo`**) is unchanged (POI use still runs before NPC dialogue when walking onto a POI cell).
 
 ---
-
 ## ADR-0109 — Inventory HUD: no title, larger slot icons
 Date: 2026-04-08
 
@@ -1758,3 +1757,224 @@ Slightly taller overlay; **`PortraitPanel.module.css`** uses **`statRow` / `stat
 
 ---
 
+## ADR-0115 — Inventory grid slot border (#342a22, 2 px)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border is **2 px solid `#342a22`** (replaces **1 px** light **`rgba`** rim).
+
+### Rationale
+User request: stronger, palette-aligned slot framing on the HUD inventory grid.
+
+### Consequences
+Hover still uses **`outline`** on **`.slot[data-hover='true']`**; tune border vs outline together if drop feedback feels busy. **`DESIGN.md`** §7.2 notes the slot border spec.
+
+---
+
+## ADR-0116 — Inventory slots: square corners (no border-radius)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** uses **`border-radius: 0`** (was **10 px**).
+
+### Rationale
+User request: sharp slot corners instead of rounded cells.
+
+### Consequences
+Grid reads more “tile-like” and matches a crisp HUD frame; **`DESIGN.md`** §7.2 updated.
+
+---
+
+## ADR-0117 — Inventory slot border color `#ab886b`
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border color **`#ab886b`** (was **`#342a22`** per **ADR-0115**).
+
+### Rationale
+User request: warmer, lighter rim on inventory cells.
+
+### Consequences
+**`DESIGN.md`** §7.2 hex updated.
+
+---
+
+## ADR-0118 — Inventory slot border: `#ab886b` at 50% alpha
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border uses **`rgba(171, 136, 107, 0.5)`** (same hue as **`#ab886b`**, **ADR-0117**).
+
+### Rationale
+User request: softer rim via **0.5** border opacity.
+
+### Consequences
+**`DESIGN.md`** §7.2 notes opacity; stack behind the slot shows through the border color.
+
+---
+
+## ADR-0119 — Inventory slot border alpha 0.75 (was 0.5)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.slot`** border **`rgba(171, 136, 107, 0.75)`** (was **0.5**, **ADR-0118**).
+
+### Rationale
+User request: stronger rim while keeping partial transparency.
+
+### Consequences
+**`DESIGN.md`** §7.2 opacity value updated.
+
+---
+
+## ADR-0120 — HUD inventory panel padding 20 px
+Date: 2026-04-08
+
+### Decision
+**`HudLayout.module.css`**: **`.inventory`** **`padding: 20px`** on all sides (was **10 px**).
+
+### Rationale
+User request: more inset around the inventory grid in the bottom HUD row.
+
+### Consequences
+Slightly smaller grid footprint inside the **285 px** bottom row; **`DESIGN.md`** §7.2 notes the inset.
+
+---
+
+## ADR-0121 — Inventory slot icon font +25% (44 → 55 CSS px)
+Date: 2026-04-08
+
+### Decision
+**`InventoryPanel.module.css`**: **`.item`** **`font`** size **55 px** (was **44 px**; **ADR-0109** had doubled **22 → 44**).
+
+### Rationale
+User request: **25%** larger item icons in the HUD inventory grid.
+
+### Consequences
+Emoji glyphs may clip slightly in the smallest cells if grid columns are narrow; **`DESIGN.md`** §7.2 notes **~55 px**. **`CursorLayer`** drag ghost sizing unchanged unless separately tuned.
+
+---
+
+## ADR-0122 — Inventory hover: item name tooltip in CursorLayer
+Date: 2026-04-08
+
+### Decision
+When the cursor hovers an **occupied** inventory slot, show the item’s **`def.name`** in a compact label positioned **above** the slot using **`hoverRect`** from **`CursorProvider`**. Implementation lives in **`CursorLayer`** (new **`itemNameTooltip`** styles in **`CursorLayer.module.css`**). The tooltip is **hidden while a drag is active** (started hold-drag) so it does not stack on the ghost and affordance.
+
+### Rationale
+The HUD inventory grid under **`.interactiveHud`** is **`opacity: 0`** for compositor capture/hit testing, so a tooltip rendered only inside **`InventoryPanel`** would not be visible; **`CursorLayer`** already draws visible viewport-aligned overlays.
+
+### Consequences
+Inventory naming UX is coupled to cursor hover state; long names truncate with ellipsis (**`max-width`**). **`DESIGN.md`** §7.2 documents the behavior.
+
+---
+
+## ADR-0123 — Inventory tooltip uses Google Font Explora
+Date: 2026-04-08
+
+### Decision
+Load **[Explora](https://fonts.google.com/specimen/Explora)** via **`web/index.html`** (preconnect + **`fonts.googleapis.com`** CSS2 **`family=Explora`**). Expose **`--fontInventoryTooltip: 'Explora', cursive`** in **`web/src/index.css`**; **`CursorLayer.module.css`** **`.itemNameTooltip`** uses that stack with a larger **~37 px** size so the thin stroke stays legible.
+
+### Rationale
+User request for a sophisticated display face on inventory name tooltips.
+
+### Consequences
+First paint may show fallback until the webfont loads (**`display=swap`**); offline dev needs network (or a future self-hosted **`@font-face`** if we want zero external requests).
+
+---
+
+## ADR-0124 — Inventory tooltip font: Imperial Script (replaces Explora)
+Date: 2026-04-08
+
+### Decision
+Load **[Imperial Script](https://fonts.google.com/specimen/Imperial+Script)** via **`web/index.html`** (**`family=Imperial+Script`**). Set **`--fontInventoryTooltip: 'Imperial Script', cursive`** in **`web/src/index.css`** (replaces **ADR-0123** **Explora**). **`CursorLayer`** **`.itemNameTooltip`** is unchanged aside from inheriting the new stack (**~37 px**, **700** weight, **text-shadow** per prior tweaks).
+
+### Rationale
+User request to try Imperial Script for the same sophisticated script look on inventory name labels.
+
+### Consequences
+Same single-weight (**400** hosted) constraints as Explora; **`font-weight: 700`** remains synthetic bold if kept. **`DESIGN.md`** §7.2 references Imperial Script.
+
+---
+
+## ADR-0125 — Inventory tooltip font: Jim Nightshade (replaces Imperial Script)
+Date: 2026-04-08
+
+### Decision
+Load **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** via **`web/index.html`** (**`family=Jim+Nightshade`**). Set **`--fontInventoryTooltip: 'Jim Nightshade', cursive`** in **`web/src/index.css`** (replaces **ADR-0124** Imperial Script).
+
+### Rationale
+User request to use Jim Nightshade for inventory name tooltip labels.
+
+### Consequences
+Same **Google Fonts** / **`display=swap`** / optional synthetic **700** behavior as prior tooltip fonts. **`DESIGN.md`** §7.2 references Jim Nightshade.
+
+---
+
+## ADR-0126 — POI sprite brightness tuning (`poiSpriteBoost`)
+Date: 2026-04-08
+
+### Decision
+Add `render.poiSpriteBoost` (default **1.2**) to multiply POI `THREE.SpriteMaterial.color` so POI billboards can be brightened independently of NPC sprites.
+
+### Rationale
+POI sprites were reading consistently darker than other billboard sprites in the 3D viewport. A material color multiplier is asset-agnostic, cheap, and easy to tune live without changing texture encoding or post-process settings.
+
+### Consequences
+- F2 Debug exposes **POI sprite boost** and the value persists via `web/public/debug-settings.json`.
+- Glow/sparkle overlays remain authored brightness; only the main POI billboard materials are boosted.
+
+---
+
+## ADR-0127 — Post-dither gain debug slider
+Date: 2026-04-08
+
+### Decision
+Add `render.postDitherLevels` (default **1.0**) to apply a simple **post-dither gain/levels** adjustment **after** the ordered-dither pass, exposed as an F2 debug slider and persisted via `web/public/debug-settings.json` and local storage.
+
+### Rationale
+We need a fast “overall brightness/levels” knob that affects **both** the 3D scene and the captured HUD uniformly, without retuning lighting or palette settings.
+
+### Consequences
+- `RenderTuning` gains a new persisted field (`postDitherLevels`) clamped to **[0, 3]**.
+- The dither shader has a new uniform and applies the adjustment at the end of the post-process.
+
+---
+
+## ADR-0128 — Expand post-dither tuning to lift/gain/gamma (F2)
+Date: 2026-04-08
+
+### Decision
+Expand post-dither tuning from a single gain knob to a classic **lift/gain/gamma** set, applied after ordered dithering:
+- `render.postDitherLift` (default **0.0**)
+- `render.postDitherLevels` (interpreted as **gain**, default **1.0**)
+- `render.postDitherGamma` (default **1.0**)
+
+Expose all three as F2 debug sliders and persist them via `web/public/debug-settings.json` and local storage.
+
+### Rationale
+Gain alone is useful but not enough to tune readability and mood across different palettes and lighting baselines. Lift and gamma provide more control while still being a tiny, cheap post-process that affects HUD + 3D uniformly.
+
+### Consequences
+- `RenderTuning` schema grows by two fields; values are clamped to safe ranges.
+- The dither shader applies lift/gain and then gamma as the final post-dither step.
+
+---
+
+## ADR-0129 — Debug settings: auto-save local, explicit save-to-project
+Date: 2026-04-08
+
+### Decision
+Stop auto-writing F2 debug tuning into `web/public/debug-settings.json`. Debug tuning now persists in two tiers:
+- **Local auto-save**: render/audio tuning is debounced into browser storage for convenience.
+- **Project save**: under `vite dev`, the Debug (F2) panel provides an explicit **Save to project** button that writes `web/public/debug-settings.json` via the existing dev-server endpoint.
+
+On startup, the app loads `web/public/debug-settings.json` as a baseline and then applies locally saved overrides (when present).
+
+### Rationale
+Auto-writing into a git-tracked file created accidental churn and made it too easy to commit “random slider fiddling”. We still want quick iteration (local persistence) while keeping the repo snapshot intentional.
+
+### Consequences
+- Tuning changes survive reloads by default (local), but **won’t** modify the repo unless you click **Save to project**.
+- `web/public/debug-settings.json` remains the shareable baseline for the team/repo; local overrides can diverge per machine.
+- Production/static preview continues to load the JSON but has no write endpoint.

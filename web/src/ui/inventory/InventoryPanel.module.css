@@ -9,8 +9,8 @@
 
 .slot {
   aspect-ratio: 1 / 1;
-  border-radius: 10px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 0;
+  border: 2px solid rgba(171, 136, 107, 0.75);
   background: rgba(0, 0, 0, 0.22);
   display: grid;
   place-items: center;
@@ -32,7 +32,7 @@
   background: transparent;
   color: rgba(255, 255, 255, 0.92);
   /* Full `font` shorthand beats global `button { font: inherit }` and html2canvas parses this reliably. */
-  font: 44px/1 var(--sans);
+  font: 55px/1 var(--sans);
   cursor: none;
   -webkit-appearance: none;
   appearance: none;

@@ -90,3 +90,24 @@
   color: rgba(255, 255, 255, 0.88);
 }
 
+.itemNameTooltip {
+  position: absolute;
+  transform: translate(-50%, calc(-100% - 6px));
+  max-width: min(240px, 42vw);
+  padding: 6px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.55);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  font-family: var(--fontInventoryTooltip);
+  font-size: 37px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.92);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 12px rgba(0, 0, 0, 0.22);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+

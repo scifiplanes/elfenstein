@@ -167,6 +167,12 @@ export type RenderTuning = {
    * Ignored for other palette indices.
    */
   ditherPalette0Mix: number
+  /** Post-dither levels/contrast. 1 = neutral. Applied after the dither pass. */
+  postDitherLevels: number
+  /** Post-dither lift (additive). 0 = neutral. Applied after the dither pass. */
+  postDitherLift: number
+  /** Post-dither gamma. 1 = neutral. Applied after the dither pass. */
+  postDitherGamma: number
   /** Drop placement distance ahead of the player (in grid cells). */
   dropAheadCells: number
   /** In-cell jitter radius for floor items (world units; 1.0 == one full cell). */
@@ -219,6 +225,8 @@ export type RenderTuning = {
   poiGroundY_Well: number
   /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
   poiGroundY_Chest: number
+  /** Multiplies PoI sprite material brightness (1.0 = unchanged). */
+  poiSpriteBoost: number
   npcSize_Wurglepup: number
   npcSizeRand_Wurglepup: number
   npcSize_Bobr: number

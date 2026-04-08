@@ -86,6 +86,18 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     return def.icon.kind === 'emoji' ? def.icon.value : def.name
   })()
 
+  // HUD inventory DOM is opacity-0 (capture hit layer); name labels render here like affordance.
+  const inventoryHoverName = (() => {
+    if (dragging?.started) return null
+    if (hoverTarget?.kind !== 'inventorySlot' || !hoverRect) return null
+    const itemId = props.state.party.inventory.slots[hoverTarget.slotIndex]
+    if (!itemId) return null
+    const item = props.state.party.items[itemId]
+    if (!item) return null
+    const def = props.content.item(item.defId)
+    return def?.name ?? null
+  })()
+
   return (
     <div className={styles.layer}>
       <div
@@ -112,6 +124,17 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
         >
           <span aria-hidden="true">{(contextualAffordance ?? affordance)!.icon}</span>
           <span>{(contextualAffordance ?? affordance)!.label}</span>
+        </div>
+      ) : null}
+      {inventoryHoverName && hoverRect ? (
+        <div
+          className={styles.itemNameTooltip}
+          style={{
+            left: (hoverRect.left + hoverRect.right) / 2,
+            top: hoverRect.top,
+          }}
+        >
+          {inventoryHoverName}
         </div>
       ) : null}
     </div>

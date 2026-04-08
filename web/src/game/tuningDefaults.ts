@@ -39,6 +39,9 @@ export const DEFAULT_RENDER: RenderTuning = {
   ditherMatrixSize: 4,
   ditherPalette: 4,
   ditherPalette0Mix: 1,
+  postDitherLevels: 1.0,
+  postDitherLift: 0.0,
+  postDitherGamma: 1.0,
   dropAheadCells: 0.8,
   dropJitterRadius: 0.28,
   dropRangeCells: 5,
@@ -64,6 +67,7 @@ export const DEFAULT_RENDER: RenderTuning = {
   poiGroundY_Well: 0.0,
   /** ~opaque bottom of `chest_closed.png` / `chest_open.png` (~3% from texture bottom). */
   poiGroundY_Chest: 0.04,
+  poiSpriteBoost: 1.2,
   npcSize_Wurglepup: 0.65,
   npcSizeRand_Wurglepup: 0.0,
   npcSize_Bobr: 0.65,
