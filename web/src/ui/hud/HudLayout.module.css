@@ -15,6 +15,12 @@
   padding: 12px;
 }
 
+/* Safety: strip any leftover debug borders/outlines on HUD layout containers. */
+.root section {
+  border: none !important;
+  outline: none !important;
+}
+
 /* Bottom band only: shift fr from outer rails into the center so inventory is wider between map and nav. */
 .bottomRow {
   grid-area: bottomRow;
@@ -45,11 +51,11 @@
   position: absolute;
 }
 
-/* DEBUG: widget bounds — remove border when done tuning layout */
 .panel {
   z-index: 1;
   background: transparent;
-  border: 2px solid rgb(255, 0, 0);
+  border: none !important;
+  outline: none !important;
   box-shadow: none;
   backdrop-filter: none;
   border-radius: 0;
