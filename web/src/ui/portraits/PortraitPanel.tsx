@@ -10,19 +10,14 @@ import { loadImage, prefetchImages } from '../assets/imageCache'
 import styles from './PortraitPanel.module.css'
 
 const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
-  hp: '#e53935',
-  sta: '#ffffff',
-  hun: '#43a047',
-  thr: '#1e88e5',
+  hp: '#ff2400',
+  sta: '#d6bdb5',
+  hun: '#547d39',
+  thr: '#3d75dd',
 }
 
-/** Until character state exposes per-vital **max** + **current**, treat the bar as full (implicit max = current). */
-const PORTRAIT_VITAL_CELLS = [
-  { key: 'hp' as const, icon: '❤️' },
-  { key: 'sta' as const, icon: '⚡' },
-  { key: 'hun' as const, icon: '🍖' },
-  { key: 'thr' as const, icon: '💧' },
-] as const
+/** Until character state exposes per-vital **max** + **current**, treat the bar as full (implicit max = current). Order: row1 HP|STA, row2 HUN|THR. */
+const PORTRAIT_VITAL_CELL_KEYS = ['hp', 'sta', 'hun', 'thr'] as const
 
 type PortraitSprites =
   | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; idleSrc?: string }
@@ -443,13 +438,10 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
 
         <div className={styles.statsOverlay} aria-hidden="true">
           <div className={styles.vitalGrid}>
-            {PORTRAIT_VITAL_CELLS.map((cell) => (
-              <div key={cell.key} className={styles.statCell}>
-                <span className={styles.statIcon} aria-hidden="true">
-                  {cell.icon}
-                </span>
+            {PORTRAIT_VITAL_CELL_KEYS.map((key) => (
+              <div key={key} className={styles.statCell}>
                 <div className={styles.statBarTrack}>
-                  <div className={styles.statBarFill} style={{ backgroundColor: VITAL_BAR_FILL[cell.key] }} />
+                  <div className={styles.statBarFill} style={{ backgroundColor: VITAL_BAR_FILL[key] }} />
                 </div>
               </div>
             ))}
