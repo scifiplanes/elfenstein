@@ -1870,3 +1870,45 @@ Inventory naming UX is coupled to cursor hover state; long names truncate with e
 
 ---
 
+## ADR-0123 — Inventory tooltip uses Google Font Explora
+Date: 2026-04-08
+
+### Decision
+Load **[Explora](https://fonts.google.com/specimen/Explora)** via **`web/index.html`** (preconnect + **`fonts.googleapis.com`** CSS2 **`family=Explora`**). Expose **`--fontInventoryTooltip: 'Explora', cursive`** in **`web/src/index.css`**; **`CursorLayer.module.css`** **`.itemNameTooltip`** uses that stack with a larger **~37 px** size so the thin stroke stays legible.
+
+### Rationale
+User request for a sophisticated display face on inventory name tooltips.
+
+### Consequences
+First paint may show fallback until the webfont loads (**`display=swap`**); offline dev needs network (or a future self-hosted **`@font-face`** if we want zero external requests).
+
+---
+
+## ADR-0124 — Inventory tooltip font: Imperial Script (replaces Explora)
+Date: 2026-04-08
+
+### Decision
+Load **[Imperial Script](https://fonts.google.com/specimen/Imperial+Script)** via **`web/index.html`** (**`family=Imperial+Script`**). Set **`--fontInventoryTooltip: 'Imperial Script', cursive`** in **`web/src/index.css`** (replaces **ADR-0123** **Explora**). **`CursorLayer`** **`.itemNameTooltip`** is unchanged aside from inheriting the new stack (**~37 px**, **700** weight, **text-shadow** per prior tweaks).
+
+### Rationale
+User request to try Imperial Script for the same sophisticated script look on inventory name labels.
+
+### Consequences
+Same single-weight (**400** hosted) constraints as Explora; **`font-weight: 700`** remains synthetic bold if kept. **`DESIGN.md`** §7.2 references Imperial Script.
+
+---
+
+## ADR-0125 — Inventory tooltip font: Jim Nightshade (replaces Imperial Script)
+Date: 2026-04-08
+
+### Decision
+Load **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** via **`web/index.html`** (**`family=Jim+Nightshade`**). Set **`--fontInventoryTooltip: 'Jim Nightshade', cursive`** in **`web/src/index.css`** (replaces **ADR-0124** Imperial Script).
+
+### Rationale
+User request to use Jim Nightshade for inventory name tooltip labels.
+
+### Consequences
+Same **Google Fonts** / **`display=swap`** / optional synthetic **700** behavior as prior tooltip fonts. **`DESIGN.md`** §7.2 references Jim Nightshade.
+
+---
+

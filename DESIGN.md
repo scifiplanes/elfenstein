@@ -127,7 +127,7 @@ The party has **up to 4** character portrait slots.
 - Inventory is a **large grid panel** for management; each cell has a **square** shape with a **2 px** border tinted **`#ab886b`** at **0.75** opacity (no corner rounding). **Emoji** item icons in slots use **~55 CSS px** font size (**+25%** vs the prior **44 px**).
 - **Capacity**: number of grid cells is informed by **total party Endurance**.
 - Inventory UI is **scrollable in sections** (paged), not continuous.
-- Hovering an **occupied** slot shows the item’s **name** in a small overlay rendered with the **cursor layer** (the interactive HUD grid is hit-only; labels align to the hovered slot in viewport space).
+- Hovering an **occupied** slot shows the item’s **name** in a small overlay rendered with the **cursor layer** (the interactive HUD grid is hit-only; labels align to the hovered slot in viewport space), set in **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** loaded as a **webfont** from Google Fonts.
 - Dragging inventory item into empty 3D space drops it onto the floor (cell).
 
 ### 7.3 Items & crafting
