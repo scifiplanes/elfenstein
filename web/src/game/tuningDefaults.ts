@@ -45,6 +45,14 @@ export const DEFAULT_RENDER: RenderTuning = {
   camShakeLengthMs: 0,
   camShakeDecayMs: 220,
   camShakeUiMix: 0.22,
+
+  // Cursor micro-shake on pointer down (debug; tuned to be subtle by default).
+  cursorClickShakeEnabled: 1,
+  cursorClickShakeMagnitude: 0.12,
+  cursorClickShakeLengthMs: 40,
+  cursorClickShakeDecayMs: 80,
+  cursorClickShakeHz: 14,
+
   ditherStrength: 0.55,
   ditherColourPreserve: 0.6,
   ditherPixelSize: 1,

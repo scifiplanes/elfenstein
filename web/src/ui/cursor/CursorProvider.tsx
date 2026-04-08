@@ -176,6 +176,46 @@ export function CursorProvider(props: PropsWithChildren) {
     }
   }, [cancelDrag])
 
+  useEffect(() => {
+    // Keep the custom cursor responsive for *any* click/tap (even when not starting a drag),
+    // so `isPointerDown` can drive micro-interactions like click shake.
+    const onAnyPointerDown = (e: PointerEvent) => {
+      const { clientX: x, clientY: y } = e
+      const el = document.elementFromPoint(x, y)
+      const node = (el?.closest?.('[data-drop-kind]') as HTMLElement | null) ?? null
+      const domTarget = parseTargetFromEl(node)
+      const domRect = node ? node.getBoundingClientRect() : null
+      setState((s) => ({
+        ...s,
+        pointer: { x, y },
+        isPointerDown: true,
+        hoverTarget: domTarget,
+        hoverRect: domRect ? { left: domRect.left, top: domRect.top, right: domRect.right, bottom: domRect.bottom } : null,
+        affordance: s.dragging?.started ? affordanceForTarget(domTarget) : null,
+      }))
+    }
+    const onAnyPointerUp = (e: PointerEvent) => {
+      const { clientX: x, clientY: y } = e
+      setState((s) => ({
+        ...s,
+        pointer: { x, y },
+        isPointerDown: false,
+      }))
+    }
+    const onAnyPointerCancel = () => {
+      setState((s) => ({ ...s, isPointerDown: false }))
+    }
+
+    window.addEventListener('pointerdown', onAnyPointerDown, true)
+    window.addEventListener('pointerup', onAnyPointerUp, true)
+    window.addEventListener('pointercancel', onAnyPointerCancel, true)
+    return () => {
+      window.removeEventListener('pointerdown', onAnyPointerDown, true)
+      window.removeEventListener('pointerup', onAnyPointerUp, true)
+      window.removeEventListener('pointercancel', onAnyPointerCancel, true)
+    }
+  }, [])
+
   const api: CursorApi = useMemo(
     () => ({
       state,

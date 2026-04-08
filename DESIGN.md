@@ -32,6 +32,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 - **Default**: `Hand_Point`
 - **Holding/dragging**: `Hand_Hold` (held item sprite follows pointer)
 - **Hover active**: `Hand_Active` when pointing at an interactable
+- **Click micro-feedback**: on **pointer down**, the hand cursor can perform a **tiny shake** (purely cosmetic; debug-tunable in F2 under **Cursor**). This is a *micro* cue meant to add tactility without implying a successful action (success/failure feedback still comes from SFX/log/shake events).
 - **Deadzone behavior**: hovering non-interactive UI areas should clear any previous “active” hover so the cursor returns to `Hand_Point`; pointer move/up are tracked globally across the HUD so cursor state can’t get stuck when moving over panels.
 - **3D viewport hover override**: the WebGL viewport may inject a **virtual hover target** (e.g. `floorDrop`) on pointer-move to compensate for `elementFromPoint` seeing the compositor canvas rather than a DOM hit target. This override is **ephemeral (one move event)** so normal DOM-derived hover targets (inventory slots, portraits, etc.) take over immediately when the pointer leaves the viewport.
 
@@ -215,7 +216,7 @@ The party has **up to 4** character portrait slots.
 - **Room function**: Passage, Habitat, Workshop, Communal, Storage
 - **Room properties**: Burning, Flooded, Infected (cause resistance check; fail can cause damage)
 - **Room status**: Overgrown, Destroyed, Collapsed
-- **Doors/keys**: passages can be blocked by door types requiring appropriate keys; procgen records **`keyDefId`** per locked door in **`floor.gen.doors`** (gameplay opens a door only if the party holds a matching item, e.g. **IronKey** / **BrassKey**).
+- **Doors/keys**: passages can be blocked by door types requiring appropriate keys; procgen records **`keyDefId`** per locked door in **`floor.gen.doors`** (gameplay opens a door only if the party holds a matching item, e.g. **IronKey** / **BrassKey**). In the 3D view, doors are rendered as **sprite billboards** (`door_closed.png` on the tile). When a door is opened, the tile becomes `floor` immediately and the renderer may show a **brief open flash** (`door_open.png`) as a short-lived FX cue.
 - **Difficulty** (`0` = easy, `1` = normal default, `2` = hard): **`GameState.floor.difficulty`** and **`FloorGenInput.difficulty`**. Tunes how many **validation rerolls** run (**8** / **6** / **5**), minimum entrance→exit shortest-path length before placing locks (**10** / **6** / **5** for any lock; two-lock branch only when path length ≥ **14** at normal, ≥ **11** at hard, and **never** at easy), and scales the **`layoutScore`** lock+loop bonus when choosing among valid rerolls (easier prefers layouts with less lock+loop weight; harder the opposite). Echoed as **`floor.gen.meta.difficulty`**.
 
 ### 8.2 Starting algorithm (prototype baseline)
@@ -257,11 +258,14 @@ See `Dungeon_generation_plan_summary.md` for an expanded phased pipeline (missio
 ## 9) Points of interest (POIs)
 Static interactables. POIs are **non-blocking** and do not trigger on movement; interact via **click** or by **dragging items onto them**.
 
+- **Placement invariant**: there is **at most one POI per grid cell**. If procgen produces multiple POIs for the same cell, the game resolves it deterministically (canonical IDs win, then kind priority) so runs remain stable and interactions remain unambiguous.
 - **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest (closed)** uses **`chest_closed.png`**; **Chest (opened)** uses **`chest_open.png`**. **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** uses **`poiGroundY_Well`** and **Chest** uses **`poiGroundY_Chest`** in F2 (chest art sits near the texture bottom; placeholders still use **`npcGroundY_Wurglepup`**). POI billboard brightness can be tuned via `render.poiSpriteBoost` (F2) to match other sprites.
 
 Initial POIs:
 - **Well**: save point (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); save still works when drained
 - **Chest**: opens (sprite change) and drops random item
+- **Barrel**: opens (sprite change) and drops random item
+- **Crate**: opens (sprite change) and drops random item
 - **Bed**: restores full HP and Stamina
 - **Exit**: descends to the next floor (meta-progression)
 
@@ -316,6 +320,8 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 
 ## 13) Content pipeline (placeholders-first)
 Canonical placeholder NPC art lives at **`Placeholders/Placeholder_NPC.png`**. Ship **copies** into `web/public/content/` for any runtime URL the code expects (NPC or POI) until final assets replace them.
+
+The **canonical** art folder is `Content/`. For the web client, PNGs are **mirrored** into `web/public/content/` so they can be loaded via stable `'/content/...'` URLs (no cache-busting query params). In particular, **`Content/poi_placeholder.png`** is the canonical copy of the POI placeholder and is mirrored to `web/public/content/poi_placeholder.png`.
 
 Asset types:
 - Item PNG (transparent)

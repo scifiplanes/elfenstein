@@ -755,7 +755,14 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
   if (tile === 'door') {
     const tiles = state.floor.tiles.slice()
     tiles[idx] = 'floor'
-    const next = { ...state, floor: { ...state.floor, tiles } }
+    const w = state.floor.w
+    const doorX = idx % w
+    const doorY = (idx / w) | 0
+    const keep = (state.ui.doorOpenFx ?? []).filter((x) => x.untilMs > state.nowMs)
+    const doorOpenFx = keep.concat([
+      { id: `doorFx_${state.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: state.nowMs, untilMs: state.nowMs + 420 },
+    ])
+    const next = { ...state, floor: { ...state.floor, tiles }, ui: { ...state.ui, doorOpenFx } }
     return reduce(next, { type: 'ui/toast', text: 'The door creaks open.', ms: 900 })
   }
 
@@ -775,7 +782,11 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
   const consumed = keyId ? consumeItem(state, keyId) : state
   const tiles = consumed.floor.tiles.slice()
   tiles[idx] = 'floor'
-  const opened = { ...consumed, floor: { ...consumed.floor, tiles } }
+  const keep = (consumed.ui.doorOpenFx ?? []).filter((x) => x.untilMs > consumed.nowMs)
+  const doorOpenFx = keep.concat([
+    { id: `doorFx_${consumed.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: consumed.nowMs, untilMs: consumed.nowMs + 420 },
+  ])
+  const opened = { ...consumed, floor: { ...consumed.floor, tiles }, ui: { ...consumed.ui, doorOpenFx } }
   const withToast = reduce(opened, { type: 'ui/toast', text: 'Unlocked the door.', ms: 1100 })
   return reduce(withToast, { type: 'ui/sfx', kind: 'ui' })
 }

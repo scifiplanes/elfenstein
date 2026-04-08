@@ -27,9 +27,69 @@ import { scoreLayout } from './scoreLayout'
 import { runDungeonBspLayout } from './realizeDungeonBsp'
 import { runCaveLayout } from './realizeCave'
 import { runRuinsLayout } from './realizeRuins'
-import type { Tile } from '../game/types'
+import type { FloorPoi, PoiKind, Tile } from '../game/types'
 import { shortestPathLatticeStats } from './validate'
 import { applyRoomShapingGuarded } from './shapeRooms'
+
+const POI_CANONICAL_ID_ORDER: Partial<Record<string, number>> = {
+  poi_exit: 0,
+  poi_well: 1,
+  poi_bed: 2,
+  poi_chest: 3,
+  poi_barrel: 4,
+  poi_crate: 5,
+}
+
+const POI_KIND_PRIORITY: Partial<Record<PoiKind, number>> = {
+  Exit: 0,
+  Well: 1,
+  Bed: 2,
+  Chest: 3,
+  Barrel: 4,
+  Crate: 5,
+  Shrine: 6,
+  CrackedWall: 7,
+}
+
+function cellKey(p: { pos: { x: number; y: number } }) {
+  return `${p.pos.x},${p.pos.y}`
+}
+
+function choosePoiWinner(a: FloorPoi, b: FloorPoi): FloorPoi {
+  const aId = POI_CANONICAL_ID_ORDER[a.id]
+  const bId = POI_CANONICAL_ID_ORDER[b.id]
+  if (aId != null || bId != null) {
+    const ai = aId ?? 99
+    const bi = bId ?? 99
+    if (ai !== bi) return ai < bi ? a : b
+  }
+
+  const ak = POI_KIND_PRIORITY[a.kind] ?? 99
+  const bk = POI_KIND_PRIORITY[b.kind] ?? 99
+  if (ak !== bk) return ak < bk ? a : b
+
+  // Stable tie-break: keep deterministic output.
+  return a.id.localeCompare(b.id) <= 0 ? a : b
+}
+
+function dedupePoisByCell(pois: FloorPoi[]): { pois: FloorPoi[]; dropped: FloorPoi[] } {
+  if (pois.length <= 1) return { pois, dropped: [] }
+  const byCell = new Map<string, FloorPoi>()
+  const dropped: FloorPoi[] = []
+  for (const p of pois) {
+    const k = cellKey(p)
+    const existing = byCell.get(k)
+    if (!existing) {
+      byCell.set(k, p)
+      continue
+    }
+    const keep = choosePoiWinner(existing, p)
+    const drop = keep === existing ? p : existing
+    byCell.set(k, keep)
+    dropped.push(drop)
+  }
+  return { pois: Array.from(byCell.values()), dropped }
+}
 
 function maxAttemptsForDifficulty(d: FloorGenDifficulty): number {
   if (d === 0) return 8
@@ -131,7 +191,22 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   solveRoomTags({ rooms: genRooms, tiles, w, h, floorProperties, rng: tagsRng, onPathBand })
   applyTagConstraints(genRooms, tiles, w, h, floorProperties, tagsRng)
 
-  const pois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
+  const rawPois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
+  const { pois, dropped: droppedPois } = dedupePoisByCell(rawPois)
+  if (import.meta.env.DEV && droppedPois.length) {
+    // Keep this as a warning (not a hard throw) so procgen remains resilient during iteration.
+    console.warn('[procgen] POI collision(s) deduped', {
+      kept: pois.map((p) => ({ id: p.id, kind: p.kind, pos: p.pos })),
+      dropped: droppedPois.map((p) => ({ id: p.id, kind: p.kind, pos: p.pos })),
+    })
+  }
+  if (import.meta.env.DEV) {
+    const keys = pois.map(cellKey)
+    const uniq = new Set(keys)
+    if (uniq.size !== keys.length) {
+      throw new Error('[procgen] POI uniqueness invariant violated after dedupe')
+    }
+  }
   const occupied = new Set<string>(pois.map((p) => `${p.pos.x},${p.pos.y}`))
 
   const { npcs, floorItems: popItems } = spawnNpcsAndItems({

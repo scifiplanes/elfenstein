@@ -36,6 +36,16 @@ export function placePois(args: {
   markUsed(wellPos)
 
   const dist = bfsDistances(tiles, w, h, entrance)
+
+  const pickStorageLikePos = (fallback: Vec2) => {
+    const storageRooms = rooms
+      .filter((r) => r.tags?.roomFunction === 'Storage')
+      .sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
+    for (const r of storageRooms) {
+      if (ok(r.center)) return r.center
+    }
+    return pickFarthestUnusedFloor(dist, tiles, w, used) ?? fallback
+  }
   const exitIdx = exit.x + exit.y * w
   const maxD = exitIdx >= 0 && exitIdx < dist.length ? dist[exitIdx] : -1
   const targetD = Math.max(0, Math.floor(maxD * 0.45))
@@ -87,6 +97,12 @@ export function placePois(args: {
   }
   markUsed(chestPos)
 
+  const barrelPos = pickStorageLikePos(chestPos)
+  markUsed(barrelPos)
+
+  const cratePos = pickStorageLikePos(barrelPos)
+  markUsed(cratePos)
+
   const exitPos = ok(exit) ? exit : (findNearestFloor(tiles, w, h, exit) ?? exit)
   markUsed(exitPos)
 
@@ -94,6 +110,8 @@ export function placePois(args: {
     { id: 'poi_well', kind: 'Well', pos: wellPos },
     { id: 'poi_bed', kind: 'Bed', pos: bedPos },
     { id: 'poi_chest', kind: 'Chest', pos: chestPos, opened: false },
+    { id: 'poi_barrel', kind: 'Barrel', pos: barrelPos, opened: false },
+    { id: 'poi_crate', kind: 'Crate', pos: cratePos, opened: false },
     { id: 'poi_exit', kind: 'Exit', pos: exitPos },
   ]
 }

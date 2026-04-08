@@ -1632,6 +1632,24 @@ Dump JSON and **`layoutScore`** selection change vs **`genVersion` 4** for the s
 
 ---
 
+## ADR-0142 — Add Barrel/Crate POIs, sprite doors, and canonical POI placeholder
+Date: 2026-04-08
+
+### Decision
+- Add **Barrel** and **Crate** as new `PoiKind` values with **open/closed sprites** and deterministic “open to drop loot” behavior (like Chest).
+- Render **doors** in the 3D view as **sprite billboards** using **`door_closed.png`**, with a short-lived **`door_open.png`** visual FX when a door is opened (the tile still becomes `floor` immediately for movement/pathing).
+- Make **`Content/poi_placeholder.png`** the canonical POI placeholder image (a copy of `Placeholders/Placeholder_NPC.png`) and mirror it into `web/public/content/poi_placeholder.png` so the `/content/poi_placeholder.png` URL is always satisfied.
+
+### Rationale
+New/updated art landed in `Content/` and needed to be usable in-game via the existing stable `/content/...` URL convention. Doors switching to sprites keeps visuals consistent with the rest of the billboarded interactables and makes the new door art visible immediately.
+
+### Consequences
+- Procgen now places additional container POIs (Barrel/Crate), and the POI sprite registry includes open-frame overrides.
+- `web/public/content/` must remain a mirror of `Content/` for runtime asset URLs; placeholder copies are now kept canonical under `Content/`.
+- Door opening adds a small temporary renderer-only FX cue (does not affect gameplay state).
+
+---
+
 ## ADR-0106 — Chest POI uses closed/open PNG billboards
 Date: 2026-04-08
 
@@ -2134,3 +2152,38 @@ Procgen iteration often needs quickly jumping to different floor indices and for
 ### Consequences
 - Debug-only actions can put the runtime floor state in configurations that do not match natural progression, but the effects remain gated behind Regen/Descend (no silent mid-floor mutation).
 - `GameState.floor.floorIndex` and `GameState.floor.floorProperties` can be adjusted via debug actions without touching file-based debug tuning (`web/public/debug-settings.json` remains render/audio only).
+
+---
+
+## ADR-0140 — Cursor click micro-shake (debug-tunable)
+Date: 2026-04-08
+
+### Decision
+Add a **tiny cosmetic shake** to the custom hand cursor on **pointer down**, with parameters exposed in the **F2 Debug** panel under **Cursor** (enable, amplitude, Hz, hold, decay).
+
+### Rationale
+The project’s interaction model is cursor-first; a subtle click micro-feedback makes the cursor feel more tactile without implying that an interaction succeeded (success/failure still uses SFX + activity log + gameplay-driven shake).
+
+### Consequences
+- Cursor feel can be tuned quickly during iteration via debug sliders and persisted in `web/public/debug-settings.json` (render tuning).
+- The shake should remain subtle by default to avoid visual noise during frequent clicking/dragging.
+
+---
+
+## ADR-0141 — Enforce one POI per cell (deterministic dedupe)
+Date: 2026-04-08
+
+### Decision
+- Enforce the invariant: **at most one POI per grid cell**.
+- If procgen yields multiple POIs in the same cell, resolve deterministically:
+  - **Canonical POI IDs win** (`poi_exit`, `poi_well`, `poi_bed`, `poi_chest`, `poi_barrel`, `poi_crate`).
+  - Otherwise, keep the POI with higher gameplay priority: `Exit > Well > Bed > Chest > Barrel > Crate > Shrine > CrackedWall`.
+  - Remaining ties break by stable `id` ordering.
+
+### Rationale
+As the POI set grows (more kinds and more placement passes), cell collisions become an easy failure mode that creates ambiguous interactions and can break deterministic placement assumptions. Dedupe keeps runs stable and ensures click/drag targets remain unambiguous.
+
+### Consequences
+- Some POIs may be dropped if they collide with a higher-priority POI.
+- Procgen’s `occupied` set and downstream systems (NPC/item placement, mission graph, rendering/picking) operate on a position-unique POI list.
+- In DEV builds we surface collisions via a warning so conflicts are noticed during iteration.

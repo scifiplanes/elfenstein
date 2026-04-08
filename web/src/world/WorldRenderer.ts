@@ -9,7 +9,7 @@ import {
 } from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import {
-  POI_CHEST_OPEN_SRC,
+  POI_OPENED_SPRITE_SRC,
   POI_SPRITE_SRC,
   POI_WELL_DRAINED_SRC,
   POI_WELL_GLOW_SRC,
@@ -18,6 +18,9 @@ import {
 import { getThemeLightIntent } from './themeTuning'
 
 const TAU = Math.PI * 2
+
+const DOOR_CLOSED_SRC = '/content/door_closed.png'
+const DOOR_OPEN_SRC = '/content/door_open.png'
 
 function wrapPi(a: number) {
   // Normalize into (-π, π] to keep Euler->quaternion conversions stable even if upstream yaw drifts.
@@ -84,6 +87,7 @@ export class WorldRenderer {
   private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: NpcKind }> = []
 
   private readonly poiSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
+  private readonly poiOpenedSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
   private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
   private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
   private lastPoiSpriteBoost = NaN
@@ -91,11 +95,13 @@ export class WorldRenderer {
   private readonly tmpHsl = { h: 0, s: 0, l: 0 }
 
   private wellDrainedMat: THREE.SpriteMaterial | null = null
-  private chestOpenMat: THREE.SpriteMaterial | null = null
   private wellGlowMat: THREE.SpriteMaterial | null = null
   private wellSparkleMat: THREE.SpriteMaterial | null = null
   private wellSparkleTextures: THREE.Texture[] = []
   private wellDecorSprites: Array<{ main: THREE.Sprite; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
+
+  private doorClosedMat: THREE.SpriteMaterial | null = null
+  private doorOpenMat: THREE.SpriteMaterial | null = null
 
   private procgenDebugGroup: THREE.Group | null = null
   private lastProcgenDebugKey = ''
@@ -151,15 +157,15 @@ export class WorldRenderer {
       m.map?.dispose()
       m.dispose()
     }
+    for (const m of Object.values(this.poiOpenedSpriteMats)) {
+      if (!m) continue
+      m.map?.dispose()
+      m.dispose()
+    }
     if (this.wellDrainedMat) {
       this.wellDrainedMat.map?.dispose()
       this.wellDrainedMat.dispose()
       this.wellDrainedMat = null
-    }
-    if (this.chestOpenMat) {
-      this.chestOpenMat.map?.dispose()
-      this.chestOpenMat.dispose()
-      this.chestOpenMat = null
     }
     if (this.wellGlowMat) {
       this.wellGlowMat.map?.dispose()
@@ -170,6 +176,16 @@ export class WorldRenderer {
       this.wellSparkleMat.map = null
       this.wellSparkleMat.dispose()
       this.wellSparkleMat = null
+    }
+    if (this.doorClosedMat) {
+      this.doorClosedMat.map?.dispose()
+      this.doorClosedMat.dispose()
+      this.doorClosedMat = null
+    }
+    if (this.doorOpenMat) {
+      this.doorOpenMat.map?.dispose()
+      this.doorOpenMat.dispose()
+      this.doorOpenMat = null
     }
     for (const t of this.wellSparkleTextures) t.dispose()
     this.wellSparkleTextures = []
@@ -526,16 +542,8 @@ export class WorldRenderer {
           c.receiveShadow = true
           g.add(c)
 
-          const doorGeo = new THREE.BoxGeometry(0.9, 1.1, 0.15)
-          const doorMat = new THREE.MeshLambertMaterial({
-            color: t === 'lockedDoor' ? new THREE.Color('#7a2a18') : new THREE.Color('#6a4a20'),
-            emissive: new THREE.Color('#120a06'),
-            emissiveIntensity: base * 0.4,
-          })
-          const d = new THREE.Mesh(doorGeo, doorMat)
+          const d = new THREE.Sprite(this.getDoorClosedMat())
           d.position.set(wx, 0.55, wz)
-          d.castShadow = true
-          d.receiveShadow = true
           d.userData = { kind: 'door', id: `${x},${y}` }
           g.add(d)
           this.pickables.push(d)
@@ -557,8 +565,8 @@ export class WorldRenderer {
       const mat =
         p.kind === 'Well' && p.drained
           ? this.getWellDrainedMat()
-          : p.kind === 'Chest' && p.opened
-            ? this.getChestOpenMat()
+          : p.opened && POI_OPENED_SPRITE_SRC[p.kind]
+            ? this.getPoiOpenedSpriteMat(p.kind)
             : this.getPoiSpriteMat(p.kind)
       const s = new THREE.Sprite(mat)
       s.position.set(x, 0, z)
@@ -602,6 +610,16 @@ export class WorldRenderer {
       s.userData = { kind: 'floorItem', id: it.id }
       g.add(s)
       this.pickables.push(s)
+    })
+
+    ;(state.ui.doorOpenFx ?? []).forEach((fx) => {
+      if (fx.untilMs <= state.nowMs) return
+      const x = fx.pos.x - w / 2
+      const z = fx.pos.y - h / 2
+      const s = new THREE.Sprite(this.getDoorOpenMat())
+      s.position.set(x, 0.55, z)
+      // Not pickable; visual-only.
+      g.add(s)
     })
 
     return g
@@ -732,8 +750,13 @@ export class WorldRenderer {
       if (!mat) continue
       mat.color.copy(this.themeSpriteColor).multiplyScalar(next)
     }
+    for (const mat of Object.values(this.poiOpenedSpriteMats)) {
+      if (!mat) continue
+      mat.color.copy(this.themeSpriteColor).multiplyScalar(next)
+    }
     if (this.wellDrainedMat) this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
-    if (this.chestOpenMat) this.chestOpenMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
+    if (this.doorClosedMat) this.doorClosedMat.color.copy(this.themeSpriteColor)
+    if (this.doorOpenMat) this.doorOpenMat.color.copy(this.themeSpriteColor)
   }
 
   private syncNpcSpriteThemeTint() {
@@ -798,21 +821,28 @@ export class WorldRenderer {
     return this.wellDrainedMat
   }
 
-  private getChestOpenMat(): THREE.SpriteMaterial {
-    if (this.chestOpenMat) return this.chestOpenMat
-    const tex = this.textureLoader.load(POI_CHEST_OPEN_SRC, () => {
+  private getPoiOpenedSpriteMat(kind: PoiKind): THREE.SpriteMaterial {
+    const cached = this.poiOpenedSpriteMats[kind]
+    if (cached) return cached
+
+    const src = POI_OPENED_SPRITE_SRC[kind]
+    if (!src) return this.getPoiSpriteMat(kind)
+
+    const tex = this.textureLoader.load(src, () => {
       const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
       const iw = img && typeof img.width === 'number' ? img.width : 0
       const ih = img && typeof img.height === 'number' ? img.height : 0
-      if (iw > 0 && ih > 0) this.poiSpriteAspects.Chest = iw / ih
+      if (iw > 0 && ih > 0) this.poiSpriteAspects[kind] = iw / ih
     })
     tex.colorSpace = THREE.SRGBColorSpace
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
-    this.chestOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.chestOpenMat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
-    return this.chestOpenMat
+
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    mat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
+    this.poiOpenedSpriteMats[kind] = mat
+    return mat
   }
 
   private getWellGlowMat(): THREE.SpriteMaterial {
@@ -892,6 +922,30 @@ export class WorldRenderer {
       d.glow.scale.copy(d.main.scale).multiplyScalar(1.08)
       d.sparkle.scale.copy(d.main.scale).multiplyScalar(0.5)
     }
+  }
+
+  private getDoorClosedMat(): THREE.SpriteMaterial {
+    if (this.doorClosedMat) return this.doorClosedMat
+    const tex = this.textureLoader.load(DOOR_CLOSED_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.doorClosedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.doorClosedMat.color.copy(this.themeSpriteColor)
+    return this.doorClosedMat
+  }
+
+  private getDoorOpenMat(): THREE.SpriteMaterial {
+    if (this.doorOpenMat) return this.doorOpenMat
+    const tex = this.textureLoader.load(DOOR_OPEN_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.doorOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.doorOpenMat.color.copy(this.themeSpriteColor)
+    return this.doorOpenMat
   }
 
   private syncWellSparkleFrame(state: GameState) {

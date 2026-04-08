@@ -126,6 +126,16 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
+  const cursorSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+    () => [
+      { key: 'cursorClickShakeMagnitude', label: 'Click shake amplitude', min: 0, max: 1.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'cursorClickShakeHz', label: 'Click shake Hz', min: 0, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'cursorClickShakeLengthMs', label: 'Click shake length / hold (ms)', min: 0, max: 800, step: 5, format: (v) => String(Math.round(v)) },
+      { key: 'cursorClickShakeDecayMs', label: 'Click shake decay / fade (ms)', min: 0, max: 1200, step: 5, format: (v) => String(Math.round(v)) },
+    ],
+    [],
+  )
+
   const renderSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
       { key: 'globalIntensity', label: 'Global intensity (3D)', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
@@ -262,6 +272,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const q = query.trim().toLowerCase()
   const visibleCamera = q ? cameraSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cameraSliders
   const visiblePortrait = q ? portraitSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : portraitSliders
+  const visibleCursor = q ? cursorSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cursorSliders
   const visibleRender = q ? renderSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : renderSliders
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
   const visibleNpc = q ? npcSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : npcSliders
@@ -663,6 +674,40 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           )
         })}
       </div>
+
+      {(!q || 'cursor click shake'.includes(q) || visibleCursor.length) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Cursor</div>
+          <div className={styles.row}>
+            <div className={styles.label}>Click shake enabled</div>
+            <div className={styles.value}>{state.render.cursorClickShakeEnabled > 0 ? 'On' : 'Off'}</div>
+            <input
+              className={styles.slider}
+              type="checkbox"
+              checked={state.render.cursorClickShakeEnabled > 0}
+              onChange={(e) => dispatch({ type: 'render/set', key: 'cursorClickShakeEnabled', value: e.target.checked ? 1 : 0 })}
+            />
+          </div>
+          {visibleCursor.map((s) => {
+            const v = state.render[s.key]
+            return (
+              <div key={s.key} className={styles.row}>
+                <div className={styles.label}>{s.label}</div>
+                <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+                <input
+                  className={styles.slider}
+                  type="range"
+                  min={s.min}
+                  max={s.max}
+                  step={s.step}
+                  value={v}
+                  onChange={(e) => dispatch({ type: 'render/set', key: s.key, value: Number(e.target.value) })}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Rendering</div>
