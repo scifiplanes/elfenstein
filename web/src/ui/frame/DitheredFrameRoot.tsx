@@ -764,7 +764,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           <TitleScreen state={state} dispatch={dispatch} />
           <DeathModal state={state} dispatch={dispatch} />
           <PaperdollModal state={state} dispatch={dispatch} content={content} />
-          <NpcDialogModal state={state} dispatch={dispatch} content={content} />
+          <NpcDialogModal state={state} dispatch={dispatch} content={content} gameViewportRef={gameViewportRef} />
         </div>
       ) : null}
 

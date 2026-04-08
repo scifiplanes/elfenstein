@@ -2411,3 +2411,60 @@ A short TTL keeps the viewport corner readable without a permanent backlog; tyin
 
 ### Consequences
 **`DESIGN.md`** activity-log bullet documents TTL, cap, and death pause; **`activityLog.ts`** exports **`ACTIVITY_LOG_ENTRY_TTL_MS`** and **`pruneExpiredActivityLog`**.
+
+---
+
+## ADR-0156 — Anchor NPC dialog to the game viewport top
+Date: 2026-04-08
+
+### Decision
+**`NpcDialogModal`** receives **`gameViewportRef`** from **`DitheredFrameRoot`**, measures **`getBoundingClientRect()`** on that element while the dialog is open, and positions the modal with **`position: fixed`** at the **top of the 3D viewport** (centered horizontally, width clamped). **`ResizeObserver`** plus window **resize** and **scroll** (capture) keep the box aligned.
+
+### Rationale
+The previous layout used a **percentage of the full modal backdrop**, which did not track the **HUD center game cell**; anchoring to the same DOM node used for viewport picking keeps the dialog visually tied to the 3D play area.
+
+### Consequences
+- Fallback CSS remains for cases without a ref or before measure (e.g. tests).
+- **`DESIGN.md`** §7.5 documents viewport anchoring.
+
+---
+
+## ADR-0157 — NPC dialog: scaled upward offset + square panel
+Date: 2026-04-08
+
+### Decision
+**`NpcDialogModal`** vertical position subtracts **`viewportHeight * (100 / STAGE_CSS_HEIGHT)`** from the previous top anchor (plus small inset), so the shift matches **100 CSS px** when the game viewport height equals **1080**. The **fallback** (no measure) uses **`top: calc(18% - 9.259vh)`**. The main modal **panel** uses **`border-radius: 0`** (square corners); **Close** / **Pet** keep their existing radii.
+
+### Rationale
+Keeps the dialog **horizontally centered** on the game viewport while nudging it **up** in a resolution-aware way. Square outer chrome matches the requested look for the popup background.
+
+### Consequences
+- **`DESIGN.md`** §7.5 documents the offset rule and square panel.
+
+---
+
+## ADR-0158 — Portal NPC dialog to `document.body` (fixed + scaled stage)
+Date: 2026-04-08
+
+### Decision
+**`NpcDialogModal`** renders its backdrop + panel with **`createPortal(..., document.body)`** in the browser (falls back to inline tree if **`document.body`** is missing, e.g. some tests).
+
+### Rationale
+**`FixedStageViewport`** applies **`transform: scale`** on **`.stage`**. Descendants with **`position: fixed`** then use that transformed element as their **containing block**, so **`left`/`top`** in **viewport** pixels from **`getBoundingClientRect()`** do not match layout—the panel’s **left edge** could sit on the visual **center** of the game viewport instead of the box being centered.
+
+### Consequences
+- **`DESIGN.md`** §11 frame-presentation bullet distinguishes **Paperdoll** (stays in **`stageModalLayer`**) vs **NPC dialog** (portaled).
+
+---
+
+## ADR-0159 — NPC dialog: +30px-down nudge scaled like upward offset
+Date: 2026-04-08
+
+### Decision
+After the existing **`100 / STAGE_CSS_HEIGHT`** upward shift, **`NpcDialogModal`** adds **`viewportHeight * (30 / STAGE_CSS_HEIGHT)`** to **`top`** (and the no-measure fallback uses **`+ 2.778vh`** alongside **`− 9.259vh`**).
+
+### Rationale
+Keeps the **~30 CSS px** move **resolution-aware**, matching the **100px** rule’s scaling.
+
+### Consequences
+**`DESIGN.md`** §7.5 documents both offsets.
