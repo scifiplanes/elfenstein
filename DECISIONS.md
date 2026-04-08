@@ -2733,3 +2733,64 @@ New PNGs in **`Content/`** were unused; wiring them matches the existing env-tex
 ### Consequences
 - Shrine interactions always transition to the “off” sprite after the first use (including when the log line is “The shrine is silent.”).
 - **`DESIGN.md`** §9 / §11 / §13.1 asset lists updated for the new paths.
+
+---
+
+## ADR-0176 — Headwear recipes, new hats, and procgen/POI drops
+Date: 2026-04-08
+
+### Decision
+- Add **`HerbCirclet`** and **`SporeCap`** item defs (`hat` tag, `head` slot); recipes: **`ClothScrap` + `Twine` → WoolCap** (weaving), **`HerbLeaf` + `Twine` → HerbCirclet** (weaving), **`Mushrooms` + `ClothScrap` → SporeCap** (foraging).
+- Extend **`CHEST_LOOT_DEF_IDS`** and **`CONTAINER_LOOT_DEF_IDS`** with all three ids; extend **`pickFloorItemDefFromTable`** with low-probability headwear nudges for **Passage**, **Communal**, and **Habitat** room functions; extend **`PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS`** accordingly.
+- Remove **`WoolCap`** from **`ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN`** now that it is covered by loot/spawn pipelines.
+
+### Rationale
+Head slot content was previously sample-only for **`WoolCap`** without a gameplay path; weaving/foraging recipes and dungeon drops make hats obtainable without debug spawn.
+
+### Consequences
+**`npm run audit:procgen-content`** must stay green; **`DESIGN.md`** §7.3 / §13.2 note headwear crafting and drops.
+
+---
+
+## ADR-0177 — Room-hazard floor decals in the 3D view
+Date: 2026-04-09
+
+### Decision
+Render **sparse deterministic** ground decals for procgen **room properties** **`Burning` / `Flooded` / `Infected`**: billboard sprites **`hazard_fire.png`**, **`hazard_water.png`**, **`hazard_poison.png`** from repo **`Content/`** (served as **`/content/*`**), only on **`floor`** tiles inside the matching **`GenRoom.rect`**, skipping cells with a **POI**, **NPC**, or **floor item**. Hash-based ~**40%** cell coverage; materials cached in **`WorldRenderer`**; tint follows the lantern/theme sprite color like floor items.
+
+### Rationale
+Compositor hazard telegraph alone does not show *where* the hazard room is in the dungeon; sparse floor art reinforces room identity without carpeting every tile or obscuring interactables.
+
+### Consequences
+- **Renderer-only** (no new **`GameState`** fields); rebuilds with **`floorGeomRevision`**.
+- **`DESIGN.md`** §11 documents the mapping and rules; implementation uses **`web/src/game/world/hazardDefs.ts`** and **`WorldRenderer.buildGeometry`**.
+
+---
+
+## ADR-0179 — Exit POI billboard at 2× scale
+Date: 2026-04-09
+
+### Decision
+**`WorldRenderer.syncPoiSpriteScales`**: **`PoiKind.Exit`** applies a **2×** multiplier to the shared POI billboard height (and width via aspect), and uses the same multiplier in the bottom-pivot **Y** placement so **`stairs_down.png`** stays grounded.
+
+### Rationale
+The exit staircase should read clearly as the primary progression landmark at a glance.
+
+### Consequences
+Only **`Exit`** differs; other POIs unchanged. No new **`GameState`** fields.
+
+---
+
+## ADR-0178 — POI billboards: bottom pivot, foot lift slider, brighter default boost
+Date: 2026-04-09
+
+### Decision
+- **`WorldRenderer`**: POI (and Well glow/sparkle) sprites set **`center`** to **`(0.5, 0)`** so the anchor is the **bottom** of the billboard; **Y** placement uses **`floorTop + poiFootLift − poiGroundY × height`** (height **0.55**), decoupled from **`npcFootLift`**.
+- **`GameState.render`**: add **`poiFootLift`** (clamped like other foot offsets); raise default **`poiSpriteBoost`** to **1.5**; F2 **POI sprite boost** slider max **3.0** (matches reducer).
+- **F2**: new slider **POI above ground** → **`poiFootLift`**.
+
+### Rationale
+Center-pivot POIs with **`npcFootLift`** were hard to tune independently from NPCs; a bottom pivot matches “sits on the floor” mentally. A dedicated lift avoids coupling; higher default boost improves POI visibility against the scene tint.
+
+### Consequences
+**`debug-settings.json`** may persist **`poiFootLift`**; old saves without it get **`clampRenderTuning`** defaults. **`DESIGN.md`** §9 documents bottom pivot + **`poiFootLift`**.

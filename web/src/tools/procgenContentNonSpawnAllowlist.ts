@@ -15,5 +15,4 @@ export const ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN: readonly ItemDefId[] = [
   'SwarmQueen',
   'SwarmBasket',
   'CapturedSwarm',
-  'WoolCap',
 ]

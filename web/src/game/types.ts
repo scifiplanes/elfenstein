@@ -291,6 +291,11 @@ export type RenderTuning = {
   poiGroundY_Chest: number
   /** Multiplies PoI sprite material brightness (1.0 = unchanged). */
   poiSpriteBoost: number
+  /**
+   * World-space Y offset for the POI ground contact point (sprite bottom pivot).
+   * Independent of `npcFootLift`; use F2 to nudge POIs vs the floor without moving NPCs.
+   */
+  poiFootLift: number
   npcSize_Wurglepup: number
   npcSizeRand_Wurglepup: number
   npcSize_Bobr: number
