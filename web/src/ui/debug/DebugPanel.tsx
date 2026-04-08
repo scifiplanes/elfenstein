@@ -1,6 +1,6 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState, ProcgenDebugOverlayMode } from '../../game/types'
+import type { GameState, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
 import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
@@ -37,6 +37,8 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const cursor = useCursor()
   const [dumpTick, setDumpTick] = useState(0)
   const [floorIndexDraft, setFloorIndexDraft] = useState<string>(String(state.floor.floorIndex))
+  const [spawnNpcKind, setSpawnNpcKind] = useState<NpcKind>('Skeleton')
+  const [spawnPoiKind, setSpawnPoiKind] = useState<PoiKind>('Chest')
 
   const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
 
@@ -441,6 +443,58 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                   </label>
                 )
               })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!q || 'spawn npc poi entity'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Spawn (1 cell ahead)</div>
+          <div className={styles.row}>
+            <div className={styles.label}>NPC</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnNpcKind}
+                onChange={(e) => setSpawnNpcKind(e.target.value as NpcKind)}
+              >
+                {(['Skeleton', 'Bobr', 'Wurglepup', 'Catoctopus'] satisfies NpcKind[]).map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnNpc', kind: spawnNpcKind })}
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>POI</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnPoiKind}
+                onChange={(e) => setSpawnPoiKind(e.target.value as PoiKind)}
+              >
+                {(['Well', 'Chest', 'Barrel', 'Crate', 'Bed', 'Shrine', 'CrackedWall', 'Exit'] satisfies PoiKind[]).map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnPoi', kind: spawnPoiKind })}
+              >
+                Spawn
+              </button>
             </div>
           </div>
         </div>

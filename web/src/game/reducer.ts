@@ -5,6 +5,8 @@ import type {
   EquipmentSlot,
   GameState,
   ItemId,
+  NpcKind,
+  PoiKind,
   ProcgenDebugOverlayMode,
   RenderTuning,
 } from './types'
@@ -67,6 +69,10 @@ export type Action =
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
   | { type: 'floor/descend' }
+  /** Debug: spawn an NPC of the given kind one cell in front of the player. */
+  | { type: 'debug/spawnNpc'; kind: NpcKind }
+  /** Debug: spawn a POI of the given kind one cell in front of the player. */
+  | { type: 'debug/spawnPoi'; kind: PoiKind }
   /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
   /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
@@ -213,6 +219,26 @@ export function reduce(state: GameState, action: Action): GameState {
       if (!poi || poi.kind !== 'Chest') return state
       const nextPois = state.floor.pois.map((p) => (p.id === action.poiId ? { ...p, opened: !p.opened } : p))
       return { ...state, floor: { ...state.floor, pois: nextPois } }
+    }
+    case 'debug/spawnNpc': {
+      const dv = dirVec(state.floor.playerDir)
+      const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const npc = {
+        id: `debug_npc_${state.nowMs}`,
+        kind: action.kind,
+        name: action.kind,
+        pos,
+        status: 'neutral' as const,
+        hp: 10,
+        language: 'DeepGnome' as const,
+      }
+      return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc] } }
+    }
+    case 'debug/spawnPoi': {
+      const dv = dirVec(state.floor.playerDir)
+      const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const poi = { id: `debug_poi_${state.nowMs}`, kind: action.kind, pos }
+      return { ...state, floor: { ...state.floor, pois: [...state.floor.pois, poi] } }
     }
     case 'floor/debugCycleRealizer': {
       const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
