@@ -2716,3 +2716,20 @@ Define **`PortraitPanel.module.css`** classes **`equipDragHit`** / **`equipHandD
 
 ### Consequences
 `DESIGN.md` portrait unequip bullet notes transparent hit chrome.
+
+---
+
+## ADR-0175 — Dungeon env tiles + Exit/Shrine POI art from Content
+Date: 2026-04-09
+
+### Decision
+- **`getDungeonEnvTextureSrcs`**: **`FloorType` `Dungeon`** uses **`/content/dungeon_floor.png`**, **`/content/dungon_wall.png`**, **`/content/dungon_ceiling.png`** (filenames match **`Content/`** as shipped, including the **`dungon_*`** spelling). **`Cave`** keeps **`cave_*`**; **`Ruins`** keeps **`ruins_*`**.
+- **`POI_SPRITE_SRC`**: **`Exit`** → **`stairs_down.png`**; **`Shrine`** → **`shrine_gnome.png`**. **`POI_OPENED_SPRITE_SRC.Shrine`** → **`shrine_gnome_off.png`**.
+- **`applyPoiUse` (Shrine)**: set **`opened: true`** on the shrine POI and bump **`floorGeomRevision`** so **`WorldRenderer`** rebuilds and shows the off-frame after the first interaction.
+
+### Rationale
+New PNGs in **`Content/`** were unused; wiring them matches the existing env-texture and POI billboard patterns without adding a duplicate asset pipeline step (Vite already exposes repo **`Content/`** at **`/content/*`**).
+
+### Consequences
+- Shrine interactions always transition to the “off” sprite after the first use (including when the log line is “The shrine is silent.”).
+- **`DESIGN.md`** §9 / §11 / §13.1 asset lists updated for the new paths.

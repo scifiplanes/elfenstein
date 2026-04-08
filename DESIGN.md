@@ -293,7 +293,7 @@ See `Dungeon_generation_plan_summary.md` for an expanded phased pipeline (missio
 Static interactables. POIs are **non-blocking** and do not trigger on movement; interact via **click** or by **dragging items onto them**.
 
 - **Placement invariant**: there is **at most one POI per grid cell**. If procgen produces multiple POIs for the same cell, the game resolves it deterministically (canonical IDs win, then kind priority) so runs remain stable and interactions remain unambiguous.
-- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest (closed)** uses **`chest_closed.png`**; **Chest (opened)** uses **`chest_open.png`**. **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** uses **`poiGroundY_Well`** and **Chest** uses **`poiGroundY_Chest`** in F2 (chest art sits near the texture bottom; placeholders still use **`npcGroundY_Wurglepup`**). POI billboard brightness can be tuned via `render.poiSpriteBoost` (F2) to match other sprites.
+- **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest**, **Barrel**, and **Crate** use closed/open PNG pairs (`chest_*`, `barrel_*`, `crate_*`). **Exit** uses **`stairs_down.png`**. **Shrine** uses **`shrine_gnome.png`** until the first interaction, then **`shrine_gnome_off.png`**. **Bed** and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** uses **`poiGroundY_Well`** and **Chest** uses **`poiGroundY_Chest`** in F2 (chest art sits near the texture bottom; placeholders still use **`npcGroundY_Wurglepup`**). POI billboard brightness can be tuned via `render.poiSpriteBoost` (F2) to match other sprites.
 
 Initial POIs:
 - **Well**: **checkpoint save point** (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); **checkpoint save still works when drained**. Checkpoints are reloadable from the **death screen** and the **title** screen.
@@ -314,7 +314,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 
 ## 11) Graphics & rendering spec
 - Three.js WebGL with `MeshLambertMaterial` on dungeon geometry (diffuse + emissive; no PBR metalness/roughness).
-- **Dungeon albedo**: floor, wall, and ceiling voxels use tiled PNGs served as **`/content/cave_floor.png`**, **`/content/cave_wall.png`**, and **`/content/cave_ceiling.png`** (copies under `web/public/content/` from `Content/`). Textures use **repeat wrapping** (~one repeat per 1×1 world-unit face).
+- **Dungeon albedo**: floor / wall / ceiling voxels use tiled PNGs from `Content/` (stable **`/content/…`** URLs; Vite also serves the repo **`Content/`** tree in dev and copies it into **`dist/content/`** on build). **`FloorType` `Dungeon`** uses **`dungeon_floor.png`**, **`dungon_wall.png`**, and **`dungon_ceiling.png`**. **`Cave`** uses **`cave_floor.png`**, **`cave_wall.png`**, and **`cave_ceiling.png`**. **`Ruins`** uses **`ruins_floor.png`**, **`ruins_wall.png`**, and **`ruins_ceiling.png`**. Textures use **repeat wrapping** (~one repeat per 1×1 world-unit face).
 - Anti-aliasing **off**; pixel ratio capped at **1.5×** (sharp edges, dither-friendly).
 - Lighting:
   - warm **PointLight** on camera (“lantern”)
@@ -361,7 +361,7 @@ The **canonical** art folder is `Content/`. For the web client, PNGs are **mirro
 
 Asset types:
 - Item PNG (transparent)
-- Tile texture (dungeon environment: `cave_floor.png`, `cave_wall.png`, `cave_ceiling.png` → `/content/…`)
+- Tile texture (dungeon environment: per-`FloorType` triples — `Dungeon`: `dungeon_floor.png` / `dungon_wall.png` / `dungon_ceiling.png`; `Cave`: `cave_*`; `Ruins`: `ruins_*` → `/content/…`)
 - NPC sprite PNG (transparent)
 - Portrait
 - Mouth PNG (transparent)

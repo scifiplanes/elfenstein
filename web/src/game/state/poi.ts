@@ -146,9 +146,11 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     let next = state
     for (const c of state.party.chars) next = removeStatus(next, c.id, 'Cursed')
     const removedAny = next !== state
+    const pois = next.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
     return pushActivityLog(
       {
         ...next,
+        floor: { ...next.floor, pois, floorGeomRevision: next.floor.floorGeomRevision + 1 },
         ui: {
           ...next.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: removedAny ? 0.26 : 0.18 },
