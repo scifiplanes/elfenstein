@@ -1,89 +1,116 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef } from 'react'
 import type { GameState } from '../../game/types'
 import { MusicPlayer } from './MusicPlayer'
-import { ALL_MUSIC_TRACKS, type MusicSet } from './musicTracks'
+import { SfxFilePlayer } from './SfxFilePlayer'
+import { ALL_MUSIC_TRACKS, BG_SFX_TRACKS, PROXIMITY_OVERLAYS } from './musicTracks'
+import { selectBgTrack, selectOverlays } from './musicRules'
 
-/** Crossfade duration when the active set changes (e.g. entering Bobr range). */
-const SET_CROSSFADE_SEC = 2.5
-/** Crossfade duration when rotating to the next variation within the same set. */
-const VARIATION_CROSSFADE_SEC = 1.5
+/** Crossfade duration when the floor type changes and a new bg loop starts. */
+const BG_XFADE_SEC = 2.5
+/**
+ * Smoothing time constant (seconds) for overlay volume changes.
+ * `setTargetAtTime` reaches ~95% of the target after 3× this value,
+ * so 0.6 → ~1.8s to fully fade in/out across a step change.
+ */
+const OVERLAY_VOL_TAU = 0.6
+/** Random sfx plays every [MIN, MAX] seconds. */
+const BG_SFX_MIN_SEC = 20
+const BG_SFX_MAX_SEC = 60
 
-function randInt(min: number, max: number) {
-  return min + Math.floor(Math.random() * (max - min + 1))
-}
+export function MusicLayer(props: { state: GameState }) {
+  const { state } = props
 
-export function MusicLayer(props: { state: GameState; musicSet: MusicSet }) {
-  const { state, musicSet } = props
-  const player = useMemo(() => new MusicPlayer(), [])
+  const bgPlayer  = useMemo(() => new MusicPlayer(), [])
+  const sfxPlayer = useMemo(() => new SfxFilePlayer(), [])
 
-  const activeSetRef  = useRef<MusicSet | null>(null)
-  const desiredSetRef = useRef(musicSet)
-  const rotationTimer = useRef(0)
+  /**
+   * One MusicPlayer per unique overlay track, created once on mount.
+   * Keyed by track URL so lookups in the per-frame effect are O(1).
+   */
+  const overlayPlayers = useMemo(() => {
+    const map = new Map<string, MusicPlayer>()
+    for (const overlay of PROXIMITY_OVERLAYS) {
+      if (!map.has(overlay.track)) map.set(overlay.track, new MusicPlayer())
+    }
+    return map
+  }, [])
 
-  // Ref so the setTimeout callback always calls the latest version without a stale closure.
-  const startVariationRef = useRef<(set: MusicSet, idx: number, xfadeSec: number) => void>(
-    () => undefined,
-  )
+  /** Track URL that is currently playing (or being crossfaded to). */
+  const activeBgTrackRef = useRef<string | null>(null)
+  const sfxTimerRef      = useRef<number>(0)
+  /** Latest masterMusic value — read inside the sfx setTimeout callback. */
+  const masterMusicRef   = useRef(state.audio.masterMusic)
 
-  const startVariation = useCallback(
-    (set: MusicSet, idx: number, xfadeSec: number) => {
-      window.clearTimeout(rotationTimer.current)
-
-      const track = set.tracks[idx]
-      player.crossfadeTo(track, xfadeSec)
-      activeSetRef.current = set
-
-      const duration = player.getDuration(track)
-      if (!duration) return
-
-      const plays = randInt(set.playsMin, set.playsMax)
-      rotationTimer.current = window.setTimeout(() => {
-        // Guard: if the active set changed while this timer was pending, bail out.
-        if (activeSetRef.current?.id !== set.id) return
-        const next = (idx + 1) % set.tracks.length
-        startVariationRef.current(set, next, VARIATION_CROSSFADE_SEC)
-      }, duration * plays * 1000)
-    },
-    [player],
-  )
-
-  // Keep ref in sync after every render so the timer callback always has the latest function.
-  useLayoutEffect(() => {
-    startVariationRef.current = startVariation
-  })
-
-  // Mount: preload all tracks, attach gesture listeners for autoplay policy.
+  // ── Mount / unmount ─────────────────────────────────────────────────────────
   useEffect(() => {
-    const resume = () => player.ensure()
+    const resume = () => {
+      bgPlayer.ensure()
+      for (const p of overlayPlayers.values()) p.ensure()
+    }
     window.addEventListener('pointerdown', resume)
     window.addEventListener('keydown', resume)
 
-    void player.preload(ALL_MUSIC_TRACKS).then(() => {
-      const set = desiredSetRef.current
-      startVariation(set, 0, 0)
+    // Each MusicPlayer has its own buffer map, so each must preload its own tracks.
+    const overlayPreloads = Array.from(overlayPlayers.entries()).map(([track, player]) =>
+      player.preload([track]),
+    )
+    void Promise.all([bgPlayer.preload(ALL_MUSIC_TRACKS), ...overlayPreloads]).then(() => {
+      for (const [track, player] of overlayPlayers) {
+        player.crossfadeTo(track, 0)
+        player.setVolume(0)
+      }
+      const track = activeBgTrackRef.current
+      if (track) bgPlayer.crossfadeTo(track, 0)
     })
 
+    void sfxPlayer.load(BG_SFX_TRACKS)
+
+    const scheduleSfx = () => {
+      const delaySec = BG_SFX_MIN_SEC + Math.random() * (BG_SFX_MAX_SEC - BG_SFX_MIN_SEC)
+      sfxTimerRef.current = window.setTimeout(() => {
+        sfxPlayer.play(masterMusicRef.current)
+        scheduleSfx()
+      }, delaySec * 1000)
+    }
+    scheduleSfx()
+
     return () => {
-      player.stop()
-      window.clearTimeout(rotationTimer.current)
+      bgPlayer.stop()
+      for (const p of overlayPlayers.values()) p.stop()
+      window.clearTimeout(sfxTimerRef.current)
       window.removeEventListener('pointerdown', resume)
       window.removeEventListener('keydown', resume)
     }
-  }, [player, startVariation])
+  }, [bgPlayer, overlayPlayers, sfxPlayer])
 
-  // Volume.
-  useEffect(() => {
-    player.setVolume(state.audio.masterMusic)
-  }, [player, state.audio.masterMusic])
+  // ── Keep masterMusicRef in sync before effects run (avoids stale closure in sfx timer). ──
+  useLayoutEffect(() => {
+    masterMusicRef.current = state.audio.masterMusic
+  })
 
-  // Set changes: reset rotation to the first track of the new set.
-  // No-ops when the same set object is passed (stable reference from MUSIC_SETS).
+  // ── Master volume ────────────────────────────────────────────────────────────
   useEffect(() => {
-    desiredSetRef.current = musicSet
-    if (activeSetRef.current?.id !== musicSet.id) {
-      startVariation(musicSet, 0, SET_CROSSFADE_SEC)
+    bgPlayer.setVolume(state.audio.masterMusic)
+  }, [bgPlayer, state.audio.masterMusic])
+
+  // ── Bg track selection (floor type or debug override) ────────────────────────
+  const desiredBgTrack = state.ui.debugBgTrack ?? selectBgTrack(state)
+  useEffect(() => {
+    if (activeBgTrackRef.current !== desiredBgTrack) {
+      const isFirst = activeBgTrackRef.current === null
+      activeBgTrackRef.current = desiredBgTrack
+      bgPlayer.crossfadeTo(desiredBgTrack, isFirst ? 0 : BG_XFADE_SEC)
     }
-  }, [musicSet, startVariation])
+  })
+
+  // ── Overlay volumes (distance-based, updated every render) ───────────────────
+  const overlays = selectOverlays(state)
+  const masterMusic = state.audio.masterMusic
+  useEffect(() => {
+    for (const { track, volume } of overlays) {
+      overlayPlayers.get(track)?.setVolume(volume * masterMusic, OVERLAY_VOL_TAU)
+    }
+  })
 
   return null
 }

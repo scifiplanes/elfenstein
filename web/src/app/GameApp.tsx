@@ -7,7 +7,6 @@ import { ContentDB } from '../game/content/contentDb'
 import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
-import { selectMusicSet } from '../ui/audio/musicRules'
 import { loadDebugSettingsFromLocal, loadDebugSettingsFromProject, saveDebugSettingsToLocal } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
@@ -99,7 +98,7 @@ export function GameApp() {
       <Fragment>
         <FixedStageViewport>
           <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
-          <MusicLayer state={state} musicSet={selectMusicSet(state)} />
+          <MusicLayer state={state} />
           <SpatialAudioLayer state={state} />
           <FeedbackLayer state={state} dispatch={dispatch} />
           <DebugPanel state={state} dispatch={dispatch} />
