@@ -52,10 +52,55 @@ const ITEM_BY_ROOM_FUNCTION: Partial<
  * Add weights per floor type to bias spawns without changing other phases’ RNG streams.
  */
 export const NPC_DEFAULT_WEIGHTS_BY_FLOOR: Record<FloorType, Array<{ id: NpcKind; w: number }>> = {
-  Dungeon: [{ id: 'Wurglepup', w: 1 }],
-  Cave: [{ id: 'Wurglepup', w: 1 }],
-  Ruins: [{ id: 'Wurglepup', w: 1 }],
+  Dungeon: [
+    { id: 'Wurglepup', w: 5 },
+    { id: 'Bobr', w: 2 },
+    { id: 'Catoctopus', w: 2 },
+    { id: 'Skeleton', w: 1 },
+  ],
+  Cave: [
+    { id: 'Wurglepup', w: 4 },
+    { id: 'Bobr', w: 3 },
+    { id: 'Catoctopus', w: 2 },
+    { id: 'Skeleton', w: 1 },
+  ],
+  Ruins: [
+    { id: 'Wurglepup', w: 3 },
+    { id: 'Skeleton', w: 3 },
+    { id: 'Catoctopus', w: 2 },
+    { id: 'Bobr', w: 2 },
+  ],
 }
+
+/**
+ * Every `ItemDefId` `pickFloorItemDefFromTable` may return (for audits / coverage checks).
+ * Update when changing spawn logic.
+ */
+export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
+  'AntitoxinVial',
+  'Ash',
+  'BitterHerb',
+  'Chisel',
+  'Club',
+  'ClothScrap',
+  'Foodroot',
+  'GlassVial',
+  'HerbLeaf',
+  'HerbPoultice',
+  'Hive',
+  'MortarMeal',
+  'Mushrooms',
+  'Sling',
+  'Stone',
+  'StoneShard',
+  'Stick',
+  'Sulfur',
+  'Twine',
+  'WaterbagEmpty',
+]
+
+/** NPC kinds the default table + overrides can produce (Swarm via Infested rules only). */
+export const PROCgen_ALL_NPC_KINDS: NpcKind[] = ['Wurglepup', 'Bobr', 'Skeleton', 'Catoctopus', 'Swarm']
 
 /**
  * Deterministic NPC kind from floor type, room tags, and district (same RNG sequence as prior `population.ts`).
@@ -126,5 +171,22 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   if (ctx.room.district === 'NorthWing' && defId === 'Stick' && rng.next() < 0.22) defId = 'Stone'
   if (ctx.room.district === 'SouthWing' && defId === 'Stone' && rng.next() < 0.18) defId = 'Stick'
   if (ctx.isOnEntranceExitShortestPath && rng.next() < 0.22) defId = rng.next() < 0.5 ? 'Stick' : 'Ash'
+
+  // Extra material variety (same RNG stream as before this block; order affects determinism).
+  if (func === 'Passage' && rng.next() < 0.16) defId = rng.next() < 0.55 ? 'Twine' : 'ClothScrap'
+  if (func === 'Workshop') {
+    const rw = rng.next()
+    if (rw < 0.08) defId = 'Chisel'
+    else if (rw < 0.15) defId = 'StoneShard'
+    else if (rw < 0.22) defId = 'Sling'
+  }
+  if (func === 'Storage' && rng.next() < 0.09) defId = 'Club'
+  if (func === 'Communal' && rng.next() < 0.07) defId = 'MortarMeal'
+  if (fp.includes('Cursed') && ctx.room.district === 'Ruin' && rng.next() < 0.12) {
+    defId = rng.next() < 0.5 ? 'BitterHerb' : 'GlassVial'
+  }
+  if (fp.includes('Infested') && func === 'Workshop' && rng.next() < 0.12) defId = 'Hive'
+  if (ctx.room.district === 'WestWing' && rng.next() < 0.18) defId = 'HerbLeaf'
+
   return defId
 }

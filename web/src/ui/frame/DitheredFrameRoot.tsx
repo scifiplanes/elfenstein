@@ -296,7 +296,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     if (world) {
       const tWorld0 = performance.now()
       world.syncViewportRect(gameCssW, gameCssH)
-      world.renderFrame(latestStateRef.current)
+      world.renderFrame(latestStateRef.current, latestContentRef.current)
       const tWorld1 = performance.now()
       ;(window as any).__elfensteinPerf = {
         ...(window as any).__elfensteinPerf,

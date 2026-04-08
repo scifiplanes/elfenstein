@@ -1,6 +1,7 @@
 import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
-import type { GameState, NpcKind, PoiKind } from '../game/types'
+import type { ContentDB } from '../game/content/contentDb'
+import type { GameState, ItemId, NpcKind, PoiKind } from '../game/types'
 import type { DistrictTag, GenRoom } from '../procgen/types'
 import type { FloorType } from '../procgen/types'
 import { getDungeonEnvTextureSrcs } from './dungeonEnvTextures'
@@ -230,8 +231,8 @@ export class WorldRenderer {
     this.syncSize(w, h)
   }
 
-  renderFrame(state: GameState) {
-    this.syncScene(state)
+  renderFrame(state: GameState, content: ContentDB) {
+    this.syncScene(state, content)
     this.syncTuning(state)
     this.renderer.setRenderTarget(this.rt)
     this.renderer.render(this.scene, this.camera)
@@ -368,12 +369,15 @@ export class WorldRenderer {
     this.rt.texture.colorSpace = THREE.SRGBColorSpace
   }
 
-  private syncScene(state: GameState) {
+  private syncScene(state: GameState, content: ContentDB) {
     const rev = state.floor.floorGeomRevision ?? 0
     if (rev !== this.lastFloorGeomRevision) {
       this.lastFloorGeomRevision = rev
-      if (this.geoGroup) this.scene.remove(this.geoGroup)
-      this.geoGroup = this.buildGeometry(state)
+      if (this.geoGroup) {
+        disposeGeoGroupResources(this.geoGroup)
+        this.scene.remove(this.geoGroup)
+      }
+      this.geoGroup = this.buildGeometry(state, content)
       this.scene.add(this.geoGroup)
     }
 
@@ -486,7 +490,7 @@ export class WorldRenderer {
     return bundle
   }
 
-  private buildGeometry(state: GameState) {
+  private buildGeometry(state: GameState, content: ContentDB) {
     const g = new THREE.Group()
     this.pickables = []
     this.npcSprites = []
@@ -567,8 +571,6 @@ export class WorldRenderer {
       }
     }
 
-    const itemMat = makeBillboardMaterial('◻', '#b6ff8b')
-
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
@@ -614,13 +616,32 @@ export class WorldRenderer {
     state.floor.itemsOnFloor.forEach((it) => {
       const x = it.pos.x - w / 2 + (it.jitter?.x ?? 0)
       const z = it.pos.y - h / 2 + (it.jitter?.z ?? 0)
-      const s = new THREE.Sprite(itemMat)
+      const icon = resolveFloorItemIcon(state, content, it.id)
+      const mat =
+        icon.kind === 'emoji'
+          ? makeItemIconBillboardMaterial(icon.glyph)
+          : (() => {
+              const tex = this.textureLoader.load(icon.path)
+              tex.colorSpace = THREE.SRGBColorSpace
+              tex.minFilter = THREE.LinearFilter
+              tex.magFilter = THREE.LinearFilter
+              tex.generateMipmaps = false
+              const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+              m.color.setRGB(1, 1, 1)
+              return m
+            })()
+      const s = new THREE.Sprite(mat)
       s.position.set(x, 0.18, z)
       s.scale.set(0.5, 0.5, 1)
-      s.userData = { kind: 'floorItem', id: it.id }
+      s.userData = { kind: 'floorItem', id: it.id, disposableItemIcon: true }
       g.add(s)
       this.pickables.push(s)
     })
+
+    g.userData = {
+      disposableBoxGeoms: [floorGeo, wallGeo, ceilGeo],
+      disposableMeshMats: [this.floorMat!, this.wallMat!, this.ceilMat!],
+    }
 
     return g
   }
@@ -1202,7 +1223,49 @@ export class WorldRenderer {
 
 }
 
-function makeBillboardMaterial(glyph: string, color: string) {
+/** Match `index.css` `--sans` + emoji fallbacks (inventory uses emoji at ~55px; canvas uses fixed px size). */
+const ITEM_ICON_CANVAS_FONT =
+  '96px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
+
+function disposeGeoGroupResources(group: THREE.Object3D) {
+  const ud = group.userData as {
+    disposableBoxGeoms?: THREE.BufferGeometry[]
+    disposableMeshMats?: THREE.Material[]
+  }
+  if (ud.disposableBoxGeoms) {
+    for (const geom of ud.disposableBoxGeoms) geom.dispose()
+  }
+  if (ud.disposableMeshMats) {
+    for (const m of ud.disposableMeshMats) m.dispose()
+  }
+  group.traverse((obj) => {
+    const u = obj.userData as { disposableItemIcon?: boolean }
+    if (!u.disposableItemIcon) return
+    const spr = obj as THREE.Sprite
+    const mat = spr.material as THREE.SpriteMaterial
+    const map = mat.map
+    if (map instanceof THREE.CanvasTexture) map.dispose()
+    mat.dispose()
+  })
+}
+
+function resolveFloorItemIcon(
+  state: GameState,
+  content: ContentDB,
+  floorItemId: string,
+): { kind: 'emoji'; glyph: string } | { kind: 'sprite'; path: string } {
+  const item = state.party.items[floorItemId as ItemId]
+  if (!item) return { kind: 'emoji', glyph: '□' }
+  try {
+    const def = content.item(item.defId)
+    if (def.icon.kind === 'emoji') return { kind: 'emoji', glyph: def.icon.value }
+    return { kind: 'sprite', path: def.icon.path }
+  } catch {
+    return { kind: 'emoji', glyph: '□' }
+  }
+}
+
+function makeItemIconBillboardMaterial(glyph: string) {
   const canvas = document.createElement('canvas')
   canvas.width = 128
   canvas.height = 128
@@ -1212,10 +1275,10 @@ function makeBillboardMaterial(glyph: string, color: string) {
   ctx.clearRect(0, 0, canvas.width, canvas.height)
   ctx.textAlign = 'center'
   ctx.textBaseline = 'middle'
-  ctx.font = '96px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace'
+  ctx.font = ITEM_ICON_CANVAS_FONT
   ctx.fillStyle = 'rgba(0,0,0,0.55)'
   ctx.fillText(glyph, 64 + 4, 64 + 6)
-  ctx.fillStyle = color
+  ctx.fillStyle = 'rgba(255,255,255,0.92)'
   ctx.fillText(glyph, 64, 64)
 
   const tex = new THREE.CanvasTexture(canvas)
@@ -1224,7 +1287,6 @@ function makeBillboardMaterial(glyph: string, color: string) {
   tex.magFilter = THREE.LinearFilter
   tex.generateMipmaps = false
 
-  const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-  return mat
+  return new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
 }
 

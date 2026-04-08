@@ -340,3 +340,27 @@ export function spawnNpcsAndItems(args: {
 
   return { npcs, floorItems }
 }
+
+/** Item defs referenced in neutral NPC `quest.wants` / `quest.hated` (procgen population). */
+export const PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS: readonly ItemDefId[] = [
+  'Mushrooms',
+  'Foodroot',
+  'Ash',
+  'Sulfur',
+  'Stick',
+  'Stone',
+]
+export const PROCgen_NPC_QUEST_HATED_ITEM_DEF_IDS: readonly ItemDefId[] = ['Stone', 'Stick', 'Mushrooms', 'Foodroot']
+
+/** POI ids always emitted by `placePois`. */
+export const PROCgen_POI_IDS_ALWAYS = [
+  'poi_well',
+  'poi_bed',
+  'poi_chest',
+  'poi_barrel',
+  'poi_crate',
+  'poi_exit',
+] as const
+
+/** POI ids only present when placement heuristics succeed. */
+export const PROCgen_POI_IDS_OPTIONAL = ['poi_shrine', 'poi_crackedWall'] as const
