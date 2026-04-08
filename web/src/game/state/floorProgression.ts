@@ -4,6 +4,7 @@ import type { FloorType } from '../../procgen/types'
 import { normalizeFloorGenDifficulty } from '../../procgen/types'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
 import { randomFloorSeed } from './randomSeed'
+import { pushActivityLog } from './activityLog'
 
 function cycleFloorType(cur: FloorType): FloorType {
   const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
@@ -34,7 +35,7 @@ export function descendToNextFloor(state: GameState): GameState {
   const playerDir = 0 as const
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
 
-  return {
+  const next: GameState = {
     ...state,
     floor: {
       ...state.floor,
@@ -52,14 +53,8 @@ export function descendToNextFloor(state: GameState): GameState {
     },
     party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
     view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
-    ui: {
-      ...state.ui,
-      toast: {
-        id: `t_${state.nowMs}`,
-        text: `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}).`,
-        untilMs: state.nowMs + 1500,
-      },
-    },
   }
+
+  return pushActivityLog(next, `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}).`)
 }
 

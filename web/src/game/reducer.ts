@@ -228,14 +228,7 @@ export function reduce(state: GameState, action: Action): GameState {
       const raw = Number(action.floorIndex)
       const nextFloorIndex = Math.max(0, Math.min(9999, Math.floor(Number.isFinite(raw) ? raw : state.floor.floorIndex)))
       if (nextFloorIndex === state.floor.floorIndex) return state
-      return {
-        ...state,
-        floor: { ...state.floor, floorIndex: nextFloorIndex },
-        ui: {
-          ...state.ui,
-          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor index: ${nextFloorIndex}.`, untilMs: state.nowMs + 1400 },
-        },
-      }
+      return pushActivityLog({ ...state, floor: { ...state.floor, floorIndex: nextFloorIndex } }, `Next regen uses floor index: ${nextFloorIndex}.`)
     }
     case 'floor/debugToggleFloorProperty': {
       const order: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
@@ -245,14 +238,7 @@ export function reduce(state: GameState, action: Action): GameState {
         .filter((p, i, a) => a.indexOf(p) === i)
         .sort((a, b) => order.indexOf(a) - order.indexOf(b))
       const label = next.length ? next.join(', ') : '—'
-      return {
-        ...state,
-        floor: { ...state.floor, floorProperties: next },
-        ui: {
-          ...state.ui,
-          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor props: ${label}.`, untilMs: state.nowMs + 1400 },
-        },
-      }
+      return pushActivityLog({ ...state, floor: { ...state.floor, floorProperties: next } }, `Next regen uses floor props: ${label}.`)
     }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
@@ -288,13 +274,9 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       return pushActivityLog(next, `Regenerated (seed ${nextSeed}).`)
     }
-<<<<<<< HEAD
-
-=======
     case 'floor/descend': {
       return descendToNextFloor(state)
     }
->>>>>>> 93911bb (Add floor progression, Exit POI, and theme tuning)
     case 'player/turn': {
       if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
