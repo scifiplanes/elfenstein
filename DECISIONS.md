@@ -1912,3 +1912,31 @@ Same **Google Fonts** / **`display=swap`** / optional synthetic **700** behavior
 
 ---
 
+## ADR-0126 — Minimap: radius-3 pixel circle
+Date: 2026-04-08
+
+### Decision
+Replace the **10×10** edge-clamped minimap with a **local circular radar**: only tiles with **dx² + dy² ≤ 3²** relative to the player (integer grid), on a **7×7** carrier grid with **out-of-disk** slots hidden; **circular clip + bezel** on **`MinimapPanel`**, **square** cells and **2 px** gaps for a **pixelated** read. **Out-of-bounds** floor coordinates inside the disk use **`void`** styling.
+
+### Rationale
+Player request: see **at most ~3 grid units** around the character in a **round, pixelated** minimap rather than a large square window.
+
+### Consequences
+**POIs** off-disk no longer appear until the player moves closer. **`DESIGN.md`** §6.4 and **`MinimapPanel` / `.module.css`** document the new layout.
+
+---
+
+## ADR-0127 — Minimap: omit off-map cells (no void placeholders)
+Date: 2026-04-08
+
+### Decision
+**Do not render** minimap tiles for coordinates **outside the floor `w × h` bounds**, and **do not** allocate **placeholder** squares for the Euclidean disk mask or for OOB cells. Use **absolute positioning** on a fixed **7×7**-sized canvas so drawn tiles stay grid-aligned while empty disk/outside-map areas show only the **circular bezel** background.
+
+### Rationale
+Avoid “black” **void** / phantom grid squares; show **only** cells that exist on the current map.
+
+### Consequences
+Near floor edges the minimap looks **gapped** or asymmetric inside the circle. **`DESIGN.md`** §6.4 updated accordingly.
+
+---
+

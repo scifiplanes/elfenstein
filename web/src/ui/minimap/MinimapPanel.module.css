@@ -7,19 +7,34 @@
   min-height: 0;
 }
 
-.map {
+.circleFrame {
+  border-radius: 50%;
+  overflow: hidden;
   display: grid;
-  gap: 3px;
-  /* Overridden inline from `MinimapPanel` for grid track sizing */
-  --minimap-cell: 14px;
+  place-items: center;
+  padding: 5px;
+  background: transparent;
+  box-shadow: none;
+}
+
+.map {
+  position: relative;
+  flex-shrink: 0;
+  /* Cell size overridden inline from `MinimapPanel` */
+  --minimap-cell: 22.5px;
+  --minimap-gap: 2.5px;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
 }
 
 .cell {
+  position: absolute;
   width: var(--minimap-cell);
   height: var(--minimap-cell);
-  border-radius: 4px;
-  /* Wall / void: dark but not as harsh as peak contrast */
+  border-radius: 0;
+  /* Wall: dark but not as harsh as peak contrast */
   background: rgb(36, 40, 52);
+  box-sizing: border-box;
 }
 
 .cell[data-kind='floor'] {
@@ -27,7 +42,6 @@
 }
 
 .cell[data-kind='player'] {
-  position: relative;
   background: rgb(244, 212, 118);
 }
 
@@ -38,9 +52,9 @@
   top: 50%;
   width: 0;
   height: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-bottom: 8px solid rgb(42, 32, 20);
+  border-left: 6.25px solid transparent;
+  border-right: 6.25px solid transparent;
+  border-bottom: 10px solid rgb(42, 32, 20);
   transform: translate(-50%, -55%) rotate(0deg);
   transform-origin: center;
   z-index: 1;
@@ -74,4 +88,3 @@
 .cell[data-kind='lockedDoor'] {
   background: rgb(178, 62, 52);
 }
-
