@@ -23,6 +23,7 @@
 .spriteStack {
   position: absolute;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
 }
 
@@ -92,6 +93,7 @@
 .layer {
   position: absolute;
   inset: 0;
+  z-index: 0;
   display: grid;
   place-items: center;
   font-size: 44px;
@@ -121,6 +123,152 @@
   height: 28%;
 }
 
+/* Equipped item icons (above portrait art, below drop targets). Aligned to hat/hands drop bands. */
+.equipHat,
+.equipHandsBand {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+
+/* Drag-from-portrait: re-enable hits on the band; parent keeps pointer-events none for non-drag areas. */
+.equipHatDraggable,
+.equipHandsBandDraggable {
+  pointer-events: auto;
+}
+
+/* Invisible chrome so PNG/emoji icons keep alpha; native <button> defaults would paint an opaque plate. */
+.equipDragHit,
+.equipHandDragHit {
+  appearance: none;
+  -webkit-appearance: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  cursor: grab;
+  display: flex;
+  align-items: center;
+  max-width: 100%;
+}
+
+.equipDragHit:active,
+.equipHandDragHit:active {
+  cursor: grabbing;
+}
+
+/* Same geometry as `.hatZone`: top strip of the portrait. */
+.equipHat {
+  top: 0;
+  left: 8%;
+  width: 84%;
+  height: 16%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* +300% area-equivalent linear scale: each clamp term ×4 vs first-pass icons. */
+.equipHatEmoji {
+  font-size: clamp(88px, 22vmin, 160px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75));
+}
+
+.equipHatImg {
+  display: block;
+  max-height: clamp(96px, 24vmin, 176px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75));
+}
+
+/* Same geometry as `.handsZone`: bottom strip (82%–100% of portrait height). */
+.equipHandsBand {
+  top: 82%;
+  left: 8%;
+  width: 84%;
+  height: 18%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 2px 3px;
+}
+
+.equipHandSlotLeft,
+.equipHandSlotRight {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.equipHandSlotLeft {
+  justify-content: flex-start;
+}
+
+.equipHandSlotRight {
+  justify-content: flex-end;
+}
+
+.equipHandEmoji {
+  font-size: clamp(72px, 18vmin, 136px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.equipHandImg {
+  display: block;
+  max-height: clamp(80px, 20vmin, 144px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+/* 2H bottom-right (×4 vs first pass). */
+.equipHandEmojiTwoHand {
+  font-size: clamp(80px, 20vmin, 152px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.equipHandImgTwoHand {
+  display: block;
+  max-height: clamp(88px, 22vmin, 160px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.hatZone,
+.handsZone {
+  position: absolute;
+  left: 8%;
+  width: 84%;
+  border-radius: 10px;
+  border: none;
+  background: transparent;
+  z-index: 6;
+  pointer-events: auto;
+}
+
+/* Top band: hat equipment drop target (above eyes). */
+.hatZone {
+  top: 0;
+  height: 16%;
+}
+
+/* Bottom band: hand equipment (below mouth; stats overlay is pointer-events: none). */
+.handsZone {
+  top: 82%;
+  height: 18%;
+}
+
 .hint {
   position: absolute;
   left: 10px;
@@ -131,11 +279,13 @@
   display: none;
 }
 
+/* Bottom strip, painted in front of sprites + equipment (`z-index`); `pointer-events: none` keeps drops/hit targets usable. */
 .statsOverlay {
   position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
+  z-index: 7;
   transform: translateY(10px);
   padding: 6px 70px 20px;
   font-family: var(--mono);

@@ -147,7 +147,11 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
           }
 
           if (hoverTarget?.kind === 'portrait') {
-            return hoverTarget.target === 'eyes' ? { icon: '👁', label: 'Inspect' } : def.feed ? { icon: '👄', label: 'Feed' } : { icon: '👄', label: 'Offer' }
+            if (hoverTarget.target === 'eyes') return { icon: '👁', label: 'Inspect' }
+            if (hoverTarget.target === 'mouth') return def.feed ? { icon: '👄', label: 'Feed' } : { icon: '👄', label: 'Offer' }
+            if (hoverTarget.target === 'hat') return { icon: '🎩', label: 'Equip hat' }
+            if (hoverTarget.target === 'hands') return { icon: '🤲', label: 'Equip hands' }
+            return { icon: '👁', label: 'Inspect' }
           }
 
           return null
@@ -232,8 +236,8 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
           <div
             className={styles.affordance}
             style={{
-              left: hoverRect.right,
-              top: (hoverRect.top + hoverRect.bottom) / 2,
+              left: (hoverRect.left + hoverRect.right) / 2,
+              top: hoverRect.top,
             }}
           >
             <span aria-hidden="true">{(contextualAffordance ?? affordance)!.icon}</span>

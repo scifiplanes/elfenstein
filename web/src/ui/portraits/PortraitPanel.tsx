@@ -1,8 +1,8 @@
 import type { Dispatch } from 'react'
 import type React from 'react'
-import type { ContentDB } from '../../game/content/contentDb'
+import type { ContentDB, ItemDef } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
-import type { GameState } from '../../game/types'
+import type { EquipmentSlot, GameState } from '../../game/types'
 import { useEffect, useState } from 'react'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
@@ -77,6 +77,14 @@ const SPECIES_FALLBACK_FACE: Record<string, string> = {
   Afonso: '🧙',
 }
 
+function EquipIcon(props: { def: ItemDef; emojiClass: string; imgClass: string }) {
+  const { def, emojiClass, imgClass } = props
+  if (def.icon.kind === 'emoji') {
+    return <span className={emojiClass}>{def.icon.value}</span>
+  }
+  return <img className={imgClass} src={def.icon.path} alt="" draggable={false} />
+}
+
 export function PortraitPanel(props: {
   state: GameState
   dispatch: Dispatch<Action>
@@ -84,7 +92,7 @@ export function PortraitPanel(props: {
   characterId: string
   captureForPostprocess?: boolean
 }) {
-  const { state, dispatch, characterId, captureForPostprocess = false } = props
+  const { state, dispatch, content, characterId, captureForPostprocess = false } = props
   const cursor = useCursor()
   const nowMs = performance.now()
   const c = state.party.chars.find((x) => x.id === characterId) ?? null
@@ -315,6 +323,23 @@ export function PortraitPanel(props: {
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
+  const headItemId = c.equipment.head
+  const handLeftId = c.equipment.handLeft
+  const handRightId = c.equipment.handRight
+  const headItem = headItemId ? state.party.items[headItemId] : null
+  const leftHandItem = handLeftId ? state.party.items[handLeftId] : null
+  const rightHandItem = handRightId ? state.party.items[handRightId] : null
+  const headDef = headItem ? content.item(headItem.defId) : null
+  const leftHandDef = leftHandItem ? content.item(leftHandItem.defId) : null
+  const rightHandDef = rightHandItem ? content.item(rightHandItem.defId) : null
+  const twoHandHeld =
+    Boolean(handLeftId && handRightId && handLeftId === handRightId && leftHandDef)
+
+  const showEquipHandLeft = !twoHandHeld && !!leftHandDef
+  const showEquipHandRightTwoHand = twoHandHeld && !!leftHandDef
+  const showEquipHandRightOneHand = !twoHandHeld && !!rightHandDef
+  const showEquipHandsBand = showEquipHandLeft || showEquipHandRightTwoHand || showEquipHandRightOneHand
+
   const pulse = state.ui.portraitIdlePulse
   const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > nowMs
   const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
@@ -324,6 +349,16 @@ export function PortraitPanel(props: {
   const showIdleForEyes = idleFlash || pulseIdle || pressIdle
   const showIdleSprite = captureForPostprocess ? false : showIdleForEyes
   const idleHideEyes = showIdleForEyes && !showEyesInspect
+
+  const beginPortraitEquipDrag = (slot: EquipmentSlot, itemId: string, e: React.PointerEvent<HTMLButtonElement>) => {
+    cursor.beginPointerDown(
+      {
+        itemId,
+        source: { kind: 'equipmentSlot', characterId, slot, itemId, fromPortrait: true },
+      },
+      e,
+    )
+  }
 
   return (
     <div
@@ -410,12 +445,78 @@ export function PortraitPanel(props: {
           </div>
         )}
 
+        {headDef && headItem ? (
+          <div
+            className={`${styles.equipHat} ${styles.equipHatDraggable}`}
+            data-drop-kind="portrait"
+            data-drop-character-id={characterId}
+            data-drop-portrait-target="hat"
+            aria-hidden="true"
+          >
+            <button
+              type="button"
+              className={styles.equipDragHit}
+              onPointerDown={(e) => beginPortraitEquipDrag('head', headItem.id, e)}
+              aria-label={`Equipped hat: ${headDef.name}`}
+            >
+              <EquipIcon def={headDef} emojiClass={styles.equipHatEmoji} imgClass={styles.equipHatImg} />
+            </button>
+          </div>
+        ) : null}
+
+        {showEquipHandsBand ? (
+          <div
+            className={`${styles.equipHandsBand} ${styles.equipHandsBandDraggable}`}
+            data-drop-kind="portrait"
+            data-drop-character-id={characterId}
+            data-drop-portrait-target="hands"
+            aria-hidden="true"
+          >
+            <div className={styles.equipHandSlotLeft}>
+              {showEquipHandLeft && leftHandDef && leftHandItem ? (
+                <button
+                  type="button"
+                  className={styles.equipHandDragHit}
+                  style={{ justifyContent: 'flex-start' }}
+                  onPointerDown={(e) => beginPortraitEquipDrag('handLeft', leftHandItem.id, e)}
+                  aria-label={`Equipped left hand: ${leftHandDef.name}`}
+                >
+                  <EquipIcon def={leftHandDef} emojiClass={styles.equipHandEmoji} imgClass={styles.equipHandImg} />
+                </button>
+              ) : null}
+            </div>
+            <div className={styles.equipHandSlotRight}>
+              {showEquipHandRightTwoHand && leftHandDef && leftHandItem ? (
+                <button
+                  type="button"
+                  className={styles.equipHandDragHit}
+                  style={{ justifyContent: 'flex-end' }}
+                  onPointerDown={(e) => beginPortraitEquipDrag('handLeft', leftHandItem.id, e)}
+                  aria-label={`Equipped two-hand: ${leftHandDef.name}`}
+                >
+                  <EquipIcon def={leftHandDef} emojiClass={styles.equipHandEmojiTwoHand} imgClass={styles.equipHandImgTwoHand} />
+                </button>
+              ) : showEquipHandRightOneHand && rightHandDef && rightHandItem ? (
+                <button
+                  type="button"
+                  className={styles.equipHandDragHit}
+                  style={{ justifyContent: 'flex-end' }}
+                  onPointerDown={(e) => beginPortraitEquipDrag('handRight', rightHandItem.id, e)}
+                  aria-label={`Equipped right hand: ${rightHandDef.name}`}
+                >
+                  <EquipIcon def={rightHandDef} emojiClass={styles.equipHandEmoji} imgClass={styles.equipHandImg} />
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+
         {__debug ? (
           <div
             style={{
               position: 'absolute',
               left: 6,
-              top: 6,
+              bottom: 6,
               zIndex: 20,
               padding: '6px 7px',
               borderRadius: 8,
@@ -445,7 +546,7 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
             style={{
               position: 'absolute',
               right: 6,
-              top: 6,
+              bottom: 6,
               zIndex: 21,
               width: 16,
               height: 16,
@@ -471,6 +572,24 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
           data-drop-character-id={characterId}
           data-drop-portrait-target="mouth"
         />
+        {!headDef ? (
+          <div
+            className={styles.hatZone}
+            data-drop-kind="portrait"
+            data-drop-character-id={characterId}
+            data-drop-portrait-target="hat"
+            aria-hidden="true"
+          />
+        ) : null}
+        {!showEquipHandsBand ? (
+          <div
+            className={styles.handsZone}
+            data-drop-kind="portrait"
+            data-drop-character-id={characterId}
+            data-drop-portrait-target="hands"
+            aria-hidden="true"
+          />
+        ) : null}
 
         <div className={styles.statsOverlay} data-portrait-stats="true" aria-hidden="true">
           <div className={styles.vitalGrid}>

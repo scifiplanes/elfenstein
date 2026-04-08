@@ -1,6 +1,7 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
+import { DEFAULT_ITEMS } from '../../game/content/items'
+import type { GameState, ItemDefId, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
 import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
@@ -41,6 +42,11 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const [floorIndexDraft, setFloorIndexDraft] = useState<string>(String(state.floor.floorIndex))
   const [spawnNpcKind, setSpawnNpcKind] = useState<NpcKind>('Skeleton')
   const [spawnPoiKind, setSpawnPoiKind] = useState<PoiKind>('Chest')
+  const [spawnItemDefId, setSpawnItemDefId] = useState<ItemDefId>(() => DEFAULT_ITEMS[0]!.id)
+  const itemDefsSpawnSorted = useMemo(
+    () => [...DEFAULT_ITEMS].sort((a, b) => a.id.localeCompare(b.id)),
+    [],
+  )
   const [perfOpen, setPerfOpen] = useState(false)
   const [telegraphMode, setTelegraphMode] = useState<'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'>('auto')
   const [telegraphStrength, setTelegraphStrength] = useState(0.22)
@@ -460,7 +466,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </div>
       )}
 
-      {(!q || 'spawn npc poi entity'.includes(q)) && (
+      {(!q || 'spawn npc poi item entity'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Spawn (1 cell ahead)</div>
           <div className={styles.row}>
@@ -504,6 +510,31 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 type="button"
                 className={styles.headerBtn}
                 onClick={() => dispatch({ type: 'debug/spawnPoi', kind: spawnPoiKind })}
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>Item</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnItemDefId}
+                onChange={(e) => setSpawnItemDefId(e.target.value as ItemDefId)}
+              >
+                {itemDefsSpawnSorted.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnItem', defId: spawnItemDefId })}
               >
                 Spawn
               </button>

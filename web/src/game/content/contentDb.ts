@@ -6,7 +6,9 @@ export type ItemDef = {
   id: ItemDefId
   name: string
   icon: { kind: 'emoji'; value: string } | { kind: 'sprite'; path: string }
-  tags: Array<'food' | 'weapon' | 'container' | 'material' | 'quest' | 'tool'>
+  tags: Array<
+    'food' | 'weapon' | 'container' | 'material' | 'quest' | 'tool' | 'hat' | 'oneHand' | 'twoHand'
+  >
   equipSlots?: EquipmentSlot[]
   feed?: { hunger: number; thirst?: number; stamina?: number; hp?: number; statusChances?: Array<{ status: StatusEffectId; pct: number; onlySpecies?: Species }> }
   useOnPoi?: Partial<Record<PoiKind, { transformTo?: ItemDefId; toast?: string }>>

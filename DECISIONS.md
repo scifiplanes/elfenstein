@@ -2654,3 +2654,65 @@ Players should recognize loot at a glance; the HUD already shows the authoritati
 ### Consequences
 - `DitheredFrameRoot` passes `latestContentRef.current` into `world.renderFrame`.
 - `DESIGN.md` §7.2 notes parity between HUD and world floor-item billboards.
+
+---
+
+## ADR-0171 — Portrait hat + hands equipment drop zones
+Date: 2026-04-08
+
+### Decision
+- Add **portrait UI hit bands** for **hat** (top) and **hands** (bottom); drops resolve through **`drag/drop`** with `PortraitDropTarget` **`hat`** / **`hands`**.
+- Extend **`ItemDef.tags`** with **`hat`**, **`oneHand`**, and **`twoHand`**. Hat items use **`equipSlots`** including **`head`** when `equipSlots` is set.
+- **Two-handed** items store the **same `itemId` in `handLeft` and `handRight`**; **`unequipItem`** on either hand clears both and stows **once**. **One-handed** portrait drops fill **left → right → replace left** when both hands are full.
+
+### Rationale
+Keeps equip discoverable on the portrait without enabling the full paperdoll modal; tags stay data-driven and match the prior “content in ContentDB” approach.
+
+### Consequences
+- `equipItem` takes **`ContentDB`** to branch **hand** slots on **`oneHand` / `twoHand`**.
+- New sample content (**`WoolCap`**) and allowlist entry for procgen content audit; **Spear** / **Bow** are **`twoHand`** for testing.
+
+---
+
+## ADR-0172 — F2 debug: spawn floor item one cell ahead
+Date: 2026-04-08
+
+### Decision
+Add **`debug/spawnItem`** (`ItemDefId`) next to existing **NPC** / **POI** spawn in the F2 panel: mints the item in **`party.items`**, places it on **`itemsOnFloor`** one grid cell in the facing direction, with normal drop jitter, and bumps **`floorGeomRevision`**. If the target cell is not **`floor`**, append an activity-log line instead of spawning.
+
+### Rationale
+Content authors need the same quick placement loop for items as for NPCs and POIs when testing interactions, loot, and equipment.
+
+### Consequences
+- `DESIGN.md` §3 notes the item spawn row and the floor-tile constraint.
+
+---
+
+## ADR-0173 — Portrait unequip via drag (inventory, floor, void)
+Date: 2026-04-08
+
+### Decision
+- **Portrait** equipped **hat** / **hands** icons are **draggable** (`equipmentSlot` source with optional **`fromPortrait`**). They sit above the transparent hat/hands drop bands and carry the same **`portrait`** drop metadata so incoming equips still work.
+- **`drag/drop`** resolves **`equipmentSlot` → `inventorySlot`** and **→ `floorDrop`** by **clearing equipment** before moving the item (fixes equipped items not living in the grid).
+- **`stowEquipped`** target: pointer-up with **no DOM drop target** after a **portrait** equipment drag calls **`unequipItem`** (first free slot), without applying that shortcut to paperdoll drags.
+- **`moveItemToInventorySlot`** places items **not currently in the grid** into a slot by **displacing** an occupant to the first free slot when needed.
+
+### Rationale
+Unequip should match the “drag out of the portrait” mental model; equipment and inventory must stay consistent when moving items that are only equipped.
+
+### Consequences
+- `PortraitPanel`, `CursorProvider`, `types` (`DragSource` / `DragTarget`), `equipment.ts` helpers, `inventory.ts`, and `reducer` `drag/drop` updated accordingly.
+
+---
+
+## ADR-0174 — Portrait equip drag hit: transparent button chrome
+Date: 2026-04-08
+
+### Decision
+Define **`PortraitPanel.module.css`** classes **`equipDragHit`** / **`equipHandDragHit`** (and **`equipHatDraggable`** / **`equipHandsBandDraggable`** **`pointer-events`**) so draggable equipped icons use **`appearance: none`**, **`background: transparent`**, **`border`/`padding`/`margin: 0`**.
+
+### Rationale
+**`<button>`** default UA styling paints an **opaque** plate behind children; **`styles.equipDragHit`** was referenced in **`PortraitPanel.tsx`** but **missing** from the CSS module, so PNG item art **lost visible transparency**.
+
+### Consequences
+`DESIGN.md` portrait unequip bullet notes transparent hit chrome.

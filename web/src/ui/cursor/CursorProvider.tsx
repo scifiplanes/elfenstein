@@ -13,7 +13,12 @@ function parseTargetFromEl(el: Element | null): DragTarget | null {
   if (kind === 'floorItem') return { kind: 'floorItem', itemId: String(node.dataset.dropItemId ?? '') }
   if (kind === 'poi') return { kind: 'poi', poiId: String(node.dataset.dropPoiId ?? '') }
   if (kind === 'npc') return { kind: 'npc', npcId: String(node.dataset.dropNpcId ?? '') }
-  if (kind === 'portrait') return { kind: 'portrait', characterId: String(node.dataset.dropCharacterId ?? ''), target: (node.dataset.dropPortraitTarget as any) ?? 'eyes' }
+  if (kind === 'portrait') {
+    const raw = String(node.dataset.dropPortraitTarget ?? 'eyes')
+    const target =
+      raw === 'eyes' || raw === 'mouth' || raw === 'hat' || raw === 'hands' ? raw : 'eyes'
+    return { kind: 'portrait', characterId: String(node.dataset.dropCharacterId ?? ''), target }
+  }
   if (kind === 'equipmentSlot') return { kind: 'equipmentSlot', characterId: String(node.dataset.dropCharacterId ?? ''), slot: String(node.dataset.dropEquipSlot ?? '') as any }
   return null
 }
@@ -28,13 +33,19 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
     case 'floorItem':
       return { icon: '✋', label: 'Pick up' }
     case 'portrait':
-      return target.target === 'eyes' ? { icon: '👁', label: 'Inspect' } : { icon: '👄', label: 'Feed' }
+      if (target.target === 'eyes') return { icon: '👁', label: 'Inspect' }
+      if (target.target === 'mouth') return { icon: '👄', label: 'Feed' }
+      if (target.target === 'hat') return { icon: '🎩', label: 'Equip hat' }
+      if (target.target === 'hands') return { icon: '🤲', label: 'Equip hands' }
+      return { icon: '👁', label: 'Inspect' }
     case 'poi':
       return { icon: '✦', label: 'Use' }
     case 'npc':
       return { icon: '⚔', label: 'Use' }
     case 'equipmentSlot':
       return { icon: '⛭', label: 'Equip' }
+    case 'stowEquipped':
+      return { icon: '↔', label: 'Stow' }
     default:
       return null
   }
@@ -160,7 +171,7 @@ export function CursorProvider(props: PropsWithChildren) {
     const { clientX: x, clientY: y } = e
     const v = virtualHover.current
     const el = document.elementFromPoint(x, y)
-    const target = v?.target ?? parseTargetFromEl(el)
+    let target = v?.target ?? parseTargetFromEl(el)
     virtualHover.current = null
     const payload = pendingPayload.current
     pendingPayload.current = null
@@ -174,6 +185,16 @@ export function CursorProvider(props: PropsWithChildren) {
       // ignore
     } finally {
       capture.current = null
+    }
+
+    if (
+      !target &&
+      payload &&
+      state.dragging?.started &&
+      payload.source.kind === 'equipmentSlot' &&
+      payload.source.fromPortrait
+    ) {
+      target = { kind: 'stowEquipped' }
     }
 
     const result =
