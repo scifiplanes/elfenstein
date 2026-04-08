@@ -1,15 +1,17 @@
-import { useContext, useEffect, useMemo, useRef } from 'react'
+import { useContext, useEffect, useMemo, useRef, useState } from 'react'
 import { CursorContext } from './CursorContext'
 import styles from './CursorLayer.module.css'
 import type { GameState } from '../../game/types'
 import type { ContentDB } from '../../game/content/contentDb'
 import { shakeTransform } from '../feedback/shakeTransform'
+import { findRecipe, recipeKey } from '../../game/content/recipes'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const api = useContext(CursorContext)
   const clickShakeRef = useRef<{ startedAtMs: number; untilMs: number } | null>(null)
   const prevIsPointerDown = useRef(false)
   const isPointerDown = api?.state.isPointerDown ?? false
+  const [animNowMs, setAnimNowMs] = useState(() => performance.now())
 
   useEffect(() => {
     if (!api) return
@@ -18,6 +20,22 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     document.body.style.cursor = 'none'
     return () => {
       document.body.style.cursor = prev
+    }
+  }, [api])
+
+  useEffect(() => {
+    if (!api) return
+    let raf = 0
+    let mounted = true
+    const tick = () => {
+      if (!mounted) return
+      setAnimNowMs(performance.now())
+      raf = requestAnimationFrame(tick)
+    }
+    raf = requestAnimationFrame(tick)
+    return () => {
+      mounted = false
+      cancelAnimationFrame(raf)
     }
   }, [api])
 
@@ -58,6 +76,24 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const x = pointer.x
   const y = pointer.y
 
+  const craftReady = (() => {
+    if (!dragging?.started) return null
+    if (dragging.payload.source.kind !== 'inventorySlot') return null
+    if (hoverTarget?.kind !== 'inventorySlot') return null
+    const srcSlot = dragging.payload.source.slotIndex
+    const dstSlot = hoverTarget.slotIndex
+    if (srcSlot === dstSlot) return null
+    const srcItemId = props.state.party.inventory.slots[srcSlot]
+    const dstItemId = props.state.party.inventory.slots[dstSlot]
+    if (!srcItemId || !dstItemId) return null
+    const srcItem = props.state.party.items[srcItemId]
+    const dstItem = props.state.party.items[dstItemId]
+    if (!srcItem || !dstItem) return null
+    const recipe = findRecipe(srcItem.defId, dstItem.defId)
+    if (!recipe) return null
+    return { recipe }
+  })()
+
   const isHold = Boolean(dragging?.started || isPointerDown)
   const isActive = !isHold && Boolean(hoverTarget) && hoverTarget?.kind !== 'floorDrop'
 
@@ -70,12 +106,32 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const craftProgress =
     crafting ? Math.max(0, Math.min(1, (props.state.nowMs - crafting.startedAtMs) / Math.max(1, crafting.endsAtMs - crafting.startedAtMs))) : 0
 
+  const craftingAnchorRect = (() => {
+    if (!crafting) return null
+    const idx = crafting.dstSlotIndex
+    if (idx == null) return null
+    const el = document.querySelector(`[data-drop-kind="inventorySlot"][data-drop-slot-index="${idx}"]`) as HTMLElement | null
+    return el ? el.getBoundingClientRect() : null
+  })()
+
+  const craftPreviewText = (() => {
+    if (!craftReady) return null
+    const k = recipeKey(craftReady.recipe.a, craftReady.recipe.b)
+    const known = Boolean(props.state.ui.knownRecipes?.[k])
+    if (!known) return '?'
+    const def = props.content.item(craftReady.recipe.result)
+    if (def?.icon?.kind === 'emoji') return def.icon.value
+    return '?'
+  })()
+
   const contextualAffordance =
     dragging?.started
       ? (() => {
           const item = props.state.party.items[dragging.payload.itemId]
           if (!item) return null
           const def = props.content.item(item.defId)
+
+          if (craftReady) return { icon: '⚗', label: 'Craft' }
 
           if (hoverTarget?.kind === 'npc') {
             const isWeapon = def.tags.includes('weapon')
@@ -137,19 +193,38 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     )
   }, [api, props.state.nowMs, props.state.render])
 
+  const craftFlickerIsHold = Boolean(craftReady) && (Math.floor(animNowMs / 400) % 2 === 0)
+  const handStateClass =
+    craftReady && isHold
+      ? craftFlickerIsHold ? styles.hold : styles.active
+      : isHold ? styles.hold
+      : isActive ? styles.active
+      : styles.point
+
   return (
     api ? (
       <div className={styles.layer}>
         <div className={styles.handWrap} style={{ left: x, top: y, transform: handShakeTransform }}>
-          <div className={`${styles.hand} ${isHold ? styles.hold : isActive ? styles.active : styles.point}`} />
+          <div className={`${styles.hand} ${handStateClass}`} />
         </div>
         {ghost ? (
           <div className={`${styles.ghost} ${isHoveringValidTarget ? styles.ghostShake : ''}`} style={{ left: x, top: y }}>
             {ghostText}
           </div>
         ) : null}
+        {craftPreviewText ? (
+          <div className={styles.craftPreview} style={{ left: x, top: y }}>
+            {craftPreviewText}
+          </div>
+        ) : null}
         {crafting ? (
-          <div className={styles.craft} style={{ left: x, top: y }}>
+          <div
+            className={styles.craft}
+            style={{
+              left: craftingAnchorRect ? craftingAnchorRect.right : x,
+              top: craftingAnchorRect ? (craftingAnchorRect.top + craftingAnchorRect.bottom) / 2 : y,
+            }}
+          >
             <div className={styles.craftFill} style={{ width: `${Math.round(craftProgress * 100)}%` }} />
           </div>
         ) : null}

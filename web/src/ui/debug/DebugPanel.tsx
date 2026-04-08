@@ -39,6 +39,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const [floorIndexDraft, setFloorIndexDraft] = useState<string>(String(state.floor.floorIndex))
   const [spawnNpcKind, setSpawnNpcKind] = useState<NpcKind>('Skeleton')
   const [spawnPoiKind, setSpawnPoiKind] = useState<PoiKind>('Chest')
+  const [perfOpen, setPerfOpen] = useState(false)
+  const [telegraphMode, setTelegraphMode] = useState<'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'>('auto')
+  const [telegraphStrength, setTelegraphStrength] = useState(0.22)
 
   const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
 
@@ -66,6 +69,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     } catch {
       dispatch({ type: 'ui/toast', text: 'Failed to dump floor.gen JSON.', ms: 1600 })
     }
+  }
+
+  const newRun = () => {
+    dispatch({ type: 'run/new' })
   }
 
   const cameraSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
@@ -309,6 +316,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         <div className={styles.headerBtns}>
           <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'floor/regen' })}>
             Regen (seed {state.floor.seed})
+          </button>
+          <button type="button" className={`${styles.headerBtn} ${styles.headerBtnPrimary}`} onClick={newRun} title="Start a fresh run (resets run progression and regenerates).">
+            New run
           </button>
           <button
             type="button"
@@ -561,6 +571,131 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             <div className={styles.value}>{room?.tags?.size ?? '—'}</div>
             <div />
           </div>
+        </div>
+      )}
+
+      {(!q || 'telegraph room property post fx vignette tint'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Telegraph (roomProperties)</div>
+          <div className={styles.row}>
+            <div className={styles.label}>mode</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={telegraphMode}
+                onChange={(e) => {
+                  const v = e.target.value as typeof telegraphMode
+                  setTelegraphMode(v)
+                  const w = window as unknown as {
+                    __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
+                  }
+                  w.__elfensteinRoomTelegraph = {
+                    ...(w.__elfensteinRoomTelegraph ?? {}),
+                    mode: v,
+                  }
+                }}
+              >
+                <option value="auto">auto (from room tag)</option>
+                <option value="off">off</option>
+                <option value="Burning">force Burning</option>
+                <option value="Flooded">force Flooded</option>
+                <option value="Infected">force Infected</option>
+              </select>
+            </div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>strength</div>
+            <div className={styles.value}>{telegraphStrength.toFixed(2)}</div>
+            <input
+              className={styles.slider}
+              type="range"
+              min={0}
+              max={0.6}
+              step={0.01}
+              value={telegraphStrength}
+              onChange={(e) => {
+                const v = Number(e.target.value)
+                setTelegraphStrength(v)
+                const w = window as unknown as {
+                  __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
+                }
+                w.__elfensteinRoomTelegraph = {
+                  ...(w.__elfensteinRoomTelegraph ?? {}),
+                  strength: v,
+                }
+              }}
+            />
+          </div>
+        </div>
+      )}
+
+      {(!q || 'perf performance frame fps'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Perf</div>
+          <div className={styles.row}>
+            <div className={styles.label}>perf HUD</div>
+            <div className={styles.value}>{perfOpen ? 'On' : 'Off'}</div>
+            <input className={styles.slider} type="checkbox" checked={perfOpen} onChange={(e) => setPerfOpen(e.target.checked)} />
+          </div>
+          {perfOpen && (
+            <>
+              {(() => {
+                const p = (window as any).__elfensteinPerf as
+                  | undefined
+                  | {
+                      frameMs?: number
+                      worldMs?: number
+                      presentMs?: number
+                      uiCaptureMs?: number | null
+                      emaFrameMs?: number
+                      emaWorldMs?: number
+                      emaPresentMs?: number
+                      counts?: {
+                        tiles?: number
+                        pois?: number
+                        npcs?: number
+                        itemsOnFloor?: number
+                        floorGeomRevision?: number
+                      }
+                    }
+                const f = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v.toFixed(2) : '—')
+                const fi = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? String(Math.round(v)) : '—')
+                return (
+                  <>
+                    <div className={styles.row}>
+                      <div className={styles.label}>frame (ms)</div>
+                      <div className={styles.value}>{f(p?.frameMs)} (ema {f(p?.emaFrameMs)})</div>
+                      <div />
+                    </div>
+                    <div className={styles.row}>
+                      <div className={styles.label}>world (ms)</div>
+                      <div className={styles.value}>{f(p?.worldMs)} (ema {f(p?.emaWorldMs)})</div>
+                      <div />
+                    </div>
+                    <div className={styles.row}>
+                      <div className={styles.label}>present (ms)</div>
+                      <div className={styles.value}>{f(p?.presentMs)} (ema {f(p?.emaPresentMs)})</div>
+                      <div />
+                    </div>
+                    <div className={styles.row}>
+                      <div className={styles.label}>ui capture (ms)</div>
+                      <div className={styles.value}>{f(p?.uiCaptureMs)}</div>
+                      <div />
+                    </div>
+                    <div className={styles.row}>
+                      <div className={styles.label}>counts</div>
+                      <div className={styles.value}>
+                        tiles {fi(p?.counts?.tiles)} | pois {fi(p?.counts?.pois)} | npcs {fi(p?.counts?.npcs)} | items {fi(p?.counts?.itemsOnFloor)} | geomRev{' '}
+                        {fi(p?.counts?.floorGeomRevision)}
+                      </div>
+                      <div />
+                    </div>
+                  </>
+                )
+              })()}
+            </>
+          )}
         </div>
       )}
 

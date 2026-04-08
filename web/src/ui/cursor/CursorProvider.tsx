@@ -45,6 +45,11 @@ export function CursorProvider(props: PropsWithChildren) {
   const pendingPayload = useRef<DragPayload | null>(null)
   const virtualHover = useRef<{ target: DragTarget | null; rect: CursorState['hoverRect'] } | null>(null)
   const capture = useRef<{ el: Element; pointerId: number } | null>(null)
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+
+  // Drag should start on normal click-drag, not only after a hold delay.
+  // Use a small movement threshold to avoid treating simple clicks as drags.
+  const DRAG_START_PX = 8
 
   const [state, setState] = useState<CursorState>(() => ({
     pointer: { x: 0, y: 0 },
@@ -70,6 +75,7 @@ export function CursorProvider(props: PropsWithChildren) {
     clearHoldTimer()
     pendingPayload.current = payload
     const { clientX: x, clientY: y } = e
+    dragStartPos.current = { x, y }
     try {
       // Ensure `pointerup` comes back to the drag origin even if we drag over other UI/canvas.
       if (e.currentTarget && 'setPointerCapture' in e.currentTarget) {
@@ -88,6 +94,20 @@ export function CursorProvider(props: PropsWithChildren) {
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const { clientX: x, clientY: y } = e
+
+    // If the pointer moved enough while pressed, start the drag immediately.
+    // This makes crafting/swapping work with a normal click-drag gesture.
+    const start = dragStartPos.current
+    if (state.isPointerDown && state.dragging && !state.dragging.started && start) {
+      const dx = x - start.x
+      const dy = y - start.y
+      const d2 = dx * dx + dy * dy
+      if (d2 >= DRAG_START_PX * DRAG_START_PX) {
+        clearHoldTimer()
+        setState((s) => (s.dragging ? { ...s, dragging: { ...s.dragging, started: true } } : s))
+      }
+    }
+
     const el = document.elementFromPoint(x, y)
     const node = (el?.closest?.('[data-drop-kind]') as HTMLElement | null) ?? null
     const domTarget = parseTargetFromEl(node)
@@ -105,12 +125,13 @@ export function CursorProvider(props: PropsWithChildren) {
       hoverRect: rect,
       affordance: s.dragging?.started ? affordanceForTarget(target) : null,
     }))
-  }, [])
+  }, [clearHoldTimer, state.dragging, state.dragging?.started, state.isPointerDown])
 
   const cancelDrag = useCallback(() => {
     clearHoldTimer()
     pendingPayload.current = null
     virtualHover.current = null
+    dragStartPos.current = null
     try {
       const c = capture.current
       if (c?.el && 'releasePointerCapture' in c.el) {
@@ -143,6 +164,7 @@ export function CursorProvider(props: PropsWithChildren) {
     virtualHover.current = null
     const payload = pendingPayload.current
     pendingPayload.current = null
+    dragStartPos.current = null
     try {
       const c = capture.current
       if (c?.el && 'releasePointerCapture' in c.el) {

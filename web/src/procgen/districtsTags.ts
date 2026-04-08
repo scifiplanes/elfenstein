@@ -187,11 +187,18 @@ export function tagRoomsWithQuotas(
   let storageQuota = Math.min(2, Math.max(1, Math.floor(sorted.length / 5)))
 
   for (const r of sorted) {
+    // Derived rooms (e.g. junction/connector anchors) may be pre-tagged to keep quotas stable.
+    // If a room already has an explicit function+size, treat it as fixed and only roll status/props.
+    const existingSize = r.tags?.size
+    const existingFn = r.tags?.roomFunction
+
     const area = r.rect.w * r.rect.h
-    const size = area <= 20 ? 'tiny' : area <= 48 ? 'medium' : 'large'
+    const size = existingSize ?? (area <= 20 ? 'tiny' : area <= 48 ? 'medium' : 'large')
 
     let roomFunction: NonNullable<GenRoom['tags']>['roomFunction']
-    if (size === 'tiny') {
+    if (existingFn) {
+      roomFunction = existingFn
+    } else if (size === 'tiny') {
       if (storageQuota > 0 && rng.next() < 0.55) {
         roomFunction = 'Storage'
         storageQuota--

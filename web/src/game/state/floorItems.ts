@@ -23,7 +23,10 @@ export function pickupFloorItem(state: GameState, itemId: ItemId): GameState {
 
   const without = state.floor.itemsOnFloor.slice()
   without.splice(floorIdx, 1)
-  const withRemoved = { ...state, floor: { ...state.floor, itemsOnFloor: without } }
+  const withRemoved = {
+    ...state,
+    floor: { ...state.floor, itemsOnFloor: without, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+  }
   const withAdded = moveItemToInventorySlot(withRemoved, itemId, free)
   const q = withAdded.ui.sfxQueue ?? []
   return pushActivityLog(

@@ -5,6 +5,7 @@ export const NPC_SPRITE_SRC: Record<NpcKind, string> = {
   Bobr: '/content/npc_bobr.png',
   Skeleton: '/content/npc_skeleton.png',
   Catoctopus: '/content/npc_catoctopus.png',
+  Swarm: '/content/poi_placeholder.png',
   /** In-world art ships as `npc_slime.png`; kind name stays Wurglepup in data. */
   Wurglepup: '/content/npc_slime.png',
 }

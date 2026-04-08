@@ -2245,3 +2245,140 @@ Player request: greener hunger read on the portrait HUD.
 **`DESIGN.md`** §7.1 updated.
 
 ---
+## ADR-0146 — Compositor-time portrait mouth/idle overlays (snappy reactions)
+Date: 2026-04-08
+
+### Decision
+Render portrait **mouth flicker** (`ui.portraitMouth`) and **idle pulse** (`ui.portraitIdlePulse`) as **compositor-time overlays** in the WebGL presenter, instead of relying on async HUD capture (`html2canvas`) cadence.
+
+### Rationale
+The main HUD is captured to a texture for postprocess, which can add perceptible latency for short-lived portrait reactions. Rendering these two reactions directly in the compositor keeps them **immediate** and **full-FPS** while preserving the existing captured-HUD pipeline.
+
+### Consequences
+- Portrait mouth/idle reactions remain visually responsive even if the UI capture texture is stale or capturing infrequently.
+- `feedCharacter` no longer needs a long minimum mouth burst window to “wait for capture to land”; burst duration can match authored/tuned timing more closely.
+
+---
+
+## ADR-0147 — Procgen: add Dungeon door-frame throats, prefer locks on frames, and derive connector/macro rooms
+Date: 2026-04-08
+
+### Decision
+- **Dungeon** floors add a guarded **door-frame throat** pass that narrows a small number of straight corridor segments into 1-tile chokepoints (visual “doorways” between spaces).
+- The procgen **lock placement** pass prefers these door-frame cells when selecting separating `lockedDoor` locations on the entrance→exit shortest path.
+- Procgen derives a bounded set of **junction/connector rooms** (treated as `Passage`) so corridor junction spaces become semantic anchors for districts/tags/spawns.
+- **Ruins** stamped chambers are deterministically **clustered into macro rooms** (bounded count) for more coherent tagging/districts/population.
+
+### Rationale
+Locks and progression gates read more naturally when they live on explicit chokepoints rather than arbitrary corridor tiles. Derived connector rooms and macro clustering improve tag coherence and spawn bias stability without changing core geometry representation or determinism requirements.
+
+### Consequences
+- Deterministic `floor.gen` output changes for the same seed (new topology and room lists); validation and scoring still operate on the same principles.
+- Derived rooms are fixed to `Passage` and should be treated as ineligible for major POIs like Bed/Chest to keep placement semantics clear.
+
+---
+
+## ADR-0148 — Cursor craft-ready telegraph + discovered recipe icons
+Date: 2026-04-08
+
+### Decision
+- Add a **craft-ready cursor telegraph** when dragging an inventory item over another inventory item that has a valid recipe:
+  - affordance pill shows **⚗ Craft**
+  - hand cursor flickers between **hold** and **point**
+  - a small badge shows `?` until the recipe is discovered, then shows the result icon
+- Track discovered recipes in game state and mark a recipe as discovered on **successful craft completion**.
+
+### Rationale
+Crafting is an experiment-driven loop; the cursor needs to clearly signal when releasing will craft (vs stow/swap) and provide a lightweight “unknown vs known result” preview without adding modal UI or extra clicks.
+
+### Consequences
+- `ui` state stores a set of discovered recipe keys.
+- Cursor UI can render `?` vs result icon based on discovery state.
+
+---
+
+## ADR-0149 — Crafting: move toward a broader recipe pack in content
+Date: 2026-04-08
+
+### Decision
+- Expand crafting from the MVP set to a **broader recipe pack** (weapons/tools, remedies, cooking) authored in **content** (`web/src/game/content/recipes.ts`).
+- Ensure each recipe includes an explicit **skill** and **DC** (d20 + party-best skill vs DC) and retains **order-sensitive** inputs (`a+b` distinct from `b+a`).
+- Expand the default item set in the content DB to include the new recipe inputs/outputs (with icons, tags, and any minimal interaction hooks needed to make them usable).
+
+### Rationale
+Crafting is intended to be discovery-driven; with only a few recipes the loop quickly runs out of experimentation value. Keeping recipes in the content layer preserves modularity, and explicit skill/DC parameters let balancing iterate without code changes.
+
+### Consequences
+- The initial content pack increases the number of `ItemDef`s and `ALL_RECIPES` entries and should be kept consistent (every recipe input/output must exist in the content DB).
+- Future balancing work can tune `craftMs`, failure destroy chance, and skill/DC values without touching crafting state logic.
+
+---
+
+## ADR-0150 — Hive/Swarm ecosystem (Hive item, Swarm NPC, capture/release loop)
+Date: 2026-04-08
+
+### Decision
+- Implement the **Hive/Swarm** ecosystem described in `Elfenstein_notes.md`:
+  - **Hive** is an **item**; drag-drop onto the 3D view “cracks” it.
+  - Cracking a Hive usually destroys it and spawns a **Swarm**; a small chance yields a **Swarm Queen** item.
+  - While the party holds **Swarm Queen**, **Swarms are neutral**.
+  - **Swarm Basket** captures a Swarm into a **Captured swarm** item.
+  - **Captured swarm** can be released onto an enemy NPC to deal heavy damage and is consumed.
+- Keep outcomes deterministic via stable hashing from `floor.seed` + ids/timestamps, consistent with multiplayer-sane direction.
+
+### Rationale
+This creates a self-contained, discovery-friendly “content ecosystem”: a source (Hive), a faction modifier (Queen), and a manipulation loop (capture/release) that yields meaningful combat utility without requiring new UI surfaces.
+
+### Consequences
+- Adds a new `NpcKind` (`Swarm`) and several new `ItemDef`s; placeholder art is acceptable until dedicated sprites ship.
+- Procgen can bias Swarms on **Infested** floors to reinforce floor property identity.
+
+---
+
+## ADR-0151 — Death screen + Well checkpoints
+Date: 2026-04-08
+
+### Decision
+- Replace immediate auto-restart on party wipe with a blocking **death screen** (`ui.death`) that offers:
+  - **New run**
+  - **Reload checkpoint** (if saved)
+  - **Title**
+- Treat **Wells** as explicit checkpoint saves by snapshotting run/floor/party/view plus persistent UI bits into `run.checkpoint`.
+
+### Rationale
+Instantly wiping to a new run makes death feel abrupt and prevents “run recap” UX. Wells already serve as a natural safe interactable, so promoting them to save points creates a clear, learnable retry loop without adding a full save/load system.
+
+### Consequences
+- The reducer must block gameplay actions while `ui.death` is present (and while on the title screen).
+- Reloading restores a snapshot but preserves tuning (`render`, `audio`) for consistent session feel.
+
+---
+
+## ADR-0152 — Telegraph room properties with compositor vignette+tint
+Date: 2026-04-08
+
+### Decision
+When the player is standing in a procgen room tagged with a **room property** (`Burning` / `Flooded` / `Infected`), apply a **subtle vignette + tint** as a **compositor-time post-process** over the **3D scene region only**.
+
+### Rationale
+Room properties should be readable as a *felt environmental condition* without introducing new HUD elements or requiring per-tile materials. A compositor effect is cheap, consistent across floor types, and stays scoped to the viewport’s 3D content.
+
+### Consequences
+- Adds telegraph uniforms and logic to the WebGL compositor (`CompositeShader`) and wires values from `DitheredFrameRoot` via `FramePresenter`.
+- The mapping is keyed by the room tag under `floor.playerPos` (fallback to nearest-room-center when not inside a room rect), so derived connector rooms still get a stable telegraph signal.
+- Debug tooling can force a telegraph mode/strength for tuning without changing procgen.
+
+---
+
+## ADR-0153 — Inventory drag starts on movement threshold (crafting reliability)
+Date: 2026-04-08
+
+### Decision
+Start item drags when the pointer **presses and moves** beyond a small pixel threshold (with **press+hold** remaining as a fallback) so quick click-drags reliably dispatch `drag/drop` and trigger crafting/swaps.
+
+### Rationale
+Hold-only drag start can miss fast click-drag gestures, resulting in no drop dispatch and making crafting appear “broken”. A movement threshold is the standard desktop interaction pattern and avoids accidental drags on simple clicks.
+
+### Consequences
+- Cursor drag state transitions now start either via movement threshold or the existing hold timer.
+- `DESIGN.md` §6.2 reflects the updated gesture truth (drag starts on movement; hold is fallback).

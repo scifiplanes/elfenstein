@@ -5,6 +5,7 @@ import { normalizeFloorGenDifficulty } from '../../procgen/types'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
 import { randomFloorSeed } from './randomSeed'
 import { pushActivityLog } from './activityLog'
+import { applyXp } from './runProgression'
 
 function cycleFloorType(cur: FloorType): FloorType {
   const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
@@ -35,7 +36,7 @@ export function descendToNextFloor(state: GameState): GameState {
   const playerDir = 0 as const
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
 
-  const next: GameState = {
+  let next: GameState = {
     ...state,
     floor: {
       ...state.floor,
@@ -50,11 +51,21 @@ export function descendToNextFloor(state: GameState): GameState {
       npcs: gen.npcs,
       playerPos,
       playerDir,
+      floorGeomRevision: state.floor.floorGeomRevision + 1,
     },
     party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
     view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
   }
 
-  return pushActivityLog(next, `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}).`)
+  const xpRes = applyXp(next, 12)
+  next = xpRes.state
+  next = pushActivityLog(next, `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+12 XP)`)
+  if (xpRes.leveledUp) {
+    for (const perkId of xpRes.perkIds) {
+      const perkLabel = perkId === 'vitals_plus5' ? '+5 max HP/STA' : perkId === 'damage_plus10pct' ? '+10% dmg' : perkId
+      next = pushActivityLog(next, `Reached level ${next.run.level}. (${perkLabel})`)
+    }
+  }
+  return next
 }
 

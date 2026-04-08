@@ -78,6 +78,32 @@ function idxToPos(i: number, w: number): Vec2 {
   return { x: i % w, y: (i / w) | 0 }
 }
 
+function isDoorFrameCandidate(tiles: Tile[], w: number, h: number, x: number, y: number): boolean {
+  if (x <= 1 || y <= 1 || x >= w - 2 || y >= h - 2) return false
+  const i = x + y * w
+  if (tiles[i] !== 'floor') return false
+  const e = isWalkable(tiles[i + 1])
+  const w0 = isWalkable(tiles[i - 1])
+  const s = isWalkable(tiles[i + w])
+  const n0 = isWalkable(tiles[i - w])
+  const deg = (e ? 1 : 0) + (w0 ? 1 : 0) + (s ? 1 : 0) + (n0 ? 1 : 0)
+  if (deg !== 2) return false
+
+  const straightEW = e && w0 && !n0 && !s
+  const straightNS = n0 && s && !e && !w0
+  if (!straightEW && !straightNS) return false
+
+  // A “frame” throat is a straight corridor cell with walls on the perpendicular sides.
+  if (straightEW) {
+    const up = tiles[i - w]
+    const dn = tiles[i + w]
+    return up === 'wall' && dn === 'wall'
+  }
+  const lf = tiles[i - 1]
+  const rt = tiles[i + 1]
+  return lf === 'wall' && rt === 'wall'
+}
+
 function lockThresholds(difficulty: FloorGenDifficulty): {
   minPathAnyLock: number
   minPathTwoLock: number
@@ -113,10 +139,25 @@ export function placeLocksOnPath(args: {
   const path = shortestPathIndices(tiles, w, h, entrance, exit)
   if (!path || path.length < minPathAnyLock) return { doors: [], floorItems: [] }
 
+  // Prefer placing locks on “door frame” throats (Dungeon identity).
+  const doorFramePathIdxs: number[] = []
+  for (let k = 1; k < path.length - 1; k++) {
+    const cell = path[k]
+    const x = cell % w
+    const y = (cell / w) | 0
+    if (occupied.has(`${x},${y}`)) continue
+    if (isDoorFrameCandidate(tiles, w, h, x, y)) doorFramePathIdxs.push(k)
+  }
+
   // Try two-lock configuration first (longer paths).
   if (allowTwoLock && path.length >= minPathTwoLock) {
-    for (let i2 = path.length - 3; i2 >= 8; i2--) {
-      for (let i1 = i2 - 4; i1 >= 2; i1--) {
+    const i2List = doorFramePathIdxs.length ? doorFramePathIdxs : Array.from({ length: path.length }, (_, i) => i)
+    for (let t2 = i2List.length - 1; t2 >= 0; t2--) {
+      const i2 = i2List[t2]!
+      if (i2 >= path.length - 2 || i2 < 8) continue
+      for (let t1 = t2 - 1; t1 >= 0; t1--) {
+        const i1 = i2List[t1]!
+        if (i1 >= i2 - 3 || i1 < 2) continue
         const c1 = path[i1]
         const c2 = path[i2]
         const p1 = idxToPos(c1, w)
@@ -165,7 +206,10 @@ export function placeLocksOnPath(args: {
   }
 
   // Single lock (legacy-style).
-  for (let lockIdxOnPath = path.length - 3; lockIdxOnPath >= 2; lockIdxOnPath--) {
+  const lockCandidates = doorFramePathIdxs.length ? doorFramePathIdxs : Array.from({ length: path.length }, (_, i) => i)
+  for (let t = lockCandidates.length - 1; t >= 0; t--) {
+    const lockIdxOnPath = lockCandidates[t]!
+    if (lockIdxOnPath >= path.length - 2 || lockIdxOnPath < 2) continue
     const lockCell = path[lockIdxOnPath]
     const lx = lockCell % w
     const ly = (lockCell / w) | 0

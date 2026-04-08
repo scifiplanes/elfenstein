@@ -7,6 +7,7 @@ export type ItemDefId = Id
 export type CharacterId = Id
 
 export type Species = 'Igor' | 'Mycyclops' | 'Frosch'
+export type SkillId = 'weaving' | 'chipping' | 'cooking' | 'foraging'
 export type StatusEffectId =
   | 'Poisoned'
   | 'Blessed'
@@ -23,7 +24,7 @@ export type StatusEffectId =
   | 'Starving'
   | 'Dehydrated'
 export type NpcLanguage = 'DeepGnome' | 'Zalgo' | 'Mojibake'
-export type NpcKind = 'Wurglepup' | 'Bobr' | 'Skeleton' | 'Catoctopus'
+export type NpcKind = 'Wurglepup' | 'Bobr' | 'Skeleton' | 'Catoctopus' | 'Swarm'
 
 export type EquipmentSlot =
   | 'head'
@@ -65,6 +66,7 @@ export type Character = {
   name: string
   species: Species
   endurance: number
+  skills: Partial<Record<SkillId, number>>
   hunger: number
   thirst: number
   hp: number
@@ -75,10 +77,15 @@ export type Character = {
 
 export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
 
+export type UiScreen = 'title' | 'game'
+
 export type UiState = {
+  screen: UiScreen
   debugOpen: boolean
   /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
   procgenDebugOverlay?: ProcgenDebugOverlayMode
+  /** Present when the entire party is dead; blocks gameplay until a new run starts. */
+  death?: { atMs: number; runId: string; floorIndex: number; level: number }
   paperdollFor?: CharacterId
   npcDialogFor?: Id
   /** Persistent lines inside the game viewport activity log (newest last; capped). */
@@ -98,9 +105,36 @@ export type UiState = {
     endsAtMs: number
     srcItemId: ItemId
     dstItemId: ItemId
+    /** Destination inventory slot when crafting started from inventory drag/drop. */
+    dstSlotIndex?: number
     resultDefId: ItemDefId
+    /** Ingredient def ids (order-sensitive) for discovery messaging. */
+    aDefId: ItemDefId
+    bDefId: ItemDefId
     failDestroyChancePct: number
+    recipeKey: string
+    skill: SkillId
+    dc: number
   }
+  /** Discovered crafting recipes (order-sensitive). */
+  knownRecipes?: Record<string, true>
+}
+
+export type CheckpointSnapshot = {
+  /** Timestamp at save time (for summary/debug). */
+  atMs: number
+  run: GameState['run'] extends infer R ? Omit<Extract<R, object>, 'checkpoint'> : never
+  floor: GameState['floor']
+  party: GameState['party']
+  view: GameState['view']
+  /** Only the persistent UI bits we want to restore. */
+  ui: Pick<UiState, 'screen' | 'debugOpen' | 'procgenDebugOverlay' | 'activityLog' | 'knownRecipes'>
+}
+
+export type RunCheckpoint = {
+  kind: 'well'
+  savedAtMs: number
+  snapshot: CheckpointSnapshot
 }
 
 export type RenderTuning = {
@@ -139,10 +173,7 @@ export type RenderTuning = {
   torchDistance: number
   /** 0/1: lantern PointLight casts shadows (cube map; expensive). */
   shadowLanternPoint: number
-  /**
-   * 0/1: lantern SpotLight may cast shadows when beam intensity is nonzero.
-   * When the beam is off (e.g. intensity scale 0), no spot shadow maps run.
-   */
+  /** 0/1: lantern SpotLight may cast shadows when beam intensity is nonzero. */
   shadowLanternBeam: number
   /** Per-side shadow map resolution for lantern lights (point light uses this for each cube face). */
   shadowMapSize: 128 | 256 | 512
@@ -303,6 +334,23 @@ export type GameState = {
   render: RenderTuning
   audio: AudioTuning
 
+  /** Roguelite run-scoped progression (XP/level/perks). */
+  run: {
+    /** Stable id for the current run instance. */
+    runId: string
+    startedAtMs: number
+    xp: number
+    level: number
+    perkHistory: Array<{ level: number; perkId: string }>
+    bonuses: {
+      hpMaxBonus: number
+      staminaMaxBonus: number
+      /** Additive percent bonus, e.g. 0.1 = +10%. */
+      damageBonusPct: number
+    }
+    checkpoint?: RunCheckpoint
+  }
+
   view: {
     camPos: { x: number; y: number; z: number }
     camYaw: number
@@ -334,6 +382,11 @@ export type GameState = {
     /** Canonical procgen output bundle (seeded + phase-stable). */
     gen?: import('../procgen/types').FloorGenOutput
     itemsOnFloor: Array<{ id: ItemId; pos: Vec2; jitter: { x: number; z: number } }>
+    /**
+     * Monotonic revision bump when floor geometry/render-relevant entities change.
+     * Used to avoid per-frame deep comparisons/serialization in the renderer.
+     */
+    floorGeomRevision: number
     npcs: Array<{
       id: Id
       kind: NpcKind

@@ -5,6 +5,7 @@ import { consumeItem } from './inventory'
 import { makeDropJitter } from './dropJitter'
 import { pushActivityLog } from './activityLog'
 import { descendToNextFloor } from './floorProgression'
+import { hpMax, staminaMax } from './runProgression'
 
 export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
@@ -43,7 +44,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
       {
         ...state,
         party: { ...state.party, items },
-        floor: { ...state.floor, pois, itemsOnFloor },
+        floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.26 },
@@ -55,9 +56,25 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
   }
 
   if (poi.kind === 'Well') {
+    const { checkpoint: _checkpoint, ...runWithoutCheckpoint } = state.run
+    const snapshot: import('../types').CheckpointSnapshot = {
+      atMs: state.nowMs,
+      run: runWithoutCheckpoint,
+      floor: state.floor,
+      party: state.party,
+      view: state.view,
+      ui: {
+        screen: state.ui.screen,
+        debugOpen: state.ui.debugOpen,
+        procgenDebugOverlay: state.ui.procgenDebugOverlay,
+        activityLog: state.ui.activityLog,
+        knownRecipes: state.ui.knownRecipes,
+      },
+    }
     return pushActivityLog(
       {
         ...state,
+        run: { ...state.run, checkpoint: { kind: 'well', savedAtMs: state.nowMs, snapshot } },
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 120, magnitude: 0.18 },
@@ -67,7 +84,9 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     )
   }
   if (poi.kind === 'Bed') {
-    const chars = state.party.chars.map((c) => ({ ...c, hp: Math.min(100, c.hp + 30), stamina: Math.min(100, c.stamina + 30) }))
+    const hm = hpMax(state)
+    const sm = staminaMax(state)
+    const chars = state.party.chars.map((c) => ({ ...c, hp: Math.min(hm, c.hp + 30), stamina: Math.min(sm, c.stamina + 30) }))
     return pushActivityLog(
       {
         ...state,
@@ -112,7 +131,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
       {
         ...state,
         party: { ...state.party, items },
-        floor: { ...state.floor, pois, itemsOnFloor },
+        floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.28 },
@@ -170,7 +189,7 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
       return pushActivityLog(
         {
           ...state,
-          floor: { ...state.floor, pois },
+          floor: { ...state.floor, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
           party: { ...state.party, items: { ...state.party.items, [itemId]: nextItem } },
           ui: {
             ...state.ui,
@@ -252,7 +271,7 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
     return pushActivityLog(
       {
         ...state,
-        floor: { ...state.floor, tiles, pois },
+        floor: { ...state.floor, tiles, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.35 },

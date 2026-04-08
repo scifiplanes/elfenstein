@@ -100,7 +100,13 @@ export function HudLayout(props: {
       }
     >
       <section className={`${styles.panel} ${styles.char2}`}>
-        <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[1].id} />
+        <PortraitPanel
+          state={state}
+          dispatch={dispatch}
+          content={content}
+          characterId={state.party.chars[1].id}
+          captureForPostprocess={captureForPostprocess}
+        />
       </section>
 
       <section className={`${styles.panel} ${styles.statueL}`}>
@@ -119,15 +125,33 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.char4}`}>
-        <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[3].id} />
+        <PortraitPanel
+          state={state}
+          dispatch={dispatch}
+          content={content}
+          characterId={state.party.chars[3].id}
+          captureForPostprocess={captureForPostprocess}
+        />
       </section>
 
       <section className={`${styles.panel} ${styles.char1}`}>
-        <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[0].id} />
+        <PortraitPanel
+          state={state}
+          dispatch={dispatch}
+          content={content}
+          characterId={state.party.chars[0].id}
+          captureForPostprocess={captureForPostprocess}
+        />
       </section>
 
       <section className={`${styles.panel} ${styles.char3}`}>
-        <PortraitPanel state={state} dispatch={dispatch} content={content} characterId={state.party.chars[2].id} />
+        <PortraitPanel
+          state={state}
+          dispatch={dispatch}
+          content={content}
+          characterId={state.party.chars[2].id}
+          captureForPostprocess={captureForPostprocess}
+        />
       </section>
 
       <div className={styles.bottomRow}>

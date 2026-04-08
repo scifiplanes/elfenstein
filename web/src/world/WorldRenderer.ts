@@ -2,11 +2,8 @@ import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
 import type { GameState, NpcKind, PoiKind } from '../game/types'
 import type { DistrictTag, GenRoom } from '../procgen/types'
-import {
-  DUNGEON_CEILING_TEXTURE_SRC,
-  DUNGEON_FLOOR_TEXTURE_SRC,
-  DUNGEON_WALL_TEXTURE_SRC,
-} from './dungeonEnvTextures'
+import type { FloorType } from '../procgen/types'
+import { getDungeonEnvTextureSrcs } from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import {
   POI_OPENED_SPRITE_SRC,
@@ -40,13 +37,30 @@ function nearestPoisByManhattan<T extends { pos: { x: number; y: number } }>(
   max: number,
 ): T[] {
   if (max <= 0 || pois.length === 0) return []
-  const scored = pois.map((p) => ({
-    p,
-    d: Math.abs(p.pos.x - px) + Math.abs(p.pos.y - py),
-  }))
-  scored.sort((a, b) => a.d - b.d)
-  const n = Math.min(max, pois.length)
-  return scored.slice(0, n).map((x) => x.p)
+  // Keep the best N without sorting the entire array (N is tiny; avoids per-frame alloc/GC).
+  const best: Array<{ p: T; d: number }> = []
+  for (let i = 0; i < pois.length; i++) {
+    const p = pois[i]!
+    const d = Math.abs(p.pos.x - px) + Math.abs(p.pos.y - py)
+    if (best.length < max) {
+      best.push({ p, d })
+      // insertion-sort step
+      for (let j = best.length - 1; j > 0 && best[j]!.d < best[j - 1]!.d; j--) {
+        const tmp = best[j - 1]!
+        best[j - 1] = best[j]!
+        best[j] = tmp
+      }
+      continue
+    }
+    if (d >= best[best.length - 1]!.d) continue
+    best[best.length - 1] = { p, d }
+    for (let j = best.length - 1; j > 0 && best[j]!.d < best[j - 1]!.d; j--) {
+      const tmp = best[j - 1]!
+      best[j - 1] = best[j]!
+      best[j] = tmp
+    }
+  }
+  return best.map((x) => x.p)
 }
 
 export class WorldRenderer {
@@ -55,9 +69,9 @@ export class WorldRenderer {
   private readonly scene: THREE.Scene
   private readonly camera: THREE.PerspectiveCamera
   private readonly lantern: THREE.PointLight
-  private readonly lanternBeam: THREE.SpotLight
-  private readonly lanternBeamTarget: THREE.Object3D
   private readonly torchLights: THREE.PointLight[] = []
+  private lastTorchPickKey = ''
+  private cachedTorchPicked: Array<{ pos: { x: number; y: number } }> = []
 
   private expFog: THREE.FogExp2 | null = null
   private lastShadowMapSize = 0
@@ -65,7 +79,7 @@ export class WorldRenderer {
 
   private lastSize = { w: 0, h: 0 }
   private lastCamFov = NaN
-  private lastGeomKey = ''
+  private lastFloorGeomRevision = -1
   private geoGroup: THREE.Group | null = null
   private pickables: THREE.Object3D[] = []
   private readonly raycaster = new THREE.Raycaster()
@@ -75,9 +89,8 @@ export class WorldRenderer {
   private wallMat: THREE.MeshLambertMaterial | null = null
   private ceilMat: THREE.MeshLambertMaterial | null = null
 
-  private dungeonFloorTex: THREE.Texture | null = null
-  private dungeonWallTex: THREE.Texture | null = null
-  private dungeonCeilTex: THREE.Texture | null = null
+  private readonly envTex: Partial<Record<FloorType, { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture }>> =
+    {}
 
   private readonly textureLoader = new THREE.TextureLoader()
   private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
@@ -93,6 +106,7 @@ export class WorldRenderer {
   private lastPoiSpriteBoost = NaN
   private themeSpriteColor = new THREE.Color('#ffffff')
   private readonly tmpHsl = { h: 0, s: 0, l: 0 }
+  private lastFloorItemTintHex = -1
 
   private wellDrainedMat: THREE.SpriteMaterial | null = null
   private wellGlowMat: THREE.SpriteMaterial | null = null
@@ -102,6 +116,9 @@ export class WorldRenderer {
 
   private doorClosedMat: THREE.SpriteMaterial | null = null
   private doorOpenMat: THREE.SpriteMaterial | null = null
+
+  private doorFxGroup: THREE.Group | null = null
+  private lastDoorFxKey = ''
 
   private procgenDebugGroup: THREE.Group | null = null
   private lastProcgenDebugKey = ''
@@ -126,16 +143,6 @@ export class WorldRenderer {
     this.lantern.shadow.mapSize.set(256, 256)
     this.lantern.shadow.bias = -0.0002
     this.camera.add(this.lantern)
-
-    // A forward-facing beam makes the lantern feel impactful even in fog.
-    this.lanternBeamTarget = new THREE.Object3D()
-    this.lanternBeam = new THREE.SpotLight(0xffd7a0, 6.5, 28, Math.PI / 5.5, 0.55, 1.0)
-    this.lanternBeam.target = this.lanternBeamTarget
-    this.lanternBeam.castShadow = true
-    this.lanternBeam.shadow.mapSize.set(256, 256)
-    this.lanternBeam.shadow.bias = -0.00015
-    this.camera.add(this.lanternBeam)
-    this.camera.add(this.lanternBeamTarget)
 
     this.syncSize(1, 1)
   }
@@ -189,17 +196,11 @@ export class WorldRenderer {
     }
     for (const t of this.wellSparkleTextures) t.dispose()
     this.wellSparkleTextures = []
-    if (this.dungeonFloorTex) {
-      this.dungeonFloorTex.dispose()
-      this.dungeonFloorTex = null
-    }
-    if (this.dungeonWallTex) {
-      this.dungeonWallTex.dispose()
-      this.dungeonWallTex = null
-    }
-    if (this.dungeonCeilTex) {
-      this.dungeonCeilTex.dispose()
-      this.dungeonCeilTex = null
+    for (const bundle of Object.values(this.envTex)) {
+      if (!bundle) continue
+      bundle.floor.dispose()
+      bundle.wall.dispose()
+      bundle.ceiling.dispose()
     }
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
@@ -211,6 +212,9 @@ export class WorldRenderer {
     this.rt?.dispose()
     this.rt = null
     this.lastSize = { w: 0, h: 0 }
+    if (this.doorFxGroup) this.scene.remove(this.doorFxGroup)
+    this.doorFxGroup = null
+    this.lastDoorFxKey = ''
     this.disposeProcgenDebugOverlay()
   }
 
@@ -365,11 +369,9 @@ export class WorldRenderer {
   }
 
   private syncScene(state: GameState) {
-    const th = state.floor.gen?.theme
-    const themeKey = th ? `${th.id}:${th.floorColor}:${th.wallColor}:${th.ceilColor}` : 'default'
-    const key = `${state.floor.w}x${state.floor.h}:${state.floor.tiles.join('')}:${state.floor.pois.map((p)=>p.id+','+p.pos.x+','+p.pos.y+','+(p.opened?'1':'0')+','+(p.drained?'1':'0')).join('|')}:${state.floor.npcs.map((n)=>n.id+','+n.pos.x+','+n.pos.y+','+n.hp).join('|')}:${state.floor.itemsOnFloor.map((i)=>i.id+','+i.pos.x+','+i.pos.y+','+i.jitter.x.toFixed(3)+','+i.jitter.z.toFixed(3)).join('|')}:${themeKey}`
-    if (key !== this.lastGeomKey) {
-      this.lastGeomKey = key
+    const rev = state.floor.floorGeomRevision ?? 0
+    if (rev !== this.lastFloorGeomRevision) {
+      this.lastFloorGeomRevision = rev
       if (this.geoGroup) this.scene.remove(this.geoGroup)
       this.geoGroup = this.buildGeometry(state)
       this.scene.add(this.geoGroup)
@@ -437,44 +439,51 @@ export class WorldRenderer {
     this.camera.rotation.set(pitch, yawThree, roll)
 
     this.syncProcgenDebugOverlay(state)
+    this.syncDoorFx(state)
 
     // Lantern is camera-attached; offsets are in camera-local space (forward is -Z).
     this.lantern.position.set(0, state.render.lanternVerticalOffset, -state.render.lanternForwardOffset)
-    this.lanternBeam.position.copy(this.lantern.position)
-
-    // Keep the beam pointing where the camera looks.
-    const beamDist = Math.max(0.5, state.render.lanternDistance * state.render.lanternBeamDistanceScale)
-    this.lanternBeamTarget.position.set(0, 0, -Math.min(6, beamDist))
   }
 
-  private getDungeonFloorTexture(): THREE.Texture {
-    if (this.dungeonFloorTex) return this.dungeonFloorTex
-    const tex = this.textureLoader.load(DUNGEON_FLOOR_TEXTURE_SRC)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(1, 1)
-    this.dungeonFloorTex = tex
-    return tex
+  private syncDoorFx(state: GameState) {
+    const active = (state.ui.doorOpenFx ?? []).filter((fx) => fx.untilMs > state.nowMs)
+    const key = active.map((fx) => fx.id).join('|')
+    if (key === this.lastDoorFxKey) return
+    this.lastDoorFxKey = key
+
+    if (this.doorFxGroup) this.scene.remove(this.doorFxGroup)
+    const g = new THREE.Group()
+    const w = state.floor.w
+    const h = state.floor.h
+    for (const fx of active) {
+      const x = fx.pos.x - w / 2
+      const z = fx.pos.y - h / 2
+      const s = new THREE.Sprite(this.getDoorOpenMat())
+      s.position.set(x, 0.55, z)
+      g.add(s)
+    }
+    this.doorFxGroup = g
+    this.scene.add(g)
   }
 
-  private getDungeonWallTexture(): THREE.Texture {
-    if (this.dungeonWallTex) return this.dungeonWallTex
-    const tex = this.textureLoader.load(DUNGEON_WALL_TEXTURE_SRC)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(1, 1)
-    this.dungeonWallTex = tex
-    return tex
-  }
+  private getEnvTexturesForFloorType(floorType: FloorType): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
+    const cached = this.envTex[floorType]
+    if (cached) return cached
 
-  private getDungeonCeilingTexture(): THREE.Texture {
-    if (this.dungeonCeilTex) return this.dungeonCeilTex
-    const tex = this.textureLoader.load(DUNGEON_CEILING_TEXTURE_SRC)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-    tex.repeat.set(1, 1)
-    this.dungeonCeilTex = tex
-    return tex
+    const srcs = getDungeonEnvTextureSrcs(floorType)
+    const floor = this.textureLoader.load(srcs.floor)
+    const wall = this.textureLoader.load(srcs.wall)
+    const ceiling = this.textureLoader.load(srcs.ceiling)
+
+    for (const tex of [floor, wall, ceiling]) {
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+      tex.repeat.set(1, 1)
+    }
+
+    const bundle = { floor, wall, ceiling }
+    this.envTex[floorType] = bundle
+    return bundle
   }
 
   private buildGeometry(state: GameState) {
@@ -484,9 +493,10 @@ export class WorldRenderer {
     this.poiSprites = []
     this.wellDecorSprites = []
 
-    const wallTex = this.getDungeonWallTexture()
-    const floorTex = this.getDungeonFloorTexture()
-    const ceilTex = this.getDungeonCeilingTexture()
+    const env = this.getEnvTexturesForFloorType(state.floor.floorType)
+    const wallTex = env.wall
+    const floorTex = env.floor
+    const ceilTex = env.ceiling
 
     // Small emissive lift so the scene never becomes pure-black,
     // but low enough that the lantern still changes visibility.
@@ -612,16 +622,6 @@ export class WorldRenderer {
       this.pickables.push(s)
     })
 
-    ;(state.ui.doorOpenFx ?? []).forEach((fx) => {
-      if (fx.untilMs <= state.nowMs) return
-      const x = fx.pos.x - w / 2
-      const z = fx.pos.y - h / 2
-      const s = new THREE.Sprite(this.getDoorOpenMat())
-      s.position.set(x, 0.55, z)
-      // Not pickable; visual-only.
-      g.add(s)
-    })
-
     return g
   }
 
@@ -664,25 +664,15 @@ export class WorldRenderer {
       tint.setHSL(this.tmpHsl.h, this.tmpHsl.s, this.tmpHsl.l)
       const final = base.lerp(tint, Math.max(0, Math.min(1, intent.mix)))
       this.lantern.color.copy(final)
-      this.lanternBeam.color.copy(final)
       this.themeSpriteColor.copy(final).multiplyScalar(globalI)
     }
-    this.lanternBeam.intensity = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * globalI * flicker)
-    this.lanternBeam.distance = Math.max(0.5, state.render.lanternDistance * state.render.lanternBeamDistanceScale)
-    this.lanternBeam.angle = (Math.max(1, state.render.lanternBeamAngleDeg) * Math.PI) / 180
-    this.lanternBeam.penumbra = Math.max(0, Math.min(1, state.render.lanternBeamPenumbra))
-
-    const beamEff = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * flicker)
-    const beamLit = beamEff > 1e-4
-    this.lanternBeam.visible = beamLit
+    const tintHex = this.themeSpriteColor.getHex()
 
     const mapSize = state.render.shadowMapSize
     if (mapSize !== this.lastShadowMapSize) {
       this.lastShadowMapSize = mapSize
       this.lantern.shadow.mapSize.set(mapSize, mapSize)
-      this.lanternBeam.shadow.mapSize.set(mapSize, mapSize)
       this.lantern.shadow.needsUpdate = true
-      this.lanternBeam.shadow.needsUpdate = true
     }
 
     const filterChoices = [THREE.BasicShadowMap, THREE.PCFShadowMap, THREE.PCFSoftShadowMap] as const
@@ -693,11 +683,9 @@ export class WorldRenderer {
       this.renderer.shadowMap.needsUpdate = true
     }
 
-    const wantBeamShadow = beamLit && state.render.shadowLanternBeam > 0
     const wantPointShadow = state.render.shadowLanternPoint > 0
-    this.lanternBeam.castShadow = wantBeamShadow
     this.lantern.castShadow = wantPointShadow
-    this.renderer.shadowMap.enabled = wantBeamShadow || wantPointShadow
+    this.renderer.shadowMap.enabled = wantPointShadow
 
     // Apply base emissive lift without forcing a rebuild.
     const base = Math.max(0, state.render.baseEmissive) * globalI
@@ -705,12 +693,17 @@ export class WorldRenderer {
     if (this.wallMat) this.wallMat.emissiveIntensity = base * 0.8
     if (this.ceilMat) this.ceilMat.emissiveIntensity = base * 0.6
 
-    const torchPicked = nearestPoisByManhattan(
-      state.floor.pois,
-      state.floor.playerPos.x,
-      state.floor.playerPos.y,
-      state.render.torchPoiLightMax,
-    )
+    const torchKey = `${state.floor.floorGeomRevision}|${state.floor.playerPos.x},${state.floor.playerPos.y}|${state.render.torchPoiLightMax}`
+    if (torchKey !== this.lastTorchPickKey) {
+      this.lastTorchPickKey = torchKey
+      this.cachedTorchPicked = nearestPoisByManhattan(
+        state.floor.pois,
+        state.floor.playerPos.x,
+        state.floor.playerPos.y,
+        state.render.torchPoiLightMax,
+      )
+    }
+    const torchPicked = this.cachedTorchPicked
     const desired = torchPicked.length
     while (this.torchLights.length < desired) {
       const l = new THREE.PointLight(0xff8a3d, 1.0, state.render.torchDistance, 2.0)
@@ -735,7 +728,10 @@ export class WorldRenderer {
 
     this.syncPoiSpriteBoost(state)
     this.syncNpcSpriteThemeTint()
-    this.syncFloorItemThemeTint()
+    if (tintHex !== this.lastFloorItemTintHex) {
+      this.lastFloorItemTintHex = tintHex
+      this.syncFloorItemThemeTint()
+    }
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
     this.syncNpcIdleFrames(state)
@@ -769,8 +765,8 @@ export class WorldRenderer {
   private syncFloorItemThemeTint() {
     // Floor-item sprites use per-instance materials; update live sprites only.
     for (const p of this.pickables) {
-      const ud = (p as any)?.userData as undefined | { kind?: string }
-      if (!ud || ud.kind !== 'floorItem') continue
+      const ud = (p.userData ?? {}) as { kind?: unknown }
+      if (String(ud.kind ?? '') !== 'floorItem') continue
       const spr = p as THREE.Sprite
       const mat = spr.material as THREE.SpriteMaterial
       mat.color.copy(this.themeSpriteColor)

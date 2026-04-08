@@ -66,7 +66,7 @@
 
 .craft {
   position: absolute;
-  transform: translate(14px, 42px);
+  transform: translate(14px, -50%);
   width: 120px;
   height: 10px;
   border-radius: 999px;
@@ -78,6 +78,23 @@
 .craftFill {
   height: 100%;
   background: linear-gradient(90deg, rgba(255, 232, 170, 0.92), rgba(255, 140, 90, 0.92));
+}
+
+.craftPreview {
+  position: absolute;
+  transform: translate(18px, 66px);
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  filter: drop-shadow(0 10px 16px rgba(0, 0, 0, 0.55));
+  font-family: var(--mono);
+  font-size: 18px;
+  color: rgba(255, 255, 255, 0.92);
+  pointer-events: none;
 }
 
 .affordance {
