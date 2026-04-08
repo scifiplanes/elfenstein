@@ -1632,6 +1632,24 @@ Dump JSON and **`layoutScore`** selection change vs **`genVersion` 4** for the s
 
 ---
 
+## ADR-0142 — Add Barrel/Crate POIs, sprite doors, and canonical POI placeholder
+Date: 2026-04-08
+
+### Decision
+- Add **Barrel** and **Crate** as new `PoiKind` values with **open/closed sprites** and deterministic “open to drop loot” behavior (like Chest).
+- Render **doors** in the 3D view as **sprite billboards** using **`door_closed.png`**, with a short-lived **`door_open.png`** visual FX when a door is opened (the tile still becomes `floor` immediately for movement/pathing).
+- Make **`Content/poi_placeholder.png`** the canonical POI placeholder image (a copy of `Placeholders/Placeholder_NPC.png`) and mirror it into `web/public/content/poi_placeholder.png` so the `/content/poi_placeholder.png` URL is always satisfied.
+
+### Rationale
+New/updated art landed in `Content/` and needed to be usable in-game via the existing stable `/content/...` URL convention. Doors switching to sprites keeps visuals consistent with the rest of the billboarded interactables and makes the new door art visible immediately.
+
+### Consequences
+- Procgen now places additional container POIs (Barrel/Crate), and the POI sprite registry includes open-frame overrides.
+- `web/public/content/` must remain a mirror of `Content/` for runtime asset URLs; placeholder copies are now kept canonical under `Content/`.
+- Door opening adds a small temporary renderer-only FX cue (does not affect gameplay state).
+
+---
+
 ## ADR-0106 — Chest POI uses closed/open PNG billboards
 Date: 2026-04-08
 
@@ -2036,3 +2054,136 @@ A **persistent, readable** feed of actions matches the “what the player did”
 **No timed toast UI**; history is capped (**`ACTIVITY_LOG_MAX_ENTRIES`**). All prior toast producers were migrated through **`pushActivityLog`**. **`DESIGN.md`** §6.3 / §7.5 updated.
 
 ---
+
+## ADR-0134 — Show current-cell properties in F2 Debug
+Date: 2026-04-08
+
+### Decision
+Add an F2 Debug **Cell** readout that shows properties of the **current grid cell**:
+- Use the **player** cell as the sole source
+
+The readout includes basic values (`x,y`, in-bounds, tile, Manhattan distance to player) plus procgen room tags (room id, district, roomFunction/roomProperties/roomStatus/size) when `floor.gen` is present.
+
+### Rationale
+Cell-level procgen context is useful for debugging and tuning, but always-on overlays are visually noisy. The F2 panel is the designated debug surface and already hosts procgen-related readouts.
+
+### Consequences
+- F2 Debug gains a stable place to inspect cell/room tagging without enabling a full-screen overlay.
+- No additional pointer/click tracking is required; the panel reads directly from `floor.playerPos`.
+
+---
+
+## ADR-0135 — Remove clicked/hovered cell inspection (F2)
+Date: 2026-04-08
+
+### Decision
+Remove the F2 “inspect cell” functionality (hover/click-to-inspect). The F2 **Cell** readout now shows **player cell only**.
+
+### Rationale
+Keeping the debug panel responsive required extra pointer/click plumbing and proved brittle under the compositor + invisible HUD hit-layer setup. Player-cell readout covers the primary debugging need with minimal overhead.
+
+### Consequences
+- Less debug power (can’t inspect arbitrary cells) but more reliability and lower event churn.
+- Debug UI state and viewport event handlers are simpler.
+
+---
+
+## ADR-0136 — Remove “walk into POI” interaction (non-blocking POIs)
+Date: 2026-04-08
+
+### Decision
+Remove the implicit “walk into a POI tile to interact” behavior. POIs are **non-blocking**: stepping onto a POI tile behaves like normal floor. POI interactions occur via **explicit click** (3D viewport pick) or **dragging an item onto the POI**.
+
+### Rationale
+POIs can spawn in narrow passages. Treating them as walk-in triggers caused accidental hard blocks where the player could not traverse a corridor without stopping to interact.
+
+### Consequences
+- Players can occupy the same grid cell as a POI marker.
+- Any tutorial/tooltips (if added later) should not imply walk-in interaction for POIs.
+- Door behavior is unchanged: doors still use “walk into” semantics to attempt open.
+
+---
+
+## ADR-0137 — Meta progression: Exit POI + new floor seed per floor
+Date: 2026-04-08
+
+### Decision
+- Add an **Exit** POI that advances to the next floor when clicked/used.
+- On descend, increment `floorIndex`, cycle `floorType` (Dungeon→Cave→Ruins), and generate a **new random `floor.seed`** for the next floor.
+- Allow `floor.gen.theme.id` to influence the renderer via **render-only multipliers** (fog/torch/emissive), applied multiplicatively on top of debug tuning.
+
+### Rationale
+An explicit Exit POI makes progression legible and consistent with the “click what you see” interaction model. New seeds per floor maximize variety for short runs while keeping generation deterministic *within* a floor. Theme multipliers make floors feel distinct without turning themes into hard overrides that fight F2 tuning.
+
+### Consequences
+- Procgen places an Exit POI at/near `gen.exit`.
+- `poi/use` on Exit triggers the same generation path as regen, but updates `floorIndex`/`floorType` and replaces `floor.seed`.
+- Theme influence is renderer-only: it should not mutate saved debug tuning or game state.
+
+---
+
+## ADR-0138 — Frosch idle overlay hides both eyes
+Date: 2026-04-08
+
+### Decision
+When the portrait **idle overlay** is visible for **Frosch**, hide **both** of its eye sprites (`frosh_eye_L.png` and `frosh_eye_R.png`) for the duration of the idle overlay.
+
+Inspect hover (`frosh_eye_inspect.png`) still overrides and remains visible when active.
+
+### Rationale
+Frosch’s idle overlay is authored as a full-face expression layer; leaving the independent eye sprites visible on top created an unintended “double eyes” / muddier read during idle flashes.
+
+### Consequences
+- During idle flashes/pulses, Frosch eyes are not visible unless inspect hover is active.
+- Other species’ portraits are unchanged.
+
+---
+
+## ADR-0139 — Add floor debug progression + property toggles
+Date: 2026-04-08
+
+### Decision
+- Extend the F2 Debug panel with explicit **floor progression controls**: a **Descend (debug)** button and a **set `floorIndex`** control (apply and apply+regen).
+- Add F2 Debug **floor property toggles** (`Infested`, `Cursed`, `Destroyed`, `Overgrown`) that update `floor.floorProperties` and take effect on Regen/Descend.
+
+### Rationale
+Procgen iteration often needs quickly jumping to different floor indices and forcing different floor property combinations without having to “naturally” play to the desired state. Making these controls first-class reduces friction when tuning tagging, theme, and population behavior across the floor taxonomy.
+
+### Consequences
+- Debug-only actions can put the runtime floor state in configurations that do not match natural progression, but the effects remain gated behind Regen/Descend (no silent mid-floor mutation).
+- `GameState.floor.floorIndex` and `GameState.floor.floorProperties` can be adjusted via debug actions without touching file-based debug tuning (`web/public/debug-settings.json` remains render/audio only).
+
+---
+
+## ADR-0140 — Cursor click micro-shake (debug-tunable)
+Date: 2026-04-08
+
+### Decision
+Add a **tiny cosmetic shake** to the custom hand cursor on **pointer down**, with parameters exposed in the **F2 Debug** panel under **Cursor** (enable, amplitude, Hz, hold, decay).
+
+### Rationale
+The project’s interaction model is cursor-first; a subtle click micro-feedback makes the cursor feel more tactile without implying that an interaction succeeded (success/failure still uses SFX + activity log + gameplay-driven shake).
+
+### Consequences
+- Cursor feel can be tuned quickly during iteration via debug sliders and persisted in `web/public/debug-settings.json` (render tuning).
+- The shake should remain subtle by default to avoid visual noise during frequent clicking/dragging.
+
+---
+
+## ADR-0141 — Enforce one POI per cell (deterministic dedupe)
+Date: 2026-04-08
+
+### Decision
+- Enforce the invariant: **at most one POI per grid cell**.
+- If procgen yields multiple POIs in the same cell, resolve deterministically:
+  - **Canonical POI IDs win** (`poi_exit`, `poi_well`, `poi_bed`, `poi_chest`, `poi_barrel`, `poi_crate`).
+  - Otherwise, keep the POI with higher gameplay priority: `Exit > Well > Bed > Chest > Barrel > Crate > Shrine > CrackedWall`.
+  - Remaining ties break by stable `id` ordering.
+
+### Rationale
+As the POI set grows (more kinds and more placement passes), cell collisions become an easy failure mode that creates ambiguous interactions and can break deterministic placement assumptions. Dedupe keeps runs stable and ensures click/drag targets remain unambiguous.
+
+### Consequences
+- Some POIs may be dropped if they collide with a higher-priority POI.
+- Procgen’s `occupied` set and downstream systems (NPC/item placement, mission graph, rendering/picking) operate on a position-unique POI list.
+- In DEV builds we surface collisions via a warning so conflicts are noticed during iteration.

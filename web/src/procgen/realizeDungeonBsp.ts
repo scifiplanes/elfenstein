@@ -7,6 +7,10 @@ type BspNode =
   | { rect: Rect; depth: number; left: BspNode; right: BspNode }
   | { rect: Rect; depth: number; room: Rect }
 
+function manhattan(a: Vec2, b: Vec2): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+}
+
 export function runDungeonBspLayout(w: number, h: number, layoutRng: Rng): { tiles: Tile[]; genRooms: GenRoom[] } {
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   const genRooms: GenRoom[] = []
@@ -47,6 +51,39 @@ export function runDungeonBspLayout(w: number, h: number, layoutRng: Rng): { til
     return layoutRng.next() < 0.5 ? a : b
   }
   connect(root)
+
+  // Add a small number of extra connectors for cycles/alternate routes.
+  // Deterministic via the existing layout RNG stream.
+  if (genRooms.length >= 4) {
+    const maxExtra = layoutRng.next() < 0.35 ? 2 : 1
+    const usedPairs = new Set<string>()
+    for (let k = 0; k < maxExtra; k++) {
+      let bestA: Vec2 | null = null
+      let bestB: Vec2 | null = null
+      let bestD = -1
+      for (let tries = 0; tries < 18; tries++) {
+        const i = layoutRng.int(0, genRooms.length)
+        const j = layoutRng.int(0, genRooms.length)
+        if (i === j) continue
+        const a = genRooms[i].center
+        const b = genRooms[j].center
+        const d = manhattan(a, b)
+        if (d < 8 || d > 24) continue
+        const key = i < j ? `${i}-${j}` : `${j}-${i}`
+        if (usedPairs.has(key)) continue
+        if (d > bestD) {
+          bestD = d
+          bestA = a
+          bestB = b
+        }
+      }
+      if (!bestA || !bestB) break
+      const ia = genRooms.findIndex((r) => r.center.x === bestA!.x && r.center.y === bestA!.y)
+      const ib = genRooms.findIndex((r) => r.center.x === bestB!.x && r.center.y === bestB!.y)
+      if (ia >= 0 && ib >= 0) usedPairs.add(ia < ib ? `${ia}-${ib}` : `${ib}-${ia}`)
+      carveCorridor(tiles, w, bestA.x, bestA.y, bestB.x, bestB.y, layoutRng.next() < 0.5)
+    }
+  }
 
   return { tiles, genRooms }
 }

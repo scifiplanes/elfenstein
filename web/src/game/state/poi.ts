@@ -4,10 +4,55 @@ import { removeStatus } from './status'
 import { consumeItem } from './inventory'
 import { makeDropJitter } from './dropJitter'
 import { pushActivityLog } from './activityLog'
+import { descendToNextFloor } from './floorProgression'
 
 export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
   if (!poi) return state
+
+  if (poi.kind === 'Barrel' || poi.kind === 'Crate') {
+    const label = poi.kind === 'Barrel' ? 'barrel' : 'crate'
+    if (poi.opened) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 105, magnitude: 0.14 },
+          },
+        },
+        `The ${label} is empty.`,
+      )
+    }
+
+    const loot = pickContainerLootDefId(state, poiId)
+    const newId = (`i_${loot}_${state.floor.seed}_${poiId}` as unknown) as ItemId
+
+    const items = { ...state.party.items, [newId]: { id: newId, defId: loot, qty: 1 } }
+    const jitter = makeDropJitter({
+      floorSeed: state.floor.seed,
+      itemId: newId,
+      nonce: Math.floor(state.nowMs),
+      radius: state.render.dropJitterRadius ?? 0.28,
+    })
+    const itemsOnFloor = state.floor.itemsOnFloor.concat([{ id: newId, pos: { ...poi.pos }, jitter }])
+    const pois = state.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
+    const sfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }])
+
+    return pushActivityLog(
+      {
+        ...state,
+        party: { ...state.party, items },
+        floor: { ...state.floor, pois, itemsOnFloor },
+        ui: {
+          ...state.ui,
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.26 },
+          sfxQueue,
+        },
+      },
+      `${poi.kind} opened.`,
+    )
+  }
 
   if (poi.kind === 'Well') {
     return pushActivityLog(
@@ -104,6 +149,9 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
       'A cracked wall. Maybe a tool could pry it open.',
     )
   }
+  if (poi.kind === 'Exit') {
+    return descendToNextFloor(state)
+  }
 
   return state
 }
@@ -148,6 +196,11 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
 
   if (poi.kind === 'Chest') {
     // Treat “item on chest” as “use chest”.
+    return applyPoiUse(state, content, poiId)
+  }
+
+  if (poi.kind === 'Barrel' || poi.kind === 'Crate') {
+    // Treat “item on container” as “use container”.
     return applyPoiUse(state, content, poiId)
   }
 
@@ -226,6 +279,22 @@ function pickChestLootDefId(state: GameState, poiId: string): string {
     'Chisel',
   ] as const
   const seed = hashStr(`${state.floor.seed}:chest:${poiId}`)
+  return table[seed % table.length]
+}
+
+function pickContainerLootDefId(state: GameState, poiId: string): string {
+  // MVP deterministic container loot; keep distinct seed namespace so barrels/crates don't mirror chests.
+  const table = [
+    'Stick',
+    'Stone',
+    'Mushrooms',
+    'Foodroot',
+    'BandageStrip',
+    'AntitoxinVial',
+    'HerbPoultice',
+    'Chisel',
+  ] as const
+  const seed = hashStr(`${state.floor.seed}:container:${poiId}`)
   return table[seed % table.length]
 }
 

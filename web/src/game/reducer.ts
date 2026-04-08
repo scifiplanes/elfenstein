@@ -5,6 +5,8 @@ import type {
   EquipmentSlot,
   GameState,
   ItemId,
+  NpcKind,
+  PoiKind,
   ProcgenDebugOverlayMode,
   RenderTuning,
 } from './types'
@@ -15,13 +17,14 @@ import { feedCharacter, inspectCharacter } from './state/interactions'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
-import type { FloorType } from '../procgen/types'
+import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe, maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pushActivityLog } from './state/activityLog'
+import { descendToNextFloor } from './state/floorProgression'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -54,7 +57,7 @@ export type Action =
   | { type: 'ui/closeNpcDialog' }
   | { type: 'ui/toast'; text: string; ms?: number }
   | { type: 'ui/shake'; magnitude: number; ms?: number }
-  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }
+  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }
   | { type: 'audio/set'; key: keyof GameState['audio']; value: number }
   | { type: 'time/tick'; nowMs: number }
   | { type: 'player/turn'; dir: -1 | 1 }
@@ -65,10 +68,19 @@ export type Action =
   | { type: 'drag/drop'; payload: DragPayload; target: DragTarget; nowMs?: number }
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
+  | { type: 'floor/descend' }
+  /** Debug: spawn an NPC of the given kind one cell in front of the player. */
+  | { type: 'debug/spawnNpc'; kind: NpcKind }
+  /** Debug: spawn a POI of the given kind one cell in front of the player. */
+  | { type: 'debug/spawnPoi'; kind: PoiKind }
   /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
   /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
   | { type: 'floor/debugCycleDifficulty' }
+  /** Debug: set floor index (0-based). Regen/descend separately to materialize. */
+  | { type: 'floor/debugSetFloorIndex'; floorIndex: number }
+  /** Debug: toggle a procgen floor property. Regen/descend separately to materialize. */
+  | { type: 'floor/debugToggleFloorProperty'; property: FloorProperty }
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
@@ -88,7 +100,8 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'ui/setProcgenDebugOverlay':
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/openPaperdoll':
-      return { ...state, ui: { ...state.ui, paperdollFor: action.characterId } }
+      // Paperdoll popup disabled (global).
+      return state
     case 'ui/portraitFrameTap': {
       if (!state.party.chars.some((c) => c.id === action.characterId)) return state
       const min = state.render.portraitIdleFlashMinMs
@@ -99,22 +112,29 @@ export function reduce(state: GameState, action: Action): GameState {
         ...state,
         ui: {
           ...state.ui,
-          paperdollFor: action.characterId,
           portraitIdlePulse: { characterId: action.characterId, untilMs: state.nowMs + ms },
         },
       }
     }
     case 'ui/closePaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
-    case 'ui/openNpcDialog':
+    case 'ui/openNpcDialog': {
+      const npc = state.floor.npcs.find((n) => n.id === action.npcId)
+      const q = state.ui.sfxQueue ?? []
+      const sfxQueue =
+        npc?.kind === 'Skeleton'
+          ? q.concat([{ id: `s_${state.nowMs}_bones`, kind: 'bones' as const }])
+          : q
       return {
         ...state,
         ui: {
           ...state.ui,
           npcDialogFor: action.npcId,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+          sfxQueue,
         },
       }
+    }
     case 'ui/closeNpcDialog':
       return { ...state, ui: { ...state.ui, npcDialogFor: undefined } }
     case 'ui/toast':
@@ -200,6 +220,26 @@ export function reduce(state: GameState, action: Action): GameState {
       const nextPois = state.floor.pois.map((p) => (p.id === action.poiId ? { ...p, opened: !p.opened } : p))
       return { ...state, floor: { ...state.floor, pois: nextPois } }
     }
+    case 'debug/spawnNpc': {
+      const dv = dirVec(state.floor.playerDir)
+      const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const npc = {
+        id: `debug_npc_${state.nowMs}`,
+        kind: action.kind,
+        name: action.kind,
+        pos,
+        status: 'neutral' as const,
+        hp: 10,
+        language: 'DeepGnome' as const,
+      }
+      return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc] } }
+    }
+    case 'debug/spawnPoi': {
+      const dv = dirVec(state.floor.playerDir)
+      const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const poi = { id: `debug_poi_${state.nowMs}`, kind: action.kind, pos }
+      return { ...state, floor: { ...state.floor, pois: [...state.floor.pois, poi] } }
+    }
     case 'floor/debugCycleRealizer': {
       const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
       const i = Math.max(0, order.indexOf(state.floor.floorType))
@@ -217,6 +257,22 @@ export function reduce(state: GameState, action: Action): GameState {
         { ...state, floor: { ...state.floor, difficulty: next } },
         `Next regen uses difficulty: ${label} (${next}).`,
       )
+    }
+    case 'floor/debugSetFloorIndex': {
+      const raw = Number(action.floorIndex)
+      const nextFloorIndex = Math.max(0, Math.min(9999, Math.floor(Number.isFinite(raw) ? raw : state.floor.floorIndex)))
+      if (nextFloorIndex === state.floor.floorIndex) return state
+      return pushActivityLog({ ...state, floor: { ...state.floor, floorIndex: nextFloorIndex } }, `Next regen uses floor index: ${nextFloorIndex}.`)
+    }
+    case 'floor/debugToggleFloorProperty': {
+      const order: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
+      const cur = state.floor.floorProperties
+      const has = cur.includes(action.property)
+      const next = (has ? cur.filter((p) => p !== action.property) : cur.concat([action.property]))
+        .filter((p, i, a) => a.indexOf(p) === i)
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+      const label = next.length ? next.join(', ') : '—'
+      return pushActivityLog({ ...state, floor: { ...state.floor, floorProperties: next } }, `Next regen uses floor props: ${label}.`)
     }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
@@ -252,7 +308,9 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       return pushActivityLog(next, `Regenerated (seed ${nextSeed}).`)
     }
-
+    case 'floor/descend': {
+      return descendToNextFloor(state)
+    }
     case 'player/turn': {
       if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
@@ -458,6 +516,21 @@ function clampShadowMapSize(n: number): RenderTuning['shadowMapSize'] {
 }
 
 function clampRenderTuning(r: RenderTuning): RenderTuning {
+  const globalIntensity = Math.max(0, Math.min(3, Number(r.globalIntensity ?? 1.0)))
+  const clampHue = (v: number) => Math.max(-180, Math.min(180, Number(v)))
+  const clampSat = (v: number) => Math.max(0, Math.min(3, Number(v)))
+  const themeHueShiftDeg_dungeon_warm = clampHue(r.themeHueShiftDeg_dungeon_warm ?? 0)
+  const themeHueShiftDeg_dungeon_cool = clampHue(r.themeHueShiftDeg_dungeon_cool ?? 0)
+  const themeHueShiftDeg_cave_damp = clampHue(r.themeHueShiftDeg_cave_damp ?? 0)
+  const themeHueShiftDeg_cave_deep = clampHue(r.themeHueShiftDeg_cave_deep ?? 0)
+  const themeHueShiftDeg_ruins_bleach = clampHue(r.themeHueShiftDeg_ruins_bleach ?? 0)
+  const themeHueShiftDeg_ruins_umber = clampHue(r.themeHueShiftDeg_ruins_umber ?? 0)
+  const themeSaturation_dungeon_warm = clampSat(r.themeSaturation_dungeon_warm ?? 1.0)
+  const themeSaturation_dungeon_cool = clampSat(r.themeSaturation_dungeon_cool ?? 1.0)
+  const themeSaturation_cave_damp = clampSat(r.themeSaturation_cave_damp ?? 1.0)
+  const themeSaturation_cave_deep = clampSat(r.themeSaturation_cave_deep ?? 1.0)
+  const themeSaturation_ruins_bleach = clampSat(r.themeSaturation_ruins_bleach ?? 1.0)
+  const themeSaturation_ruins_umber = clampSat(r.themeSaturation_ruins_umber ?? 1.0)
   const m = Math.round(r.ditherMatrixSize)
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
   const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
@@ -523,6 +596,19 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
   return {
     ...r,
+    globalIntensity,
+    themeHueShiftDeg_dungeon_warm,
+    themeHueShiftDeg_dungeon_cool,
+    themeHueShiftDeg_cave_damp,
+    themeHueShiftDeg_cave_deep,
+    themeHueShiftDeg_ruins_bleach,
+    themeHueShiftDeg_ruins_umber,
+    themeSaturation_dungeon_warm,
+    themeSaturation_dungeon_cool,
+    themeSaturation_cave_damp,
+    themeSaturation_cave_deep,
+    themeSaturation_ruins_bleach,
+    themeSaturation_ruins_umber,
     ditherMatrixSize,
     ditherPalette: p as RenderTuning['ditherPalette'],
     ditherPalette0Mix,
@@ -635,9 +721,6 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   }
   if (tile !== 'floor') return bump(state)
 
-  const poi = state.floor.pois.find((p) => p.pos.x === nx && p.pos.y === ny)
-  if (poi) return reduce(state, { type: 'poi/use', poiId: poi.id })
-
   const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
   if (npc) {
     if (npc.status === 'hostile') {
@@ -698,7 +781,14 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
   if (tile === 'door') {
     const tiles = state.floor.tiles.slice()
     tiles[idx] = 'floor'
-    const next = { ...state, floor: { ...state.floor, tiles } }
+    const w = state.floor.w
+    const doorX = idx % w
+    const doorY = (idx / w) | 0
+    const keep = (state.ui.doorOpenFx ?? []).filter((x) => x.untilMs > state.nowMs)
+    const doorOpenFx = keep.concat([
+      { id: `doorFx_${state.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: state.nowMs, untilMs: state.nowMs + 420 },
+    ])
+    const next = { ...state, floor: { ...state.floor, tiles }, ui: { ...state.ui, doorOpenFx } }
     return reduce(next, { type: 'ui/toast', text: 'The door creaks open.', ms: 900 })
   }
 
@@ -718,7 +808,11 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
   const consumed = keyId ? consumeItem(state, keyId) : state
   const tiles = consumed.floor.tiles.slice()
   tiles[idx] = 'floor'
-  const opened = { ...consumed, floor: { ...consumed.floor, tiles } }
+  const keep = (consumed.ui.doorOpenFx ?? []).filter((x) => x.untilMs > consumed.nowMs)
+  const doorOpenFx = keep.concat([
+    { id: `doorFx_${consumed.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: consumed.nowMs, untilMs: consumed.nowMs + 420 },
+  ])
+  const opened = { ...consumed, floor: { ...consumed.floor, tiles }, ui: { ...consumed.ui, doorOpenFx } }
   const withToast = reduce(opened, { type: 'ui/toast', text: 'Unlocked the door.', ms: 1100 })
   return reduce(withToast, { type: 'ui/sfx', kind: 'ui' })
 }

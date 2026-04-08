@@ -37,7 +37,7 @@ export type PortraitDropTarget = 'eyes' | 'mouth'
 
 export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor'
 
-export type PoiKind = 'Well' | 'Chest' | 'Bed' | 'Shrine' | 'CrackedWall'
+export type PoiKind = 'Well' | 'Chest' | 'Barrel' | 'Crate' | 'Bed' | 'Shrine' | 'CrackedWall' | 'Exit'
 
 export type FloorPoi = {
   id: Id
@@ -84,7 +84,9 @@ export type UiState = {
   /** Persistent lines inside the game viewport activity log (newest last; capped). */
   activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
-  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' }>
+  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }>
+  /** Short-lived sprite FX when opening a door (rendered in 3D viewport). */
+  doorOpenFx?: Array<{ id: Id; pos: Vec2; startedAtMs: number; untilMs: number }>
   /** Short-lived portrait “mouth visible” interaction cue. */
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
   /** Short-lived portrait frame shake (inspect/feed resolution). */
@@ -102,6 +104,22 @@ export type UiState = {
 }
 
 export type RenderTuning = {
+  /** Global scalar for 3D scene brightness (lights + 3D sprites). */
+  globalIntensity: number
+  /** Per-theme hue shift (degrees) applied to 3D light/sprite tint. */
+  themeHueShiftDeg_dungeon_warm: number
+  themeHueShiftDeg_dungeon_cool: number
+  themeHueShiftDeg_cave_damp: number
+  themeHueShiftDeg_cave_deep: number
+  themeHueShiftDeg_ruins_bleach: number
+  themeHueShiftDeg_ruins_umber: number
+  /** Per-theme saturation multiplier applied to 3D light/sprite tint. */
+  themeSaturation_dungeon_warm: number
+  themeSaturation_dungeon_cool: number
+  themeSaturation_cave_damp: number
+  themeSaturation_cave_deep: number
+  themeSaturation_ruins_bleach: number
+  themeSaturation_ruins_umber: number
   /** Base emissive lift applied to dungeon materials (multiplied by per-surface factors). */
   baseEmissive: number
   lanternIntensity: number
@@ -157,6 +175,18 @@ export type RenderTuning = {
   camShakeDecayMs: number
   /** Scales camera shake strength relative to `ui.shake.magnitude`. */
   camShakeUiMix: number
+
+  /** 0/1: enable micro-shake of the custom cursor on pointer down (debug). */
+  cursorClickShakeEnabled: number
+  /** Cursor click shake amplitude scalar (unitless; mapped to px/deg in `shakeTransform`). */
+  cursorClickShakeMagnitude: number
+  /** Cursor click shake envelope: hold at full strength (ms) before fade. */
+  cursorClickShakeLengthMs: number
+  /** Cursor click shake envelope: linear fade duration (ms) after hold. */
+  cursorClickShakeDecayMs: number
+  /** Cursor click shake oscillation frequency (Hz). */
+  cursorClickShakeHz: number
+
   ditherStrength: number
   ditherColourPreserve: number
   ditherPixelSize: number

@@ -60,6 +60,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   }, [])
 
   useEffect(() => {
+    // No-op. (F2 cell readout uses click-to-inspect, not hover tracking.)
+  }, [])
+
+  useEffect(() => {
     return () => {
       if (navPadTimerRef.current) clearTimeout(navPadTimerRef.current)
     }

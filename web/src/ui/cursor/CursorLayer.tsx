@@ -1,25 +1,28 @@
-import { useContext, useEffect } from 'react'
+import { useContext, useEffect, useMemo, useRef } from 'react'
 import { CursorContext } from './CursorContext'
 import styles from './CursorLayer.module.css'
 import type { GameState } from '../../game/types'
 import type { ContentDB } from '../../game/content/contentDb'
+import { shakeTransform } from '../feedback/shakeTransform'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const api = useContext(CursorContext)
-  if (!api) return null
-
-  const { pointer, dragging, affordance, hoverRect, isPointerDown, hoverTarget } = api.state
+  const clickShakeRef = useRef<{ startedAtMs: number; untilMs: number } | null>(null)
+  const prevIsPointerDown = useRef(false)
+  const isPointerDown = api?.state.isPointerDown ?? false
 
   useEffect(() => {
+    if (!api) return
     // Always hide the system cursor for the intended “hand cursor” feel.
     const prev = document.body.style.cursor
     document.body.style.cursor = 'none'
     return () => {
       document.body.style.cursor = prev
     }
-  }, [])
+  }, [api])
 
   useEffect(() => {
+    if (!api) return
     // Preload cursor sprites so state changes don’t hitch on image decode.
     const srcs = ['/content/Hand_Point.png', '/content/Hand_Hold.png', '/content/Hand_Active.png']
     const imgs = srcs.map((src) => {
@@ -32,7 +35,25 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       // Keep GC-able references only; no listeners attached.
       void imgs
     }
-  }, [])
+  }, [api])
+
+  useEffect(() => {
+    const prev = prevIsPointerDown.current
+    prevIsPointerDown.current = isPointerDown
+    if (prev || !isPointerDown) return
+
+    const t = props.state.render
+    if (!(t.cursorClickShakeEnabled > 0)) return
+    const now = props.state.nowMs
+    const untilMs = now + Math.max(0, t.cursorClickShakeLengthMs) + Math.max(0, t.cursorClickShakeDecayMs)
+    clickShakeRef.current = { startedAtMs: now, untilMs }
+  }, [isPointerDown, props.state.nowMs, props.state.render])
+
+  const pointer = api?.state.pointer ?? { x: 0, y: 0 }
+  const dragging = api?.state.dragging ?? null
+  const affordance = api?.state.affordance ?? null
+  const hoverRect = api?.state.hoverRect ?? null
+  const hoverTarget = api?.state.hoverTarget ?? null
 
   const x = pointer.x
   const y = pointer.y
@@ -98,46 +119,65 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     return def?.name ?? null
   })()
 
+  const handShakeTransform = useMemo(() => {
+    if (!api) return undefined
+    const clickShake = clickShakeRef.current
+    if (!clickShake) return undefined
+    const t = props.state.render
+    if (!(t.cursorClickShakeEnabled > 0)) return undefined
+    if (props.state.nowMs > clickShake.untilMs) return undefined
+    return shakeTransform(
+      props.state.nowMs,
+      clickShake.startedAtMs,
+      clickShake.untilMs,
+      t.cursorClickShakeMagnitude,
+      t.cursorClickShakeLengthMs,
+      t.cursorClickShakeDecayMs,
+      t.cursorClickShakeHz,
+    )
+  }, [api, props.state.nowMs, props.state.render])
+
   return (
-    <div className={styles.layer}>
-      <div
-        className={`${styles.hand} ${isHold ? styles.hold : isActive ? styles.active : styles.point}`}
-        style={{ left: x, top: y }}
-      />
-      {ghost ? (
-        <div className={`${styles.ghost} ${isHoveringValidTarget ? styles.ghostShake : ''}`} style={{ left: x, top: y }}>
-          {ghostText}
+    api ? (
+      <div className={styles.layer}>
+        <div className={styles.handWrap} style={{ left: x, top: y, transform: handShakeTransform }}>
+          <div className={`${styles.hand} ${isHold ? styles.hold : isActive ? styles.active : styles.point}`} />
         </div>
-      ) : null}
-      {crafting ? (
-        <div className={styles.craft} style={{ left: x, top: y }}>
-          <div className={styles.craftFill} style={{ width: `${Math.round(craftProgress * 100)}%` }} />
-        </div>
-      ) : null}
-      {dragging?.started && (contextualAffordance ?? affordance) && hoverRect ? (
-        <div
-          className={styles.affordance}
-          style={{
-            left: hoverRect.right,
-            top: (hoverRect.top + hoverRect.bottom) / 2,
-          }}
-        >
-          <span aria-hidden="true">{(contextualAffordance ?? affordance)!.icon}</span>
-          <span>{(contextualAffordance ?? affordance)!.label}</span>
-        </div>
-      ) : null}
-      {inventoryHoverName && hoverRect ? (
-        <div
-          className={styles.itemNameTooltip}
-          style={{
-            left: (hoverRect.left + hoverRect.right) / 2,
-            top: hoverRect.top,
-          }}
-        >
-          {inventoryHoverName}
-        </div>
-      ) : null}
-    </div>
+        {ghost ? (
+          <div className={`${styles.ghost} ${isHoveringValidTarget ? styles.ghostShake : ''}`} style={{ left: x, top: y }}>
+            {ghostText}
+          </div>
+        ) : null}
+        {crafting ? (
+          <div className={styles.craft} style={{ left: x, top: y }}>
+            <div className={styles.craftFill} style={{ width: `${Math.round(craftProgress * 100)}%` }} />
+          </div>
+        ) : null}
+        {dragging?.started && (contextualAffordance ?? affordance) && hoverRect ? (
+          <div
+            className={styles.affordance}
+            style={{
+              left: hoverRect.right,
+              top: (hoverRect.top + hoverRect.bottom) / 2,
+            }}
+          >
+            <span aria-hidden="true">{(contextualAffordance ?? affordance)!.icon}</span>
+            <span>{(contextualAffordance ?? affordance)!.label}</span>
+          </div>
+        ) : null}
+        {inventoryHoverName && hoverRect ? (
+          <div
+            className={styles.itemNameTooltip}
+            style={{
+              left: (hoverRect.left + hoverRect.right) / 2,
+              top: hoverRect.top,
+            }}
+          >
+            {inventoryHoverName}
+          </div>
+        ) : null}
+      </div>
+    ) : null
   )
 }
 

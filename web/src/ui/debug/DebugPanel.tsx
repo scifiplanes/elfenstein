@@ -1,8 +1,10 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState, ProcgenDebugOverlayMode } from '../../game/types'
+import type { GameState, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
 import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
+import type { FloorProperty } from '../../procgen/types'
+import { getThemeLightIntent } from '../../world/themeTuning'
 import styles from './DebugPanel.module.css'
 
 const TAU = Math.PI * 2
@@ -34,6 +36,11 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const [query, setQuery] = useState('')
   const cursor = useCursor()
   const [dumpTick, setDumpTick] = useState(0)
+  const [floorIndexDraft, setFloorIndexDraft] = useState<string>(String(state.floor.floorIndex))
+  const [spawnNpcKind, setSpawnNpcKind] = useState<NpcKind>('Skeleton')
+  const [spawnPoiKind, setSpawnPoiKind] = useState<PoiKind>('Chest')
+
+  const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
 
   const dumpFloorGen = () => {
     const gen = state.floor.gen
@@ -121,8 +128,31 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
+  const cursorSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+    () => [
+      { key: 'cursorClickShakeMagnitude', label: 'Click shake amplitude', min: 0, max: 1.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'cursorClickShakeHz', label: 'Click shake Hz', min: 0, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'cursorClickShakeLengthMs', label: 'Click shake length / hold (ms)', min: 0, max: 800, step: 5, format: (v) => String(Math.round(v)) },
+      { key: 'cursorClickShakeDecayMs', label: 'Click shake decay / fade (ms)', min: 0, max: 1200, step: 5, format: (v) => String(Math.round(v)) },
+    ],
+    [],
+  )
+
   const renderSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
+      { key: 'globalIntensity', label: 'Global intensity (3D)', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_dungeon_warm', label: 'Theme hue shift (dungeon_warm, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_dungeon_warm', label: 'Theme saturation (dungeon_warm)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_dungeon_cool', label: 'Theme hue shift (dungeon_cool, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_dungeon_cool', label: 'Theme saturation (dungeon_cool)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_cave_damp', label: 'Theme hue shift (cave_damp, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_cave_damp', label: 'Theme saturation (cave_damp)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_cave_deep', label: 'Theme hue shift (cave_deep, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_cave_deep', label: 'Theme saturation (cave_deep)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_ruins_bleach', label: 'Theme hue shift (ruins_bleach, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_ruins_bleach', label: 'Theme saturation (ruins_bleach)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'themeHueShiftDeg_ruins_umber', label: 'Theme hue shift (ruins_umber, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
+      { key: 'themeSaturation_ruins_umber', label: 'Theme saturation (ruins_umber)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'baseEmissive', label: 'Base emissive lift', min: 0, max: 0.4, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'dropAheadCells', label: 'Drop length (cells ahead)', min: 0, max: 2.5, step: 0.05, format: (v) => v.toFixed(2) },
       { key: 'dropRangeCells', label: 'Drop range (Manhattan cells)', min: 0, max: 20, step: 1, format: (v) => String(Math.round(v)) },
@@ -244,6 +274,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const q = query.trim().toLowerCase()
   const visibleCamera = q ? cameraSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cameraSliders
   const visiblePortrait = q ? portraitSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : portraitSliders
+  const visibleCursor = q ? cursorSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cursorSliders
   const visibleRender = q ? renderSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : renderSliders
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
   const visibleNpc = q ? npcSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : npcSliders
@@ -253,6 +284,16 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const yawGame = wrapPi(yawRaw)
   // Must match WorldRenderer: Three.js rotation.y uses opposite X sign vs game forward (sin, -cos).
   const yawThree = -yawGame
+
+  const cell = state.floor.playerPos
+  const cellSource = 'player'
+  const { w: floorW, h: floorH } = state.floor
+  const inBounds = cell.x >= 0 && cell.y >= 0 && cell.x < floorW && cell.y < floorH
+  const tile = inBounds ? state.floor.tiles[cell.x + cell.y * floorW] : undefined
+  const dist = Math.abs(cell.x - state.floor.playerPos.x) + Math.abs(cell.y - state.floor.playerPos.y)
+  const room =
+    state.floor.gen?.rooms.find((r) => cell.x >= r.rect.x && cell.y >= r.rect.y && cell.x < r.rect.x + r.rect.w && cell.y < r.rect.y + r.rect.h) ??
+    null
 
   return (
     <div
@@ -268,6 +309,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         <div className={styles.headerBtns}>
           <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'floor/regen' })}>
             Regen (seed {state.floor.seed})
+          </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => dispatch({ type: 'floor/descend' })}
+            title="Advance to the next floor (increments floorIndex and regenerates)."
+          >
+            Descend (debug)
           </button>
           <button
             type="button"
@@ -335,6 +384,186 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         placeholder="Search… (will matter later)"
       />
 
+      {(!q || 'floor floors procgen floorindex floorproperties properties'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Floors</div>
+
+          <div className={styles.row}>
+            <div className={styles.label}>set floorIndex</div>
+            <div className={styles.value}>
+              <input
+                className={styles.inlineInput}
+                inputMode="numeric"
+                value={floorIndexDraft}
+                onChange={(e) => setFloorIndexDraft(e.target.value)}
+                onBlur={() => setFloorIndexDraft(String(state.floor.floorIndex))}
+              />
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => {
+                  const n = Number(floorIndexDraft)
+                  dispatch({ type: 'floor/debugSetFloorIndex', floorIndex: n })
+                }}
+                title="Sets floorIndex (0-based). Regen separately to materialize."
+              >
+                Apply
+              </button>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => {
+                  const n = Number(floorIndexDraft)
+                  dispatch({ type: 'floor/debugSetFloorIndex', floorIndex: n })
+                  dispatch({ type: 'floor/regen' })
+                }}
+                title="Sets floorIndex and immediately regenerates."
+              >
+                Apply & Regen
+              </button>
+            </div>
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.label}>floorProperties</div>
+            <div className={styles.value}>{state.floor.floorProperties.length ? state.floor.floorProperties.join(', ') : '—'}</div>
+            <div className={styles.inlineBtns}>
+              {floorPropertyOrder.map((p) => {
+                const checked = state.floor.floorProperties.includes(p)
+                return (
+                  <label key={p} className={styles.pill} title="Affects procgen on Regen/Descend.">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => dispatch({ type: 'floor/debugToggleFloorProperty', property: p })}
+                    />
+                    {p}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!q || 'spawn npc poi entity'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Spawn (1 cell ahead)</div>
+          <div className={styles.row}>
+            <div className={styles.label}>NPC</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnNpcKind}
+                onChange={(e) => setSpawnNpcKind(e.target.value as NpcKind)}
+              >
+                {(['Skeleton', 'Bobr', 'Wurglepup', 'Catoctopus'] satisfies NpcKind[]).map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnNpc', kind: spawnNpcKind })}
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>POI</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnPoiKind}
+                onChange={(e) => setSpawnPoiKind(e.target.value as PoiKind)}
+              >
+                {(['Well', 'Chest', 'Barrel', 'Crate', 'Bed', 'Shrine', 'CrackedWall', 'Exit'] satisfies PoiKind[]).map((k) => (
+                  <option key={k} value={k}>{k}</option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnPoi', kind: spawnPoiKind })}
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {(!q || 'cell current player tile room district'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Cell</div>
+          <div className={styles.row}>
+            <div className={styles.label}>source</div>
+            <div className={styles.value}>{cellSource}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>pos</div>
+            <div className={styles.value}>
+              {cell.x},{cell.y}
+            </div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>inBounds</div>
+            <div className={styles.value}>{inBounds ? 'yes' : 'no'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>tile</div>
+            <div className={styles.value}>{tile ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>distToPlayer</div>
+            <div className={styles.value}>{String(dist)}</div>
+            <div />
+          </div>
+
+          <div className={styles.row}>
+            <div className={styles.label}>roomId</div>
+            <div className={styles.value}>{room?.id ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>district</div>
+            <div className={styles.value}>{room?.district ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>roomFunction</div>
+            <div className={styles.value}>{room?.tags?.roomFunction ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>roomProperties</div>
+            <div className={styles.value}>{room?.tags?.roomProperties ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>roomStatus</div>
+            <div className={styles.value}>{room?.tags?.roomStatus ?? '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>roomSize</div>
+            <div className={styles.value}>{room?.tags?.size ?? '—'}</div>
+            <div />
+          </div>
+        </div>
+      )}
+
       {(!q || 'procgen floor gen mission district score difficulty'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Procgen</div>
@@ -391,6 +620,18 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
               <div className={styles.row}>
                 <div className={styles.label}>theme</div>
                 <div className={styles.value}>{state.floor.gen.theme?.id ?? '—'}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>themeTuning</div>
+                <div className={styles.value}>
+                  {(() => {
+                    const it = getThemeLightIntent(state.floor.gen.theme?.id)
+                    const torch = it.torchIntensityMult != null ? ` torchI×${it.torchIntensityMult.toFixed(2)}` : ''
+                    const lan = it.lanternIntensityMult != null ? ` lanternI×${it.lanternIntensityMult.toFixed(2)}` : ''
+                    return `intent=${it.intentHex} mix=${it.mix.toFixed(2)}${lan}${torch}`
+                  })()}
+                </div>
                 <div />
               </div>
               <div className={styles.row}>
@@ -487,6 +728,40 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           )
         })}
       </div>
+
+      {(!q || 'cursor click shake'.includes(q) || visibleCursor.length) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Cursor</div>
+          <div className={styles.row}>
+            <div className={styles.label}>Click shake enabled</div>
+            <div className={styles.value}>{state.render.cursorClickShakeEnabled > 0 ? 'On' : 'Off'}</div>
+            <input
+              className={styles.slider}
+              type="checkbox"
+              checked={state.render.cursorClickShakeEnabled > 0}
+              onChange={(e) => dispatch({ type: 'render/set', key: 'cursorClickShakeEnabled', value: e.target.checked ? 1 : 0 })}
+            />
+          </div>
+          {visibleCursor.map((s) => {
+            const v = state.render[s.key]
+            return (
+              <div key={s.key} className={styles.row}>
+                <div className={styles.label}>{s.label}</div>
+                <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+                <input
+                  className={styles.slider}
+                  type="range"
+                  min={s.min}
+                  max={s.max}
+                  step={s.step}
+                  value={v}
+                  onChange={(e) => dispatch({ type: 'render/set', key: s.key, value: Number(e.target.value) })}
+                />
+              </div>
+            )
+          })}
+        </div>
+      )}
 
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Rendering</div>

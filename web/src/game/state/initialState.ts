@@ -3,6 +3,7 @@ import type { GameState, InventoryGrid, ItemId } from '../types'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { generateDungeon } from '../../procgen/generateDungeon'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { randomFloorSeed } from './randomSeed'
 
 function mkInventory(cols: number, rows: number): InventoryGrid {
   return { cols, rows, slots: Array.from({ length: cols * rows }, () => null) }
@@ -15,16 +16,6 @@ function place(inv: InventoryGrid, itemId: ItemId, idx: number) {
 
 const DEFAULT_FLOOR_W = 31
 const DEFAULT_FLOOR_H = 31
-
-/** Uniform 32-bit floor seed for first load; fallback if `crypto.getRandomValues` is missing. */
-function randomFloorSeed(): number {
-  if (typeof crypto !== 'undefined' && typeof crypto.getRandomValues === 'function') {
-    const buf = new Uint32Array(1)
-    crypto.getRandomValues(buf)
-    return buf[0] >>> 0
-  }
-  return (((Math.random() * 2 ** 32) >>> 0) ^ (Math.floor(performance.now()) >>> 0)) >>> 0
-}
 
 export function makeInitialState(_content: ContentDB): GameState {
   const nowMs = performance.now()

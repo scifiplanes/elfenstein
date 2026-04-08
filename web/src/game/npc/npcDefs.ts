@@ -12,6 +12,7 @@ export const NPC_SPRITE_SRC: Record<NpcKind, string> = {
 /** Optional second frame swapped on a shared timer (same material per kind). */
 export const NPC_SPRITE_IDLE_SRC: Partial<Record<NpcKind, string>> = {
   Catoctopus: '/content/npc_catoctopus_idle.png',
+  Skeleton: '/content/npc_skeleton_idle.png',
   Wurglepup: '/content/npc_slime_idle.png',
 }
 

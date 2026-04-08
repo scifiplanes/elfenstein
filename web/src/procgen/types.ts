@@ -123,6 +123,14 @@ export type FloorGenMeta = {
   layoutScore?: number
   /** Input difficulty echoed for dumps/debug (present from genVersion 5). */
   difficulty?: FloorGenDifficulty
+  /** Optional metrics to help tune topology (non-gameplay). */
+  layoutMetrics?: {
+    wideness: number
+    junctions: number
+    deadEnds: number
+    reachableFloors: number
+    loopsAdded: number
+  }
 }
 
 export type GenFloorItem = {

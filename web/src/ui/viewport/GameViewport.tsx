@@ -90,7 +90,9 @@ export function GameViewport(props: {
         if (!world) return
         const rect = getRect()
         if (!rect) return
+
         const pick = world.pickObject(rect, e.clientX, e.clientY)
+
         if (!pick) {
           // Ensure dropping onto empty floor still resolves as a `floorDrop` even if the
           // compositor canvas is the topmost element under the pointer (elementFromPoint).
@@ -107,12 +109,14 @@ export function GameViewport(props: {
       onPointerCancel={cursor.cancelDrag}
       onClick={(e) => {
         // Avoid firing click actions after a press+hold drag gesture begins.
-        if (cursor.state.dragging?.started || cursor.state.isPointerDown) return
+        if (cursor.state.dragging?.started) return
         if (!world) return
         const rect = getRect()
         if (!rect) return
+
         const pick = world.pickTarget(rect, e.clientX, e.clientY)
         if (!pick) return
+
         if (pick.kind === 'floorItem') {
           // Click-pickup convenience; drag-drop also works.
           dispatch({ type: 'floor/pickup', itemId: pick.id })
