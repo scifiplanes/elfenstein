@@ -9,6 +9,21 @@ import { shakeTransform } from '../feedback/shakeTransform'
 import { loadImage, prefetchImages } from '../assets/imageCache'
 import styles from './PortraitPanel.module.css'
 
+const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
+  hp: '#e53935',
+  sta: '#ffffff',
+  hun: '#43a047',
+  thr: '#1e88e5',
+}
+
+/** Until character state exposes per-vital **max** + **current**, treat the bar as full (implicit max = current). */
+const PORTRAIT_VITAL_CELLS = [
+  { key: 'hp' as const, icon: '❤️' },
+  { key: 'sta' as const, icon: '⚡' },
+  { key: 'hun' as const, icon: '🍖' },
+  { key: 'thr' as const, icon: '💧' },
+] as const
+
 type PortraitSprites =
   | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; idleSrc?: string }
   | {
@@ -282,13 +297,6 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
-  const vitalRows = [
-    { key: 'hp', icon: '❤️', label: 'HP', value: Math.round(c.hp) },
-    { key: 'sta', icon: '⚡', label: 'STA', value: Math.round(c.stamina) },
-    { key: 'hun', icon: '🍖', label: 'HUN', value: Math.round(c.hunger) },
-    { key: 'thr', icon: '💧', label: 'THR', value: Math.round(c.thirst) },
-  ] as const
-
   const pulse = state.ui.portraitIdlePulse
   const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > state.nowMs
   const showIdle = idleFlash || pulseIdle
@@ -434,15 +442,18 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
         />
 
         <div className={styles.statsOverlay} aria-hidden="true">
-          {vitalRows.map((row) => (
-            <div key={row.key} className={styles.statRow}>
-              <span className={styles.statIcon} aria-hidden="true">
-                {row.icon}
-              </span>
-              <span className={styles.statName}>{row.label}</span>
-              <span className={styles.statValue}>{row.value}</span>
-            </div>
-          ))}
+          <div className={styles.vitalGrid}>
+            {PORTRAIT_VITAL_CELLS.map((cell) => (
+              <div key={cell.key} className={styles.statCell}>
+                <span className={styles.statIcon} aria-hidden="true">
+                  {cell.icon}
+                </span>
+                <div className={styles.statBarTrack}>
+                  <div className={styles.statBarFill} style={{ backgroundColor: VITAL_BAR_FILL[cell.key] }} />
+                </div>
+              </div>
+            ))}
+          </div>
           <div className={styles.statusLine} title={statusText}>
             {statusText}
           </div>
