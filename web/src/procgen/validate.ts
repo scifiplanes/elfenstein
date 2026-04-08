@@ -19,6 +19,17 @@ export function isWalkableWithLocks(t: Tile, opts: { lockedDoorsAreWalkable: boo
   return false
 }
 
+/** Orthogonal neighbor is `wall`, or the map edge in that direction (treated as wall). Doors are not walls. */
+export function floorCellTouchesOrthogonalWall(tiles: Tile[], w: number, h: number, pos: Vec2): boolean {
+  const { x, y } = pos
+  const i = x + y * w
+  const north = y > 0 ? tiles[i - w] : 'wall'
+  const south = y < h - 1 ? tiles[i + w] : 'wall'
+  const east = x < w - 1 ? tiles[i + 1] : 'wall'
+  const west = x > 0 ? tiles[i - 1] : 'wall'
+  return north === 'wall' || south === 'wall' || east === 'wall' || west === 'wall'
+}
+
 export function floodFillReachable(tiles: Tile[], w: number, h: number, start: Vec2): boolean[] {
   const out = Array.from({ length: tiles.length }, () => false)
   if (!inBounds(start, w, h)) return out

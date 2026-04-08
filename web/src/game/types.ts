@@ -34,7 +34,7 @@ export type EquipmentSlot =
   | 'clothing'
   | 'accessory'
 
-export type PortraitDropTarget = 'eyes' | 'mouth'
+export type PortraitDropTarget = 'eyes' | 'mouth' | 'hat' | 'hands'
 
 export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor'
 
@@ -412,7 +412,14 @@ export type GameState = {
 
 export type DragSource =
   | { kind: 'inventorySlot'; slotIndex: number; itemId: ItemId }
-  | { kind: 'equipmentSlot'; characterId: CharacterId; slot: EquipmentSlot; itemId: ItemId }
+  | {
+      kind: 'equipmentSlot'
+      characterId: CharacterId
+      slot: EquipmentSlot
+      itemId: ItemId
+      /** Set when drag started from portrait equip icons (enables void-drop unequip). */
+      fromPortrait?: boolean
+    }
   | { kind: 'floorItem'; itemId: ItemId }
 
 export type DragPayload = {
@@ -428,4 +435,6 @@ export type DragTarget =
   | { kind: 'poi'; poiId: Id }
   | { kind: 'npc'; npcId: Id }
   | { kind: 'equipmentSlot'; characterId: CharacterId; slot: EquipmentSlot }
+  /** Portrait-only: drop with no valid target stows to first free inventory slot (via unequip). */
+  | { kind: 'stowEquipped' }
 

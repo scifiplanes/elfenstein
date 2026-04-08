@@ -24,10 +24,22 @@ export function moveItemToInventorySlot(state: GameState, itemId: ItemId, dst: n
   const src = nextSlots.findIndex((s) => s === itemId)
   if (src >= 0) nextSlots[src] = null
 
-  // If destination occupied, swap.
   const occupying = nextSlots[dst]
+
+  // Item not in grid (e.g. was equipped): place into dst; displace occupant to first free slot.
+  if (src < 0) {
+    nextSlots[dst] = itemId
+    if (occupying) {
+      const freeIdx = nextSlots.findIndex((s, i) => s == null && i !== dst)
+      if (freeIdx < 0) return state
+      nextSlots[freeIdx] = occupying
+    }
+    return { ...state, party: { ...state.party, inventory: { ...inv, slots: nextSlots } } }
+  }
+
+  // If destination occupied, swap.
   nextSlots[dst] = itemId
-  if (occupying && src >= 0) nextSlots[src] = occupying
+  if (occupying) nextSlots[src] = occupying
 
   return { ...state, party: { ...state.party, inventory: { ...inv, slots: nextSlots } } }
 }

@@ -1,6 +1,13 @@
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
-import { bfsDistances, floodFillReachable, inBounds, isWalkable, shortestPathLatticeStats } from './validate'
+import {
+  bfsDistances,
+  floorCellTouchesOrthogonalWall,
+  floodFillReachable,
+  inBounds,
+  isWalkable,
+  shortestPathLatticeStats,
+} from './validate'
 import type { GenRoom } from './types'
 
 export type Rect = { x: number; y: number; w: number; h: number }
@@ -121,9 +128,23 @@ export function pickEntranceExit(args: {
   let bestD = -1
   for (let i = 0; i < dist.length; i++) {
     const d = dist[i]
-    if (d > bestD && tiles[i] === 'floor') {
+    if (d <= 0 || tiles[i] !== 'floor') continue
+    const pos = { x: i % w, y: Math.floor(i / w) }
+    if (!floorCellTouchesOrthogonalWall(tiles, w, h, pos)) continue
+    if (d > bestD) {
       bestD = d
       bestIdx = i
+    }
+  }
+  if (bestD < 0) {
+    bestIdx = entrance.x + entrance.y * w
+    bestD = -1
+    for (let i = 0; i < dist.length; i++) {
+      const d = dist[i]
+      if (d > bestD && tiles[i] === 'floor') {
+        bestD = d
+        bestIdx = i
+      }
     }
   }
   const exit = { x: bestIdx % w, y: Math.floor(bestIdx / w) }
