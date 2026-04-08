@@ -13,7 +13,7 @@ const RULES: Array<{
     set: MUSIC_SETS.safeHaven,
     active: ({ floor }) =>
       floor.npcs.some(
-        (npc) => npc.name === 'Bobr' && manhattan(floor.playerPos, npc.pos) <= 4,
+        (npc) => npc.name === 'Bobr' && manhattan(floor.playerPos, npc.pos) <= 2,
       ),
   },
 ]
