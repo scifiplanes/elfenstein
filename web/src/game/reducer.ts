@@ -21,6 +21,7 @@ import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe, maybeFinishCrafting, startCrafting } from './state/crafting'
+import { pushActivityLog } from './state/activityLog'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -74,6 +75,7 @@ export type Action =
   | { type: 'floor/toggleChest'; poiId: string }
   | { type: 'npc/attack'; npcId: string; itemId: ItemId }
   | { type: 'npc/give'; npcId: string; itemId: ItemId }
+  | { type: 'npc/pet'; npcId: string }
 
 export function initialState(content: ContentDB): GameState {
   return makeInitialState(content)
@@ -115,10 +117,8 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     case 'ui/closeNpcDialog':
       return { ...state, ui: { ...state.ui, npcDialogFor: undefined } }
-    case 'ui/toast': {
-      const untilMs = state.nowMs + (action.ms ?? 1800)
-      return { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: action.text, untilMs } } }
-    }
+    case 'ui/toast':
+      return pushActivityLog(state, action.text)
     case 'ui/shake': {
       const untilMs = state.nowMs + (action.ms ?? 140)
       return { ...state, ui: { ...state.ui, shake: { startedAtMs: state.nowMs, untilMs, magnitude: action.magnitude } } }
@@ -144,7 +144,6 @@ export function reduce(state: GameState, action: Action): GameState {
           withAnim = { ...withAnim, view: { ...withAnim.view, camYaw: want } }
         }
       }
-      const toast = withCrafting.ui.toast && withCrafting.ui.toast.untilMs <= action.nowMs ? undefined : withCrafting.ui.toast
       const shake = withCrafting.ui.shake && withCrafting.ui.shake.untilMs <= action.nowMs ? undefined : withCrafting.ui.shake
       const portraitMouth =
         withCrafting.ui.portraitMouth && withCrafting.ui.portraitMouth.untilMs <= action.nowMs ? undefined : withCrafting.ui.portraitMouth
@@ -157,7 +156,6 @@ export function reduce(state: GameState, action: Action): GameState {
       const sfxQueue = withCrafting.ui.sfxQueue ?? []
       const clearedQueue = sfxQueue.length ? [] : sfxQueue
       if (
-        toast !== withAnim.ui.toast ||
         shake !== withAnim.ui.shake ||
         portraitMouth !== withAnim.ui.portraitMouth ||
         portraitShake !== withAnim.ui.portraitShake ||
@@ -167,7 +165,7 @@ export function reduce(state: GameState, action: Action): GameState {
       ) {
         return {
           ...withAnim,
-          ui: { ...withAnim.ui, toast, shake, portraitMouth, portraitShake, portraitIdlePulse, sfxQueue: clearedQueue },
+          ui: { ...withAnim.ui, shake, portraitMouth, portraitShake, portraitIdlePulse, sfxQueue: clearedQueue },
         }
       }
       return withAnim
@@ -206,27 +204,19 @@ export function reduce(state: GameState, action: Action): GameState {
       const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
       const i = Math.max(0, order.indexOf(state.floor.floorType))
       const next = order[(i + 1) % order.length]
-      return {
-        ...state,
-        floor: { ...state.floor, floorType: next },
-        ui: {
-          ...state.ui,
-          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor type: ${next}.`, untilMs: state.nowMs + 1400 },
-        },
-      }
+      return pushActivityLog(
+        { ...state, floor: { ...state.floor, floorType: next } },
+        `Next regen uses floor type: ${next}.`,
+      )
     }
     case 'floor/debugCycleDifficulty': {
       const cur = normalizeFloorGenDifficulty(state.floor.difficulty)
       const next = ((cur + 1) % 3) as 0 | 1 | 2
       const label = next === 0 ? 'easy' : next === 1 ? 'normal' : 'hard'
-      return {
-        ...state,
-        floor: { ...state.floor, difficulty: next },
-        ui: {
-          ...state.ui,
-          toast: { id: `t_${state.nowMs}`, text: `Next regen uses difficulty: ${label} (${next}).`, untilMs: state.nowMs + 1400 },
-        },
-      }
+      return pushActivityLog(
+        { ...state, floor: { ...state.floor, difficulty: next } },
+        `Next regen uses difficulty: ${label} (${next}).`,
+      )
     }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
@@ -244,7 +234,7 @@ export function reduce(state: GameState, action: Action): GameState {
       const playerPos = { ...gen.entrance }
       const playerDir = 0 as const
       const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
-      return {
+      const next: GameState = {
         ...state,
         floor: {
           ...state.floor,
@@ -259,9 +249,10 @@ export function reduce(state: GameState, action: Action): GameState {
         },
         party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
         view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
-        ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `Regenerated (seed ${nextSeed}).`, untilMs: state.nowMs + 1200 } },
       }
+      return pushActivityLog(next, `Regenerated (seed ${nextSeed}).`)
     }
+
     case 'player/turn': {
       if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
@@ -372,10 +363,7 @@ export function reduce(state: GameState, action: Action): GameState {
       if (npcIdx < 0 || !item) return state
       const isWeapon = item.defId === 'Club' || item.defId === 'Stick' || item.defId === 'Stone' || item.defId === 'Spear' || item.defId === 'Firebolt'
       if (!isWeapon) {
-        return reduce(
-          { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'That does not work as a weapon.', untilMs: state.nowMs + 1400 } } },
-          { type: 'ui/sfx', kind: 'reject' },
-        )
+        return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
       }
       const npcs = state.floor.npcs.slice()
       const npc = npcs[npcIdx]
@@ -411,11 +399,8 @@ export function reduce(state: GameState, action: Action): GameState {
           }
         }
       }
-      const withToast = {
-        ...nextState,
-        ui: { ...nextState.ui, toast: { id: `t_${state.nowMs}`, text: died ? `${npc.name} dies.` : `${npc.name} takes ${dmg} dmg.`, untilMs: state.nowMs + 1200 } },
-      }
-      const withHit = reduce(withToast, { type: 'ui/sfx', kind: 'hit' })
+      const withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${dmg} dmg.`)
+      const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
       return reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
     }
     case 'npc/give': {
@@ -425,19 +410,13 @@ export function reduce(state: GameState, action: Action): GameState {
       const npc = state.floor.npcs[npcIdx]
       const quest = npc.quest
       if (!quest) {
-        return reduce(
-          { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `${npc.name} ignores it.`, untilMs: state.nowMs + 1200 } } },
-          { type: 'ui/sfx', kind: 'reject' },
-        )
+        return reduce(pushActivityLog(state, `${npc.name} ignores it.`), { type: 'ui/sfx', kind: 'reject' })
       }
       if (quest.hated.includes(item.defId)) {
         const npcs = state.floor.npcs.slice()
         npcs[npcIdx] = { ...npc, status: 'hostile' }
         const withNpc = { ...state, floor: { ...state.floor, npcs } }
-        return reduce(
-          { ...withNpc, ui: { ...withNpc.ui, toast: { id: `t_${state.nowMs}`, text: `${npc.name} becomes hostile!`, untilMs: state.nowMs + 1400 } } },
-          { type: 'ui/sfx', kind: 'reject' },
-        )
+        return reduce(pushActivityLog(withNpc, `${npc.name} becomes hostile!`), { type: 'ui/sfx', kind: 'reject' })
       }
       if (quest.wants === item.defId) {
         // Consume item and improve status.
@@ -446,16 +425,14 @@ export function reduce(state: GameState, action: Action): GameState {
         npcs[npcIdx] = { ...npc, status: nextStatus }
         const withNpc = { ...state, floor: { ...state.floor, npcs } }
         const withConsume = consumeItem(withNpc, action.itemId)
-        const withToast = {
-          ...withConsume,
-          ui: { ...withConsume.ui, toast: { id: `t_${state.nowMs}`, text: `${npc.name} accepts it.`, untilMs: state.nowMs + 1200 } },
-        }
-        return reduce(withToast, { type: 'ui/sfx', kind: 'pickup' })
+        return reduce(pushActivityLog(withConsume, `${npc.name} accepts it.`), { type: 'ui/sfx', kind: 'pickup' })
       }
-      return reduce(
-        { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: `${npc.name} rejects it.`, untilMs: state.nowMs + 1200 } } },
-        { type: 'ui/sfx', kind: 'reject' },
-      )
+      return reduce(pushActivityLog(state, `${npc.name} rejects it.`), { type: 'ui/sfx', kind: 'reject' })
+    }
+    case 'npc/pet': {
+      const npc = state.floor.npcs.find((n) => n.id === action.npcId)
+      if (!npc) return state
+      return pushActivityLog(state, `You pet ${npc.name}.`)
     }
     case 'equip/unequip':
       return unequipItem(state, action.characterId, action.slot)
@@ -696,8 +673,8 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
 }
 
 function bump(state: GameState): GameState {
-  const withToast = { ...state, ui: { ...state.ui, toast: { id: `t_${state.nowMs}`, text: 'Solid stone.', untilMs: state.nowMs + 700 } } }
-  const withSfx = reduce(withToast, { type: 'ui/sfx', kind: 'bump' })
+  const withMsg = pushActivityLog(state, 'Solid stone.')
+  const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'bump' })
   return reduce(withSfx, { type: 'ui/shake', magnitude: 0.25, ms: 90 })
 }
 

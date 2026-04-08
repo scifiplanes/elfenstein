@@ -2,6 +2,7 @@ import type { ContentDB } from '../content/contentDb'
 import type { GameState, ItemId, StatusEffectId } from '../types'
 import { consumeItem } from './inventory'
 import { removeStatus } from './status'
+import { pushActivityLog } from './activityLog'
 
 export function inspectCharacter(state: GameState, _content: ContentDB, characterId: string, itemId: ItemId): GameState {
   const item = state.party.items[itemId]
@@ -10,14 +11,16 @@ export function inspectCharacter(state: GameState, _content: ContentDB, characte
   if (!c) return state
   const tunedMs = Math.max(0, (state.render.portraitShakeLengthMs ?? 0) + (state.render.portraitShakeDecayMs ?? 0))
   const durMs = Math.max(130, tunedMs)
-  return {
-    ...state,
-    ui: {
-      ...state.ui,
-      toast: { id: `t_${state.nowMs}`, text: `${c.name} inspects ${item.defId}.`, untilMs: state.nowMs + 1400 },
-      portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + durMs, magnitude: 0.14 },
+  return pushActivityLog(
+    {
+      ...state,
+      ui: {
+        ...state.ui,
+        portraitShake: { characterId, startedAtMs: state.nowMs, untilMs: state.nowMs + durMs, magnitude: 0.14 },
+      },
     },
-  }
+    `${c.name} inspects ${item.defId}.`,
+  )
 }
 
 export function feedCharacter(state: GameState, content: ContentDB, characterId: string, itemId: ItemId): GameState {
@@ -49,10 +52,7 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
   }
 
   if (!def.feed) {
-    return {
-      ...withMouth,
-      ui: { ...withMouth.ui, toast: { id: `t_${state.nowMs}`, text: `They refuse to eat that.`, untilMs: state.nowMs + 1400 } },
-    }
+    return pushActivityLog(withMouth, 'They refuse to eat that.')
   }
 
   const chars = state.party.chars.slice()
@@ -96,7 +96,7 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
   nextState = consumeItem(nextState, itemId)
   const q = nextState.ui.sfxQueue ?? []
   const withSfx: GameState = { ...nextState, ui: { ...nextState.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'munch' }]) } }
-  return { ...withSfx, ui: { ...withSfx.ui, toast: { id: `t_${state.nowMs}`, text: `${c.name} eats.`, untilMs: state.nowMs + 1000 } } }
+  return pushActivityLog(withSfx, `${c.name} eats.`)
 }
 
 function addStatus(state: GameState, characterId: string, status: StatusEffectId): GameState {

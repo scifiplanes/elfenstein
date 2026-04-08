@@ -14,6 +14,18 @@
   /* Jim Nightshade — https://fonts.google.com/specimen/Jim+Nightshade — inventory item name tooltip */
   --fontInventoryTooltip: 'Jim Nightshade', cursive;
 
+  /*
+   * Button “title” text: same display face as inventory tooltips, sized for modal/button chrome.
+   * Use these on any control whose primary label should read like a Jim Nightshade headline.
+   */
+  --buttonTitleFontFamily: var(--fontInventoryTooltip);
+  --buttonTitleFontSize: 25px;
+  --buttonTitleFontWeight: 700;
+  --buttonTitleLetterSpacing: 0.02em;
+  --buttonTitleLineHeight: 1.2;
+  --buttonTitleColor: rgba(255, 255, 255, 0.92);
+  --buttonTitleTextShadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 12px rgba(0, 0, 0, 0.22);
+
   color-scheme: dark;
   font: 14px/1.35 var(--sans);
   font-synthesis: none;
