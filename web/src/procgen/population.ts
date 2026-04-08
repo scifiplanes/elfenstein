@@ -25,8 +25,10 @@ export function placePois(args: {
   entrance: Vec2
   exit: Vec2
   rng: Pick<Rng, 'next'>
+  floorProperties?: readonly FloorProperty[]
 }): FloorPoi[] {
   const { tiles, w, h, rooms, entrance, exit } = args
+  const floorProperties = args.floorProperties ?? []
 
   const used = new Set<string>()
   const markUsed = (p: Vec2) => used.add(`${p.x},${p.y}`)
@@ -52,6 +54,8 @@ export function placePois(args: {
   const isBedRoomOk = (r: GenRoom) => {
     const f = r.tags?.roomFunction
     const p = r.tags?.roomProperties
+    // Keep bed out of connector/junction rooms (pre-tagged Passage).
+    if (r.id.startsWith('r_junc_')) return false
     return (f === 'Habitat' || f === 'Communal') && p !== 'Burning' && p !== 'Infected'
   }
   const bedCandidateRooms = rooms
@@ -83,6 +87,7 @@ export function placePois(args: {
     .sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
   let chestPos: Vec2 | null = null
   for (const r of storageRooms) {
+    if (r.id.startsWith('r_junc_')) continue
     if (ok(r.center)) {
       // Prefer off-path storage so chest feels like a side objective.
       if (!pathCells.has(`${r.center.x},${r.center.y}`)) {
@@ -103,6 +108,88 @@ export function placePois(args: {
   const cratePos = pickStorageLikePos(barrelPos)
   markUsed(cratePos)
 
+  const isJunc = (r: GenRoom) => r.id.startsWith('r_junc_')
+  const keyOf = (p: Vec2) => `${p.x},${p.y}`
+
+  // For optional POIs we try to keep them off the main path when possible.
+  const pickTaggedRoomCenter = (predicate: (r: GenRoom) => boolean): Vec2 | null => {
+    const candidates = rooms
+      .filter((r) => !isJunc(r) && predicate(r) && ok(r.center))
+      .map((r) => {
+        const i = r.center.x + r.center.y * w
+        const d = i >= 0 && i < dist.length ? dist[i] : -1
+        return { r, d, onPath: pathCells.has(keyOf(r.center)) }
+      })
+      .filter((x) => x.d >= 0)
+      .sort((a, b) => {
+        // Prefer off-path, then farther from entrance, then stable tie-break by room id.
+        if (a.onPath !== b.onPath) return a.onPath ? 1 : -1
+        if (a.d !== b.d) return b.d - a.d
+        return a.r.id.localeCompare(b.r.id)
+      })
+    return candidates[0]?.r.center ?? null
+  }
+
+  const hasWallNeighbor = (p: Vec2) => {
+    const i = p.x + p.y * w
+    const n = p.y > 0 ? tiles[i - w] : 'wall'
+    const s = p.y < h - 1 ? tiles[i + w] : 'wall'
+    const e = p.x < w - 1 ? tiles[i + 1] : 'wall'
+    const w0 = p.x > 0 ? tiles[i - 1] : 'wall'
+    return n === 'wall' || s === 'wall' || e === 'wall' || w0 === 'wall'
+  }
+
+  const pickWallAdjacentInRoom = (room: GenRoom): Vec2 | null => {
+    const { x, y, w: rw, h: rh } = room.rect
+    // Deterministic scan order; does not consume RNG so downstream population stays stable.
+    for (let yy = y; yy < y + rh; yy++) {
+      for (let xx = x; xx < x + rw; xx++) {
+        const p = { x: xx, y: yy }
+        if (!ok(p)) continue
+        if (!hasWallNeighbor(p)) continue
+        // Prefer off-path placements when possible.
+        if (pathCells.has(keyOf(p))) continue
+        return p
+      }
+    }
+    // Fallback: allow on-path if no off-path wall-adjacent tile exists.
+    for (let yy = y; yy < y + rh; yy++) {
+      for (let xx = x; xx < x + rw; xx++) {
+        const p = { x: xx, y: yy }
+        if (!ok(p)) continue
+        if (!hasWallNeighbor(p)) continue
+        return p
+      }
+    }
+    return null
+  }
+
+  // Optional POIs: Shrine and CrackedWall.
+  // Shrine: prefer communal spaces and cursed floors.
+  const shrineCenter = pickTaggedRoomCenter((r) => {
+    const f = r.tags?.roomFunction
+    const p = r.tags?.roomProperties
+    if (p === 'Burning' || p === 'Infected') return false
+    if (floorProperties.includes('Cursed')) return f === 'Communal' || f === 'Habitat'
+    return f === 'Communal'
+  })
+  const shrinePos = shrineCenter && ok(shrineCenter) ? shrineCenter : null
+  if (shrinePos) markUsed(shrinePos)
+
+  // CrackedWall: prefer collapsed/destroyed rooms or destroyed floors; try to place adjacent to a wall.
+  const crackedRoom = rooms
+    .filter((r) => !isJunc(r))
+    .filter((r) => {
+      const s = r.tags?.roomStatus
+      const f = r.tags?.roomFunction
+      if (floorProperties.includes('Destroyed')) return f === 'Storage' || f === 'Workshop' || f === 'Passage'
+      return s === 'Collapsed' || s === 'Destroyed'
+    })
+    .sort((a, b) => a.id.localeCompare(b.id))[0]
+  let crackedPos: Vec2 | null = null
+  if (crackedRoom) crackedPos = pickWallAdjacentInRoom(crackedRoom)
+  if (crackedPos) markUsed(crackedPos)
+
   const exitPos = ok(exit) ? exit : (findNearestFloor(tiles, w, h, exit) ?? exit)
   markUsed(exitPos)
 
@@ -112,6 +199,8 @@ export function placePois(args: {
     { id: 'poi_chest', kind: 'Chest', pos: chestPos, opened: false },
     { id: 'poi_barrel', kind: 'Barrel', pos: barrelPos, opened: false },
     { id: 'poi_crate', kind: 'Crate', pos: cratePos, opened: false },
+    ...(shrinePos ? ([{ id: 'poi_shrine', kind: 'Shrine', pos: shrinePos }] as const) : []),
+    ...(crackedPos ? ([{ id: 'poi_crackedWall', kind: 'CrackedWall', pos: crackedPos }] as const) : []),
     { id: 'poi_exit', kind: 'Exit', pos: exitPos },
   ]
 }

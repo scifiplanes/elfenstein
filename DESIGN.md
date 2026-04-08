@@ -26,12 +26,18 @@ Last updated: 2026-04-08
 ## 5) Core loop
 Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounters → recover at POIs → push deeper (keys/doors) → repeat.
 
+**On party wipe** (all party HP ≤ 0): gameplay input is blocked and a **death screen** is shown with a short **run summary** and actions:
+- **New run**
+- **Reload checkpoint** (if a checkpoint exists)
+- **Title**
+
 ## 6) Controls & interaction model
 ### 6.1 Cursor (hand) states
 - **OS cursor**: hidden globally (`cursor: none` on `document.body`); interactive HUD widgets also set **`cursor: none`** so controls (e.g. navigation buttons) never revert to the system pointer—only the **`CursorLayer`** hand sprite is visible. **`CursorLayer`** is a **sibling** of **`FixedStageViewport`** (not inside the scaled **`.stage`**): **`position: fixed`** with **`clientX`/`clientY`** must use the **viewport** containing block; a transformed ancestor would offset the hand from the real pointer.
 - **Default**: `Hand_Point`
 - **Holding/dragging**: `Hand_Hold` (held item sprite follows pointer)
 - **Hover active**: `Hand_Active` when pointing at an interactable
+- **Craft-ready hover**: while dragging an inventory item over another inventory item that can be crafted with it, the hand cursor flickers between `Hand_Hold` and `Hand_Active` and the affordance pill shows **⚗ Craft**; an icon badge shows `?` for unknown recipes or the result icon for discovered recipes.
 - **Click micro-feedback**: on **pointer down**, the hand cursor can perform a **tiny shake** (purely cosmetic; debug-tunable in F2 under **Cursor**). This is a *micro* cue meant to add tactility without implying a successful action (success/failure feedback still comes from SFX/log/shake events).
 - **Deadzone behavior**: hovering non-interactive UI areas should clear any previous “active” hover so the cursor returns to `Hand_Point`; pointer move/up are tracked globally across the HUD so cursor state can’t get stuck when moving over panels.
 - **3D viewport hover override**: the WebGL viewport may inject a **virtual hover target** (e.g. `floorDrop`) on pointer-move to compensate for `elementFromPoint` seeing the compositor canvas rather than a DOM hit target. This override is **ephemeral (one move event)** so normal DOM-derived hover targets (inventory slots, portraits, etc.) take over immediately when the pointer leaves the viewport.
@@ -39,7 +45,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 ### 6.2 Interaction rules (mouse-first)
 - **Click**: attempt to use/interact with target (object/NPC/POI/UI element).
 - **3D viewport ray pick**: when several pickables lie on the same camera ray, **floor items take priority** over POIs (and over NPCs/doors on that ray) so loot is not blocked by large POI billboards (e.g. a chest in front of a dropped item).
-- **Press + hold**: pick up/drag items from **inventory** and from **world floor items** in the 3D view.
+- **Drag (items)**: dragging starts when you **press and move** beyond a small threshold (to avoid accidental drags on click). **Press + hold** is also supported as a fallback to begin dragging items from **inventory** and from **world floor items** in the 3D view.
 - **Drop**:
   - Onto **inventory**: store item
   - Onto **empty 3D view**: drop item **a short distance ahead of the player** (tunable) so it is immediately visible; if blocked/out of bounds, it falls back to the player’s cell
@@ -54,7 +60,7 @@ Explore → find POIs/NPCs/items → manage inventory/craft → resolve encounte
 Interactions should resolve with:
 - short relevant animation (e.g. eyes/mouth)
 - sound
-- **Activity log** (**`ui.activityLog`**, rendered as **`ActivityLog`** in the **bottom-right of the game viewport** in **`HudLayout`**): each line of feedback (POI outcomes, crafting, combat hits, door messages, inventory pickup/full, inspect/feed text, debug **`ui/toast`** dispatches, etc.) is **appended** (newest last); the list is **capped** in memory, and the widget **shows at most the four newest** entries. It uses **no** filled panel background (text sits over the scene, using **`--buttonTitle*`** color and shadow for contrast). Lines are **right-aligned** in the viewport corner. Typography reuses **`--buttonTitleFontFamily`** / spacing / color / shadow from **`index.css`** at **`font-size: calc(var(--buttonTitleFontSize) - 5px)`**, with **regular (400)** weight (unlike **`--buttonTitleFontWeight`** on modal buttons). There is **no** separate centered transient **`ui.toast`** overlay; the **`ui/toast`** action remains as a convenience and **only** pushes a log line.
+- **Activity log** (**`ui.activityLog`**, rendered as **`ActivityLog`** in the **bottom-right of the game viewport** in **`HudLayout`**): each line of feedback (POI outcomes, crafting, combat hits, door messages, inventory pickup/full, inspect/feed text, debug **`ui/toast`** dispatches, etc.) is **appended** (newest last); the list is **capped** in memory (**`ACTIVITY_LOG_MAX_ENTRIES`**), each line **expires** after **10 seconds** of game time (**`ACTIVITY_LOG_ENTRY_TTL_MS`**, pruned on **`time/tick`**; pruning is **paused** while the **death** modal is up so the recap stays stable), and the widget **shows at most the four newest** entries. It uses **no** filled panel background (text sits over the scene, using **`--buttonTitle*`** color and shadow for contrast). Lines are **right-aligned** in the viewport corner. Typography reuses **`--buttonTitleFontFamily`** / spacing / color / shadow from **`index.css`** at **`font-size: calc(var(--buttonTitleFontSize) - 5px)`**, with **regular (400)** weight (unlike **`--buttonTitleFontWeight`** on modal buttons). There is **no** separate centered transient **`ui.toast`** overlay; the **`ui/toast`** action remains as a convenience and **only** pushes a log line.
 - subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera**, **HUD overlay shake**, and **portrait frame shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
 - subtle camera shake for key interactions (driven by `ui.shake` and tunable in Debug/F2). **Shake length / hold (ms)** and **shake decay / fade (ms)** control the envelope for the **3D camera** and **HUD overlay shake** (shared `shakeEnvelopeFactor` in `web/src/game/shakeEnvelope.ts`). With length 0, decay uses the legacy ramp `min(1, remaining/decay)`; with length above 0, full strength holds for the scaled hold segment, then linearly fades over the scaled decay segment within each event’s `startedAtMs`→`untilMs` window.
 - **Portrait frame shake** on portrait interaction resolution (inspect and feed), driven by `ui.portraitShake` on the matching character slot
@@ -93,6 +99,12 @@ The party has **up to 4** character portrait slots.
     - Eyes (inspect hover): `Content/frosh_eye_inspect.png`
     - Mouth: `Content/frosh_mouth_open.png`
     - Idle overlay: `Content/frosh_idle.png`
+  - **Afonso**:
+    - Base: `Content/Afonso_base.png`
+    - Eyes (open): `Content/Afonso_eyes.png`
+    - Eyes (inspect hover): `Content/Afonso_eyes_inspect.png`
+    - Mouth: `Content/Afonso_mouth_open.png`
+    - Idle overlay: `Content/Afonso_base_idle.png`
 - **Portrait click (frame)**: a **primary-button tap** on the **portrait frame** opens the **paperdoll** and schedules a short **`ui.portraitIdlePulse`** window so the **idle sprite** shows for one burst (same **min/max ms** tuning as ambient idle flashes: `portraitIdleFlashMinMs` / `portraitIdleFlashMaxMs` in F2). **`HudLayout`** handles **`pointerdown`/`pointerup` in capture** on `[data-portrait-character-id]` (movement threshold ~28px; skips when `dragging.started`) and dispatches **`ui/portraitFrameTap`** so activation does not depend on synthetic **`click`**. The pulse expires on **`time/tick`** like other short UI cues.
 - **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame). Layered portrait sprites are offset **30px upward** from the geometric center of the frame for composition; mouth “chomp” animations preserve that offset.
 - **Portrait stats presentation**: character vitals + status use a **compact bottom overlay inside the portrait frame**. Vitals sit in a **2×2 grid**: **row 1** = **Health** | **Stamina**, **row 2** = **Hunger** | **Thirst** (left-to-right). Each cell is a small panel (**black** **`#000`**, **`2px solid`** border matching **inventory slots** **`rgba(171, 136, 107, 0.75)`**, **`border-radius: 0`**, inner **padding**) containing **only** a **horizontal bar** (**no** emoji): bar **track** **black**, **~9px** tall, **square** corners (**`border-radius: 0`** on track and fill), **fill** colors: **HP** **`#ff2400`**, **STA** **`#d6bdb5`**, **HUN** **`#547d39`**, **THR** **`#3d75dd`** (see **`VITAL_BAR_FILL`** in **`PortraitPanel.tsx`**). Grid and overlay use tight **`3px`** gaps; status line **`~3px`** below the grid. Overlay padding **`6px 70px 20px`**. **Interim:** each bar’s fill is **always full** until **max** + **current** exist in state. No numeric readout. A **status** line below (**`Status: …`**) stays **single-line truncated** when long.
@@ -102,6 +114,7 @@ The party has **up to 4** character portrait slots.
 - **Portrait mouth visibility**: mouth layer is **hidden by default**; it becomes visible during **feeding interactions** (dragging over mouth target and briefly after a feed attempt).
 - **Portrait mouth feedback (feed)**: after releasing an item on the mouth target, play a short “chomp” (mouth flicker + tiny wiggle), a short **portrait frame shake**, and a brief **munch** SFX on successful feeding. **No** `ui.shake` (3D view or empty HUD overlay) for portrait inspect/feed—only `ui.portraitShake` on the relevant slot.
 - **Portrait inspect**: resolving an eye drop plays a short **portrait frame shake** (gentler than feed), likewise without 3D shake.
+- **Portrait reaction rendering**: the HUD base is captured to a texture for postprocess, but **mouth flicker** and **idle pulses** are rendered as **compositor-time overlays** in the WebGL presenter (using the live HUD layout rects). This keeps reactions **snappy** and **full-FPS** without waiting for async HUD recapture.
 - **Portrait shake tuning**: portrait frame shake has its own envelope and amplitude tuning via `RenderTuning`:
   - `portraitShakeLengthMs` / `portraitShakeDecayMs` (envelope)
   - `portraitShakeMagnitudeScale` (amplitude multiplier applied to `ui.portraitShake.magnitude`)
@@ -113,7 +126,7 @@ The party has **up to 4** character portrait slots.
 
 **Properties**
 - **Identity axes (initial sets, extendable)**:
-  - Species: `Igor` (goatmen), `Mycyclops` (one-eyed mushroom person), `Frosch` (frog person)
+  - Species: `Igor` (goatmen), `Mycyclops` (one-eyed mushroom person), `Frosch` (frog person), `Afonso`
   - Class: `Warrior`, `Wizard`, `Cleric`
   - Culture: `Barbarian`, `Villager`, `Nomad`
   - Ideology: `Animist`, `Ancients`, `The One`
@@ -139,9 +152,10 @@ The party has **up to 4** character portrait slots.
 - **Crafting trigger**: drag one item onto another.
 - **If recipe exists**:
   - show a visible timer
-  - perform a skill check
+  - perform a skill check (d20 + party-best skill vs recipe DC)
   - on success: crafted result
   - on failure: notify; chance to destroy one involved item
+- **Recipe discovery (cursor telegraph)**: while hovering a valid craft combo in the inventory, the cursor shows **⚗ Craft** and a small result badge. Before the recipe is discovered it shows `?`; after a successful craft it shows the resulting item icon.
 
 **Initial item list (extendable)**
 - Hive: click spawns Swarm (small chance Swarm Queen); high destruction chance on click
@@ -159,6 +173,17 @@ The party has **up to 4** character portrait slots.
 - Stone: equip → small Blunt; bonus from Strength; also crafting component
 - Stick: equip → small Blunt; bonus from Agility; also crafting component
 - Ash + Sulfur: two-way combo spell results (Firebolt / Fireshield)
+
+**Hive/Swarm ecosystem (implemented)**
+- **Hive (item)**: drag-drop Hive onto the 3D view (floor) to crack it. Usually breaks; spawns a **Swarm** or, rarely, yields a **Swarm Queen** item.
+- **Swarm Queen (item)**: while held by the party, **Swarms are neutral**.
+- **Swarm Basket (item)**: drag onto a **Swarm** to capture it → produces **Captured swarm**.
+- **Captured swarm (item)**: drag onto an enemy to release for **heavy damage**.
+
+**Crafting breadth (current content pack)**
+- **Weapons/tools**: craftable basics such as **Stone shard**, **Bow**, **Sling**, **Bolas**.
+- **Remedies**: craftable **Bandage strip**, **Herb poultice**, **Antitoxin vial** (usable via feed to apply their cure effects).
+- **Cooking**: craftable intermediate **Mortar meal** and food **Flourball**, plus simple drinks like **Herb tea**.
 
 ### 7.4 Equipment & paperdoll
 - Clicking the **portrait frame** dispatches **`ui/portraitFrameTap`**: opens the **paperdoll** and schedules **`ui.portraitIdlePulse`** (idle overlay while an idle sprite exists; see §7.1). There is **no** name/species label above the frame; **`aria-label`** on the frame still exposes **name + species** to assistive tech.
@@ -223,13 +248,14 @@ The party has **up to 4** character portrait slots.
 **Floor type** (`Dungeon` | `Cave` | `Ruins`) selects a **geometry realizer**, then shared post-passes and population:
 
 1. **Layout (per `floorType`)**
-   - **Dungeon**: BSP partition (min leaf ~6×6; depth ~6), room carve (~45–70% of leaf), sibling **L-corridor** stitch.
+   - **Dungeon**: BSP partition (min leaf ~6×6; depth ~6), room carve (~45–70% of leaf), sibling **L-corridor** stitch, then a guarded **door-frame** pass that introduces a small number of 1-tile **throats** in straight corridors so rooms read as connected by doorways (locks prefer these frames).
    - **Cave**: seeded worm carve + occasional widen, then a single **GenRoom** from the floor bounding box of carved cells (fallback box if empty).
-   - **Ruins**: ~5×5 macro-cell stamps with random doorways between cells; multiple **GenRoom** entries from stamped chambers.
+   - **Ruins**: ~5×5 macro-cell stamps with random doorways between cells; stamped chambers are deterministically **clustered into macro rooms** (bounded count) for tagging/districts/population.
 2. Connectivity repair (deterministic), then CA **carve-only** smoothing (one pass).
 3. Exit selection (exit = **farthest** reachable floor cell from the entrance by BFS).
-4. **Districts**: seeded Voronoi on room centers → **`district`** tags (`NorthWing`, `SouthWing`, …) for spawn bias.
-5. **Room tagging**: quota-aware function assignment (e.g. try to keep at least one **Storage** among tiny rooms) plus rolls from **`floorProperties`** (Infested/Cursed/Destroyed/Overgrown).
+4. **Derived connector rooms**: a small number of **junction/connector** rooms are derived from corridor junction clusters (bounded) and treated as **Passage** anchors for tags/spawn bias.
+5. **Districts**: seeded Voronoi on room centers → **`district`** tags (`NorthWing`, `SouthWing`, …) for spawn bias.
+6. **Room tagging**: quota-aware function assignment (e.g. try to keep at least one **Storage** among tiny rooms) plus rolls from **`floorProperties`** (Infested/Cursed/Destroyed/Overgrown). Derived connector rooms keep their fixed `Passage` function.
 6. **Tag constraints** (post-quota): **Storage** prefers a **dead-end** room center (swap with a tiny **Passage** room when needed); on **Cursed** floors, **Flooded** expands to **edge-adjacent** rooms with a fixed probability so hazards form a small cluster.
 7. Population pass:
    - POIs (**Well** / **Bed** / **Chest** / **Exit**) from entrance–exit heuristics + storage-room bias for chest (Exit spawns at/near `gen.exit`)
@@ -262,7 +288,7 @@ Static interactables. POIs are **non-blocking** and do not trigger on movement; 
 - **3D view**: POIs render as **sprite billboards** (same texture pipeline as NPC billboards: nearest filtering, transparent PNG). **Well (filled)** uses **`npc_well.png`** plus extra **non-pickable** billboards: **`npc_well_glow.png`** (slightly larger halo) and a small **sparkle** layer cycling **`npc_well_sparkle_1..3.png`** (~280 ms per frame). **Well (drained)** uses **`npc_well_drained.png`** only (no glow/sparkle). **Chest (closed)** uses **`chest_closed.png`**; **Chest (opened)** uses **`chest_open.png`**. **Bed**, **Shrine**, and **CrackedWall** use **`/content/poi_placeholder.png`** (a copy of **`Placeholders/Placeholder_NPC.png`**) until dedicated POI art exists. Billboards use the same **floor grounding** convention as NPCs (center pivot + `npcFootLift`); **Well** uses **`poiGroundY_Well`** and **Chest** uses **`poiGroundY_Chest`** in F2 (chest art sits near the texture bottom; placeholders still use **`npcGroundY_Wurglepup`**). POI billboard brightness can be tuned via `render.poiSpriteBoost` (F2) to match other sprites.
 
 Initial POIs:
-- **Well**: save point (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); save still works when drained
+- **Well**: **checkpoint save point** (clear notification); used to fill Waterbag; a successful **Waterbag (Empty)** use on this well sets the POI to **drained** (visual swap + VFX off); **checkpoint save still works when drained**. Checkpoints are reloadable from the **death screen** and the **title** screen.
 - **Chest**: opens (sprite change) and drops random item
 - **Barrel**: opens (sprite change) and drops random item
 - **Crate**: opens (sprite change) and drops random item
@@ -299,6 +325,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - Matrix (Bayer 2×2/4×4/8×8)
   - Palette (Dungeon warm, Cold crypt, Monochrome, Sepia print, No palette snap)
   - **Warm palette mix** (F2): when palette is **Dungeon warm** (0), blends between **quantised dither only** (like no snap) and **full warm five-colour snap**; other palette indices ignore this control
+- **Room-property telegraph (compositor)**: when the player is standing in a room tagged with a **room property** (`Burning` / `Flooded` / `Infected`), the compositor applies a **subtle vignette + tint** over the **3D scene region only** (inside `gameRectPx`). This is intended to make tile/room properties readable without adding HUD chrome.
 - **Frame presentation pipeline**:
   - The 3D world is rendered offscreen into a **render target** sized to match the on-screen **game viewport rect** (the HUD “game” panel), not necessarily the full window.
   - The HUD exists as HTML/CSS twice:
@@ -317,6 +344,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
   - Light slider
   - Distance lowpass filter settings
   - Distance volume settings
+  - Room-property **telegraph preview** controls (force Burning/Flooded/Infected/off and strength) for tuning
 
 ## 13) Content pipeline (placeholders-first)
 Canonical placeholder NPC art lives at **`Placeholders/Placeholder_NPC.png`**. Ship **copies** into `web/public/content/` for any runtime URL the code expects (NPC or POI) until final assets replace them.

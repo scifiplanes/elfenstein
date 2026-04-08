@@ -1,0 +1,71 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 40%, rgba(80, 30, 30, 0.55), rgba(0, 0, 0, 0.72));
+}
+
+.modal {
+  width: min(720px, calc(100% - 80px));
+  border-radius: 18px;
+  padding: 22px 18px 16px;
+  background: rgba(12, 10, 10, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(10px);
+}
+
+.title {
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 46px;
+  font-weight: 400;
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: 1.05;
+  color: rgba(255, 245, 245, 0.96);
+  text-shadow: var(--buttonTitleTextShadow);
+  margin-bottom: 8px;
+}
+
+.sub {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+  font-family: var(--buttonTitleFontFamily);
+  font-size: var(--buttonTitleFontSize);
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: var(--buttonTitleLineHeight);
+  padding: 10px 16px;
+  border-radius: 14px;
+}
+
+.btnPrimary {
+  background: rgba(140, 36, 36, 0.55);
+  border-color: rgba(255, 200, 200, 0.22);
+}
+
+.btn:hover {
+  filter: brightness(1.08);
+}
+
+.btn:active {
+  transform: translateY(1px);
+}
+

@@ -1,31 +1,17 @@
-import type { GameState, ItemDefId, ItemId } from '../types'
+import type { GameState, ItemId } from '../types'
+import type { RecipeDef } from '../content/recipes'
+import { recipeKey } from '../content/recipes'
 import { consumeItem } from './inventory'
 import { pushActivityLog } from './activityLog'
+import { makeDropJitter } from './dropJitter'
 
-export type Recipe = {
-  a: ItemDefId
-  b: ItemDefId
-  result: ItemDefId
-  craftMs: number
-  failDestroyChancePct: number
-}
-
-export const RECIPES: Recipe[] = [
-  // Minimal starting example (extend later).
-  { a: 'Stick', b: 'Stone', result: 'Spear', craftMs: 1800, failDestroyChancePct: 25 },
-  { a: 'Ash', b: 'Sulfur', result: 'Firebolt', craftMs: 1200, failDestroyChancePct: 20 },
-  { a: 'Sulfur', b: 'Ash', result: 'Fireshield', craftMs: 1200, failDestroyChancePct: 20 },
-]
-
-export function findRecipe(defA: ItemDefId, defB: ItemDefId): Recipe | null {
-  for (const r of RECIPES) {
-    // Recipes are order-sensitive for some interactions, so we keep the list explicit.
-    if (r.a === defA && r.b === defB) return r
-  }
-  return null
-}
-
-export function startCrafting(state: GameState, srcItemId: ItemId, dstItemId: ItemId, recipe: Recipe): GameState {
+export function startCrafting(
+  state: GameState,
+  srcItemId: ItemId,
+  dstItemId: ItemId,
+  recipe: RecipeDef,
+  opts?: { dstSlotIndex?: number },
+): GameState {
   if (state.ui.crafting) return state
   const startedAtMs = state.nowMs
   return pushActivityLog(
@@ -38,8 +24,14 @@ export function startCrafting(state: GameState, srcItemId: ItemId, dstItemId: It
           endsAtMs: startedAtMs + recipe.craftMs,
           srcItemId,
           dstItemId,
+          dstSlotIndex: opts?.dstSlotIndex,
           resultDefId: recipe.result,
+          aDefId: recipe.a,
+          bDefId: recipe.b,
           failDestroyChancePct: recipe.failDestroyChancePct,
+          recipeKey: recipeKey(recipe.a, recipe.b),
+          skill: recipe.skill,
+          dc: recipe.dc,
         },
       },
     },
@@ -58,19 +50,23 @@ export function maybeFinishCrafting(state: GameState): GameState {
     return pushActivityLog({ ...state, ui: { ...state.ui, crafting: undefined } }, 'Craft canceled.')
   }
 
-  // Deterministic roll derived from floor seed + stable ids (multiplayer-sane direction).
-  const seed = hashStr(`${state.floor.seed}:craft:${c.srcItemId}:${c.dstItemId}:${c.resultDefId}`)
-  const roll = (seed % 100) + 1 // 1..100
-  const success = roll > 20 // MVP: 80% base success
+  const bestSkill = state.party.chars.reduce((best, ch) => Math.max(best, Number(ch.skills?.[c.skill] ?? 0)), 0)
+
+  // Deterministic roll derived from floor seed + stable ids + recipe params (multiplayer-sane direction).
+  const seed = hashStr(`${state.floor.seed}:craft:${c.srcItemId}:${c.dstItemId}:${c.resultDefId}:${c.skill}:${c.dc}`)
+  const d20 = (seed % 20) + 1 // 1..20
+  const total = d20 + bestSkill
+  const success = total >= c.dc
 
   let next: GameState = { ...state, ui: { ...state.ui, crafting: undefined } }
 
   if (!success) {
     // Failure: chance to destroy one involved item (as brief).
-    const destroyRoll = ((seed >>> 8) % 100) + 1
+    const destroySeed = hashStr(`${state.floor.seed}:craftDestroy:${c.srcItemId}:${c.dstItemId}:${c.resultDefId}:${c.skill}:${c.dc}`)
+    const destroyRoll = (destroySeed % 100) + 1
     const destroy = destroyRoll <= c.failDestroyChancePct
     if (destroy) {
-      const destroySrc = ((seed >>> 16) & 1) === 0
+      const destroySrc = ((destroySeed >>> 8) & 1) === 0
       next = consumeItem(next, destroySrc ? c.srcItemId : c.dstItemId)
       const q = next.ui.sfxQueue ?? []
       return pushActivityLog(
@@ -102,24 +98,39 @@ export function maybeFinishCrafting(state: GameState): GameState {
   next = consumeItem(next, c.srcItemId)
   next = consumeItem(next, c.dstItemId)
 
+  const wasKnown = Boolean(state.ui.knownRecipes?.[c.recipeKey])
+  const knownRecipes = { ...(next.ui.knownRecipes ?? {}), [c.recipeKey]: true as const }
+  next = { ...next, ui: { ...next.ui, knownRecipes } }
+
   const newId = (`i_${c.resultDefId}_${state.floor.seed}_${(seed >>> 0).toString(16)}` as unknown) as ItemId
   const items = { ...next.party.items, [newId]: { id: newId, defId: c.resultDefId, qty: 1 } }
   const inv = next.party.inventory
   const free = inv.slots.findIndex((s) => s == null)
   const nextSlots = inv.slots.slice()
-  if (free >= 0) nextSlots[free] = newId
+  if (free >= 0) {
+    nextSlots[free] = newId
+  } else {
+    const jitter = makeDropJitter({
+      floorSeed: next.floor.seed,
+      itemId: newId,
+      nonce: Math.floor(next.nowMs),
+      radius: next.render.dropJitterRadius ?? 0.28,
+    })
+    const itemsOnFloor = next.floor.itemsOnFloor.concat([{ id: newId, pos: { ...next.floor.playerPos }, jitter }])
+    next = { ...next, floor: { ...next.floor, itemsOnFloor, floorGeomRevision: next.floor.floorGeomRevision + 1 } }
+  }
 
-  return pushActivityLog(
-    {
-      ...next,
-      party: { ...next.party, items, inventory: { ...inv, slots: nextSlots } },
-      ui: {
-        ...next.ui,
-        sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
-      },
+  const withItems: GameState = {
+    ...next,
+    party: { ...next.party, items, inventory: { ...inv, slots: nextSlots } },
+    ui: {
+      ...next.ui,
+      sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
     },
-    `Crafted ${c.resultDefId}.`,
-  )
+  }
+
+  const withDiscovery = wasKnown ? withItems : pushActivityLog(withItems, `Discovered: ${c.aDefId} + ${c.bDefId} → ${c.resultDefId}.`)
+  return pushActivityLog(withDiscovery, `Crafted ${c.resultDefId}.`)
 }
 
 function hashStr(s: string) {

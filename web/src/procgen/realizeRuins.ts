@@ -22,6 +22,104 @@ function floorMassNear(tiles: Tile[], w: number, h: number, x: number, y: number
   return m
 }
 
+function rectDistanceChebyshev(a: GenRoom['rect'], b: GenRoom['rect']): number {
+  // 0 means overlap; 1 means touch within one tile gap.
+  const ax2 = a.x + a.w - 1
+  const ay2 = a.y + a.h - 1
+  const bx2 = b.x + b.w - 1
+  const by2 = b.y + b.h - 1
+  const dx = a.x > bx2 ? a.x - bx2 : b.x > ax2 ? b.x - ax2 : 0
+  const dy = a.y > by2 ? a.y - by2 : b.y > ay2 ? b.y - ay2 : 0
+  return Math.max(dx, dy)
+}
+
+function unionFind(n: number) {
+  const parent = Array.from({ length: n }, (_, i) => i)
+  const find = (x: number): number => {
+    while (parent[x] !== x) {
+      parent[x] = parent[parent[x]]!
+      x = parent[x]!
+    }
+    return x
+  }
+  const union = (a: number, b: number) => {
+    const ra = find(a)
+    const rb = find(b)
+    if (ra !== rb) parent[rb] = ra
+  }
+  return { parent, find, union }
+}
+
+function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
+  if (rooms.length <= 2) return rooms
+  const sorted = [...rooms].sort((a, b) => a.id.localeCompare(b.id))
+  const uf = unionFind(sorted.length)
+
+  // Adjacency: within a small rect gap. (Stamps are CELL-sized, so this approximates macro-cell neighbors.)
+  for (let i = 0; i < sorted.length; i++) {
+    for (let j = i + 1; j < sorted.length; j++) {
+      if (rectDistanceChebyshev(sorted[i]!.rect, sorted[j]!.rect) <= 2) uf.union(i, j)
+    }
+  }
+
+  const groups = new Map<number, number[]>()
+  for (let i = 0; i < sorted.length; i++) {
+    const r = uf.find(i)
+    const g = groups.get(r) ?? []
+    g.push(i)
+    groups.set(r, g)
+  }
+
+  let comps = Array.from(groups.values()).sort((a, b) => b.length - a.length)
+
+  // If we ended up with too many components, merge the smallest into nearest larger ones by rect distance.
+  while (comps.length > maxClusters) {
+    const small = comps.pop()
+    if (!small?.length) break
+    let bestIdx = 0
+    let bestD = 1e9
+    const sRoom = sorted[small[0]!]!
+    for (let i = 0; i < comps.length; i++) {
+      const tgt = sorted[comps[i]![0]!]!
+      const d = rectDistanceChebyshev(sRoom.rect, tgt.rect)
+      if (d < bestD) {
+        bestD = d
+        bestIdx = i
+      }
+    }
+    comps[bestIdx] = comps[bestIdx]!.concat(small)
+  }
+
+  const macro: GenRoom[] = []
+  for (let gi = 0; gi < comps.length; gi++) {
+    const idxs = comps[gi]!.slice().sort((a, b) => a - b)
+    let minX = 1e9,
+      minY = 1e9,
+      maxX = -1,
+      maxY = -1
+    let bestCenter = sorted[idxs[0]!]!.center
+    let bestArea = -1
+    for (const ii of idxs) {
+      const r = sorted[ii]!
+      minX = Math.min(minX, r.rect.x)
+      minY = Math.min(minY, r.rect.y)
+      maxX = Math.max(maxX, r.rect.x + r.rect.w - 1)
+      maxY = Math.max(maxY, r.rect.y + r.rect.h - 1)
+      const a = r.rect.w * r.rect.h
+      if (a > bestArea) {
+        bestArea = a
+        bestCenter = r.center
+      }
+    }
+    const rect = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
+    macro.push({ id: `r_macro_${gi}`, rect, center: { ...bestCenter }, leafDepth: 0 })
+  }
+
+  // Keep stable output ordering.
+  macro.sort((a, b) => a.id.localeCompare(b.id))
+  return macro
+}
+
 /** Macro-cell stamp: grid of potential chambers with random doorways. */
 export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; genRooms: GenRoom[] } {
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
@@ -84,5 +182,6 @@ export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[];
     genRooms.push({ id: 'r_0', rect: { ...room }, center: center(room), leafDepth: 0 })
   }
 
-  return { tiles, genRooms }
+  const macroRooms = clusterRoomsToMacro(genRooms, 10)
+  return { tiles, genRooms: macroRooms }
 }

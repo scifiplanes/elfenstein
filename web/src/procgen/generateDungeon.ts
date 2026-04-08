@@ -30,6 +30,8 @@ import { runRuinsLayout } from './realizeRuins'
 import type { FloorPoi, PoiKind, Tile } from '../game/types'
 import { shortestPathLatticeStats } from './validate'
 import { applyRoomShapingGuarded } from './shapeRooms'
+import { applyDungeonDoorFramesGuarded } from './doorFrames'
+import { deriveJunctionRooms } from './deriveRooms'
 
 const POI_CANONICAL_ID_ORDER: Partial<Record<string, number>> = {
   poi_exit: 0,
@@ -38,6 +40,8 @@ const POI_CANONICAL_ID_ORDER: Partial<Record<string, number>> = {
   poi_chest: 3,
   poi_barrel: 4,
   poi_crate: 5,
+  poi_shrine: 6,
+  poi_crackedWall: 7,
 }
 
 const POI_KIND_PRIORITY: Partial<Record<PoiKind, number>> = {
@@ -180,10 +184,18 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   const { entrance, exit } = pickEntranceExit({ tiles, w, h, rooms: genRooms, rng: layoutRng })
 
   const loopsAdded = injectLoops({ tiles, w, h, rooms: genRooms, entrance, exit, rng: layoutRng }).added
+
+  const doorFrames =
+    floorType === 'Dungeon' ? applyDungeonDoorFramesGuarded({ tiles, w, h, rng: layoutRng, maxFrames: 10 }) : { applied: false, framesApplied: 0 }
+
   const lattice = shortestPathLatticeStats(tiles, w, h, entrance, exit)
   const wideness = lattice.shortestLen >= 0 ? lattice.latticeCells - lattice.shortestLen : 0
   const { reachableFloors, junctions } = countReachableFloorJunctions(tiles, w, h, entrance)
   const deadEnds = countReachableDeadEnds(tiles, w, h, entrance)
+
+  // Derived connector/junction rooms provide additional semantic anchors for tags/spawns.
+  // These are stable and bounded and should not affect geometry.
+  genRooms = genRooms.concat(deriveJunctionRooms({ tiles, w, h, maxRooms: floorType === 'Dungeon' ? 6 : 4 }))
 
   assignDistrictsToRooms(genRooms, w, h, districtRng)
   tagRoomsWithQuotas(genRooms, floorProperties, tagsRng)
@@ -191,16 +203,16 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   solveRoomTags({ rooms: genRooms, tiles, w, h, floorProperties, rng: tagsRng, onPathBand })
   applyTagConstraints(genRooms, tiles, w, h, floorProperties, tagsRng)
 
-  const rawPois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
+  const rawPois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng, floorProperties: floorProps })
   const { pois, dropped: droppedPois } = dedupePoisByCell(rawPois)
-  if (import.meta.env.DEV && droppedPois.length) {
+  if (import.meta.env?.DEV && droppedPois.length) {
     // Keep this as a warning (not a hard throw) so procgen remains resilient during iteration.
     console.warn('[procgen] POI collision(s) deduped', {
       kept: pois.map((p) => ({ id: p.id, kind: p.kind, pos: p.pos })),
       dropped: droppedPois.map((p) => ({ id: p.id, kind: p.kind, pos: p.pos })),
     })
   }
-  if (import.meta.env.DEV) {
+  if (import.meta.env?.DEV) {
     const keys = pois.map(cellKey)
     const uniq = new Set(keys)
     if (uniq.size !== keys.length) {
@@ -264,6 +276,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
         deadEnds,
         reachableFloors,
         loopsAdded,
+        doorFramesApplied: doorFrames.framesApplied,
       },
     },
     missionGraph: undefined,

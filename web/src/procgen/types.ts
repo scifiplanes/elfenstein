@@ -130,6 +130,8 @@ export type FloorGenMeta = {
     deadEnds: number
     reachableFloors: number
     loopsAdded: number
+    /** Number of corridor door-frame throats applied (Dungeon floors only). */
+    doorFramesApplied?: number
   }
 }
 

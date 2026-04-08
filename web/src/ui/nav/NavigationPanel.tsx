@@ -38,6 +38,7 @@ function NavPadButton(props: {
     <button
       type="button"
       className={styles.navBtn}
+      data-navpad-button-id={buttonId}
       disabled={busy}
       title={title}
       aria-label={ariaLabel}

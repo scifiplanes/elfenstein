@@ -9,12 +9,75 @@ import type { GameState } from '../../game/types'
 import { HudLayout } from '../hud/HudLayout'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { NpcDialogModal } from '../npc/NpcDialogModal'
+import { DeathModal } from '../death/DeathModal'
+import { TitleScreen } from '../title/TitleScreen'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
 import { useFixedStageOuterScale } from '../../app/FixedStageContext'
 import { STAGE_CSS_HEIGHT, STAGE_CSS_WIDTH } from '../../app/stageDesign'
 import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
+import { useCursor } from '../cursor/useCursor'
+import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
+
+type SpeciesId = GameState['party']['chars'][number]['species']
+const NAV_PUSHED_SRC = '/content/ui/navigation/ui_navigationbutton_pushed.png'
+
+function portraitOverlayUrlsForSpecies(
+  species: SpeciesId,
+): { mouthSrc: string; mouthClosedSrc?: string; idleSrc: string; eyesInspectSrc: string } | null {
+  // Keep in sync with `ui/portraits/PortraitPanel.tsx` until portrait assets are centralized.
+  if (species === 'Igor')
+    return {
+      mouthSrc: '/content/boblin_mouth_open.png',
+      idleSrc: '/content/boblin_idle.png',
+      eyesInspectSrc: '/content/boblin_eyes_inspect.png',
+    }
+  if (species === 'Mycyclops')
+    return {
+      mouthSrc: '/content/myclops_mouth_open.png',
+      idleSrc: '/content/myclops_idle.png',
+      eyesInspectSrc: '/content/myclops_eyes_inspect.png',
+    }
+  if (species === 'Frosch')
+    return {
+      mouthSrc: '/content/frosh_mouth_open.png',
+      idleSrc: '/content/frosh_idle.png',
+      eyesInspectSrc: '/content/frosh_eye_inspect.png',
+    }
+  if (species === 'Afonso')
+    return {
+      mouthSrc: '/content/Afonso_mouth_open.png',
+      mouthClosedSrc: '/content/Afonso_mouth_closed.png',
+      idleSrc: '/content/Afonso_base_idle.png',
+      eyesInspectSrc: '/content/Afonso_eyes_inspect.png',
+    }
+  return null
+}
+
+function computePortraitMouthOn(args: {
+  nowMs: number
+  cue: GameState['ui']['portraitMouth'] | undefined
+  characterId: string
+  hz: number
+  amount: number
+}): number {
+  const { nowMs, cue, characterId } = args
+  if (!cue || cue.characterId !== characterId || cue.untilMs <= nowMs) return 0
+
+  const hz = Math.max(0, Number(args.hz ?? 0))
+  const amount = Math.max(0, Math.round(Number(args.amount ?? 0)))
+  const steps = amount * 2
+  const flickerEnabled = hz > 0 && steps > 0
+  if (!flickerEnabled) return 1
+
+  const startedAtMs = cue.startedAtMs ?? nowMs
+  const totalMs = Math.max(1, cue.untilMs - startedAtMs)
+  const elapsedMs = Math.max(0, nowMs - startedAtMs)
+  const t = Math.max(0, Math.min(0.999999, elapsedMs / totalMs))
+  const tick = Math.floor(t * steps)
+  return tick % 2 === 0 ? 1 : 0
+}
 
 export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
   const { state, dispatch, content } = props
@@ -37,6 +100,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
   const presenterRef = useRef<FramePresenter | null>(null)
   const uiTexRef = useRef<THREE.CanvasTexture | null>(null)
+  const portraitTexCacheRef = useRef<Map<string, THREE.Texture>>(new Map())
+  const portraitArCacheRef = useRef<Map<string, number>>(new Map())
+  const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
+  const navPushedTexRef = useRef<THREE.Texture | null>(null)
   const lastCaptureMsRef = useRef(0)
   const captureInFlightRef = useRef(false)
   const lastUiCaptureSizeRef = useRef<{ w: number; h: number } | null>(null)
@@ -46,9 +113,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const renderBurstUntilMsRef = useRef(0)
   const prevHighFpsUiRef = useRef(false)
   const lastUiCaptureScaleRef = useRef<number | null>(null)
+  const lastUiCaptureDurMsRef = useRef<number | null>(null)
+  const perfEmaRef = useRef<{ frameMs: number; worldMs: number; presentMs: number }>({ frameMs: 0, worldMs: 0, presentMs: 0 })
+  const captureIdleHandleRef = useRef<number | null>(null)
+  const captureScheduledRef = useRef(false)
+  const lastHudKeyRef = useRef<string>('')
+  const pendingHudKeyRef = useRef<string>('')
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const cursor = useCursor()
 
   const onNavPadVisualPress = useCallback((id: NavPadButtonId) => {
     setNavPadPressedId(id)
@@ -56,7 +130,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     navPadTimerRef.current = setTimeout(() => {
       setNavPadPressedId(null)
       navPadTimerRef.current = null
-    }, 500)
+    }, 140)
   }, [])
 
   useEffect(() => {
@@ -128,6 +202,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     try {
       const p = new FramePresenter(presentCanvasRef.current)
       presenterRef.current = p
+      textureLoaderRef.current = new THREE.TextureLoader()
       w = new WorldRenderer(p.getRenderer())
       setWorld(w)
       setWebglError(null)
@@ -139,6 +214,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       w?.dispose()
       presenterRef.current?.dispose()
       presenterRef.current = null
+      navPushedTexRef.current?.dispose()
+      navPushedTexRef.current = null
     }
   }, [])
 
@@ -152,6 +229,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const renderOnce = () => {
     const presenter = presenterRef.current
     if (!presenter) return false
+    const t0 = performance.now()
 
     const gameEl = gameViewportRef.current
     if (!gameEl) return false
@@ -181,8 +259,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const inResizeBurst = now < renderBurstUntilMsRef.current
 
     if (world) {
+      const tWorld0 = performance.now()
       world.syncViewportRect(gameCssW, gameCssH)
       world.renderFrame(latestStateRef.current)
+      const tWorld1 = performance.now()
+      ;(window as any).__elfensteinPerf = {
+        ...(window as any).__elfensteinPerf,
+        worldMs: tWorld1 - tWorld0,
+      }
     }
 
     // If the presenter size changed, the last UI capture is the wrong resolution and will smear.
@@ -208,9 +292,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
     const ui = latestStateRef.current.ui
     const anyShakeActive =
-      (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
-    const anyMouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
-    const highFpsUi = anyShakeActive || anyMouthActive
+      (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) ||
+      (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
+    const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
+    // Portrait mouth is a compositor overlay, but it still benefits from a higher cadence so flicker reads.
+    const highFpsUi = anyShakeActive || mouthActive
 
     // When a high-FPS UI moment begins (e.g. portrait mouth flicker), force the next capture ASAP
     // so the burst doesn't "start late" waiting for a stale interval gate.
@@ -223,83 +309,162 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // During mouth flicker / shake, capture as soon as the previous capture finishes
     // (html2canvas is async and we already gate with `captureInFlightRef`).
     // Scale is pinned during the burst (below) to avoid full-screen shimmer from resampling.
-    const captureIntervalMs = highFpsUi ? 0 : 80
+    // Capture is extremely expensive; avoid doing it on a timer when nothing in the HUD changed.
+    // We'll still allow burst captures when explicitly needed (shake, portrait interactions, etc.).
+    const captureIntervalMs = highFpsUi ? 0 : 120
+    // Even when nothing "logically" changed, some HUD elements animate locally (e.g. portrait idle flashes)
+    // and should not freeze forever. Keep a low-rate refresh to preserve life without constant spikes.
+    const maxStaleMs = 650
 
-    if (!inResizeBurst && captureEl && !captureInFlightRef.current && now - lastCaptureMsRef.current > captureIntervalMs) {
-      captureInFlightRef.current = true
-      // Keep capture scale stable to prevent transient full-screen resampling artifacts
-      // when the UI texture resolution changes mid-frame.
-      const vvScale = window.visualViewport?.scale || 1
-      const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
-      const desiredScale = Math.min(effectiveDpr, 1.5)
-      // If a high-FPS moment is active, pin to the previous scale (if any) so we don't
-      // swap UI texture resolution repeatedly during the burst.
-      const captureScale = highFpsUi && lastUiCaptureScaleRef.current != null ? lastUiCaptureScaleRef.current : desiredScale
-      const prevScale = lastUiCaptureScaleRef.current
-      if (prevScale == null || Math.abs(prevScale - captureScale) > 1e-6) {
-        lastUiCaptureScaleRef.current = captureScale
-        if (uiTexRef.current) {
-          uiTexRef.current.dispose()
-          uiTexRef.current = null
+    const sForKey = latestStateRef.current
+    const hudKey = (() => {
+      // Keep this intentionally small: only include state that affects the captured HUD rendering.
+      const invSlots = sForKey.party.inventory.slots.join(',')
+      const chars = sForKey.party.chars
+        .map((c) => `${c.id}:${Math.round(c.hp)}:${Math.round(c.stamina)}:${Math.round(c.hunger)}:${Math.round(c.thirst)}`)
+        .join('|')
+      const itemsOnFloorN = sForKey.floor.itemsOnFloor.length
+      const pose = `${sForKey.floor.playerPos.x},${sForKey.floor.playerPos.y},${sForKey.floor.playerDir}`
+      const crafting = sForKey.ui.crafting ? `${sForKey.ui.crafting.srcItemId}->${sForKey.ui.crafting.dstItemId}:${sForKey.ui.crafting.endsAtMs}` : ''
+      const log = sForKey.ui.activityLog
+      const logKey = log && log.length ? `${log.length}:${log[log.length - 1]!.id}` : '0'
+      const npcDialogFor = sForKey.ui.npcDialogFor ?? ''
+      const death = sForKey.ui.death ? `${sForKey.ui.death.runId}:${sForKey.ui.death.atMs}` : ''
+      const pulse = sForKey.ui.portraitIdlePulse
+      const pulseKey = pulse ? `${pulse.characterId}:${Math.round(pulse.untilMs)}` : ''
+      // Portrait hover affordances (eyes inspect / mouth preview) are rendered inside the captured HUD
+      // and depend on cursor hover state during drags.
+      const ht = cursor.state.hoverTarget
+      const hoverPortraitKey =
+        cursor.state.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
+      return `inv=${invSlots}|chars=${chars}|pose=${pose}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|pHover=${hoverPortraitKey}`
+    })()
+    const hudDirty = hudKey !== lastHudKeyRef.current
+    // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
+    // can be skipped due to interval gating and the HUD texture never appears.
+    if (hudDirty) pendingHudKeyRef.current = hudKey
+
+    // UI capture (html2canvas) can be very expensive and cause frame spikes.
+    // Schedule it in idle time and back off when captures are slow.
+    const lastCapDur = lastUiCaptureDurMsRef.current ?? 0
+    // Backoff is great for smooth frame pacing, but during interaction bursts we prefer immediacy.
+    const backoffMs = highFpsUi ? 0 : lastCapDur > 120 ? 600 : lastCapDur > 60 ? 350 : lastCapDur > 30 ? 180 : 0
+    const effectiveIntervalMs = highFpsUi ? 0 : captureIntervalMs + backoffMs
+    const stale = now - lastCaptureMsRef.current > maxStaleMs
+    const shouldAttemptCapture =
+      !inResizeBurst &&
+      !!captureEl &&
+      (highFpsUi || hudDirty || !uiTexRef.current || stale) &&
+      !captureInFlightRef.current &&
+      !captureScheduledRef.current &&
+      now - lastCaptureMsRef.current > effectiveIntervalMs
+
+    if (shouldAttemptCapture) {
+      captureScheduledRef.current = true
+      const schedule = (cb: () => void) => {
+        const ric = (window as any).requestIdleCallback as undefined | ((fn: () => void, opts?: { timeout?: number }) => number)
+        if (typeof ric === 'function') {
+          // Keep responsive during bursts: use a short timeout so the capture runs ASAP.
+          captureIdleHandleRef.current = ric(cb, { timeout: highFpsUi ? 16 : 120 })
+          return
         }
+        // Fallback: next tick.
+        window.setTimeout(cb, 0)
       }
-      void html2canvas(captureEl, {
-        backgroundColor: null,
-        logging: false,
-        scale: captureScale,
-        width: w,
-        height: h,
-        windowWidth: w,
-        windowHeight: h,
-        onclone: (doc) => {
-          // The capture HUD is rendered offscreen in the real document.
-          // In the cloned document used by html2canvas, snap it to (0,0) so the
-          // rasterized UI texture matches the 1920×1080 stage coordinate system.
-          const wrap = doc.querySelector('[data-capture-wrap="true"]') as HTMLElement | null
-          if (wrap) {
-            wrap.style.position = 'fixed'
-            wrap.style.left = '0px'
-            wrap.style.top = '0px'
-            wrap.style.width = `${w}px`
-            wrap.style.height = `${h}px`
-            wrap.style.transform = 'none'
-          }
 
-          const root = doc.querySelector('[data-capture-root="true"]') as HTMLElement | null
-          if (root) {
-            root.style.position = 'absolute'
-            root.style.left = '0px'
-            root.style.top = '0px'
-            root.style.width = '100%'
-            root.style.height = '100%'
-            root.style.transform = 'none'
+      schedule(() => {
+        captureScheduledRef.current = false
+        if (!captureEl) return
+        // Re-check gates (time passed since scheduling).
+        const now2 = performance.now()
+        if (captureInFlightRef.current) return
+        if (now2 - lastCaptureMsRef.current <= effectiveIntervalMs) return
+
+        captureInFlightRef.current = true
+        const captureStart = performance.now()
+
+        // Keep capture scale stable to prevent transient full-screen resampling artifacts
+        // when the UI texture resolution changes mid-frame.
+        const vvScale = window.visualViewport?.scale || 1
+        const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
+        const desiredScale = Math.min(effectiveDpr, 1.5)
+        // If a high-FPS moment is active, pin to the previous scale (if any) so we don't
+        // swap UI texture resolution repeatedly during the burst.
+        const captureScale = highFpsUi && lastUiCaptureScaleRef.current != null ? lastUiCaptureScaleRef.current : desiredScale
+        const prevScale = lastUiCaptureScaleRef.current
+        if (prevScale == null || Math.abs(prevScale - captureScale) > 1e-6) {
+          lastUiCaptureScaleRef.current = captureScale
+          if (uiTexRef.current) {
+            uiTexRef.current.dispose()
+            uiTexRef.current = null
           }
-          // Ensure no default margins shift the cloned layout.
-          doc.documentElement.style.margin = '0'
-          doc.body.style.margin = '0'
-        },
-        useCORS: true,
+        }
+
+        void html2canvas(captureEl, {
+          backgroundColor: null,
+          logging: false,
+          scale: captureScale,
+          width: w,
+          height: h,
+          windowWidth: w,
+          windowHeight: h,
+          onclone: (doc) => {
+            // The capture HUD is rendered offscreen in the real document.
+            // In the cloned document used by html2canvas, snap it to (0,0) so the
+            // rasterized UI texture matches the 1920×1080 stage coordinate system.
+            const wrap = doc.querySelector('[data-capture-wrap="true"]') as HTMLElement | null
+            if (wrap) {
+              wrap.style.position = 'fixed'
+              wrap.style.left = '0px'
+              wrap.style.top = '0px'
+              wrap.style.width = `${w}px`
+              wrap.style.height = `${h}px`
+              wrap.style.transform = 'none'
+            }
+
+            const root = doc.querySelector('[data-capture-root="true"]') as HTMLElement | null
+            if (root) {
+              root.style.position = 'absolute'
+              root.style.left = '0px'
+              root.style.top = '0px'
+              root.style.width = '100%'
+              root.style.height = '100%'
+              root.style.transform = 'none'
+            }
+            // Ensure no default margins shift the cloned layout.
+            doc.documentElement.style.margin = '0'
+            doc.body.style.margin = '0'
+          },
+          useCORS: true,
+        })
+          .then((canvas) => {
+            lastUiCaptureDurMsRef.current = performance.now() - captureStart
+            lastCaptureMsRef.current = performance.now()
+            if (!uiTexRef.current) {
+              const tex = new THREE.CanvasTexture(canvas)
+              tex.colorSpace = THREE.SRGBColorSpace
+              tex.minFilter = THREE.LinearFilter
+              tex.magFilter = THREE.LinearFilter
+              tex.generateMipmaps = false
+              uiTexRef.current = tex
+            } else {
+              uiTexRef.current.image = canvas
+              uiTexRef.current.needsUpdate = true
+            }
+            // Capture succeeded; mark HUD as clean for this key.
+            const pending = pendingHudKeyRef.current
+            if (pending) {
+              lastHudKeyRef.current = pending
+              pendingHudKeyRef.current = ''
+            }
+          })
+          .catch(() => {
+            // Ignore capture failures; keep the last good UI frame.
+          })
+          .finally(() => {
+            captureInFlightRef.current = false
+          })
       })
-        .then((canvas) => {
-          lastCaptureMsRef.current = performance.now()
-          if (!uiTexRef.current) {
-            const tex = new THREE.CanvasTexture(canvas)
-            tex.colorSpace = THREE.SRGBColorSpace
-            tex.minFilter = THREE.LinearFilter
-            tex.magFilter = THREE.LinearFilter
-            tex.generateMipmaps = false
-            uiTexRef.current = tex
-          } else {
-            uiTexRef.current.image = canvas
-            uiTexRef.current.needsUpdate = true
-          }
-        })
-        .catch(() => {
-          // Ignore capture failures; keep the last good UI frame.
-        })
-        .finally(() => {
-          captureInFlightRef.current = false
-        })
     }
 
     const gr = gameEl.getBoundingClientRect()
@@ -307,6 +472,150 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // This keeps the scene placement stable even if the presenter canvas and HUD end up
     // with slightly different screen-space bounding rects under stage scaling/letterboxing.
     const hr = interactiveHudRef.current?.getBoundingClientRect() ?? pr
+
+    const party = latestStateRef.current.party.chars.slice(0, 4)
+    const portraitRectsPx = party.map((c) => {
+      const root = interactiveHudRef.current
+      if (!root || !hr) return { left: 0, top: 0, width: 0, height: 0 }
+      const el = root.querySelector(`[data-portrait-character-id="${c.id}"]`) as HTMLElement | null
+      if (!el) return { left: 0, top: 0, width: 0, height: 0 }
+      const r = el.getBoundingClientRect()
+      return {
+        left: (r.left - (hr.left ?? 0)) / outerS,
+        top: (r.top - (hr.top ?? 0)) / outerS,
+        width: r.width / outerS,
+        height: r.height / outerS,
+      }
+    })
+
+    const portraitStatsRectsPx = party.map((c) => {
+      const root = interactiveHudRef.current
+      if (!root || !hr) return { left: 0, top: 0, width: 0, height: 0 }
+      const el = root.querySelector(`[data-portrait-character-id="${c.id}"] [data-portrait-stats="true"]`) as HTMLElement | null
+      if (!el) return { left: 0, top: 0, width: 0, height: 0 }
+      const r = el.getBoundingClientRect()
+      return {
+        left: (r.left - (hr.left ?? 0)) / outerS,
+        top: (r.top - (hr.top ?? 0)) / outerS,
+        width: r.width / outerS,
+        height: r.height / outerS,
+      }
+    })
+
+    const navRectsPx = (() => {
+      const root = interactiveHudRef.current
+      if (!root || !hr) return []
+      const ids = ['turnLeft', 'forward', 'turnRight', 'strafeLeft', 'back', 'strafeRight'] as const
+      return ids.map((id) => {
+        const el = root.querySelector(`[data-navpad-button-id="${id}"]`) as HTMLElement | null
+        if (!el) return { left: 0, top: 0, width: 0, height: 0 }
+        const r = el.getBoundingClientRect()
+        return {
+          left: (r.left - (hr.left ?? 0)) / outerS,
+          top: (r.top - (hr.top ?? 0)) / outerS,
+          width: r.width / outerS,
+          height: r.height / outerS,
+        }
+      })
+    })()
+
+    // Drive compositor-only portrait overlays off real time.
+    const nowMs = performance.now()
+    const cue = latestStateRef.current.ui.portraitMouth
+    const pulse = latestStateRef.current.ui.portraitIdlePulse
+    const hz = Number(latestStateRef.current.render.portraitMouthFlickerHz ?? 0)
+    const amount = Number(latestStateRef.current.render.portraitMouthFlickerAmount ?? 0)
+    const portraitMouthOn = party.map((c) => computePortraitMouthOn({ nowMs, cue, characterId: c.id, hz, amount }))
+    const portraitIdleOn = party.map((c) => (pulse?.characterId === c.id && (pulse.untilMs ?? 0) > nowMs ? 1 : 0))
+    const hover = cursor.state.hoverTarget
+    const portraitHoverEyesOn = party.map((c) =>
+      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
+    )
+    const portraitHoverMouthOn = party.map((c) =>
+      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
+    )
+    // Hover mouth should show steadily (original affordance); cue mouth flicker wins when active.
+    const portraitMouthIsOpen = portraitMouthOn.map((v, i) => (v > 0 ? v : portraitHoverMouthOn[i] ?? 0))
+
+    const portraitMouthTex: Array<THREE.Texture | null> = []
+    const portraitIdleTex: Array<THREE.Texture | null> = []
+    const portraitEyesInspectTex: Array<THREE.Texture | null> = []
+    const portraitMouthAr: number[] = []
+    const portraitIdleAr: number[] = []
+    const portraitEyesInspectAr: number[] = []
+    const portraitMouthOnForShader: number[] = []
+    for (const c of party) {
+      const urls = portraitOverlayUrlsForSpecies(c.species)
+      if (!urls) {
+        portraitMouthTex.push(null)
+        portraitIdleTex.push(null)
+        portraitEyesInspectTex.push(null)
+        portraitMouthAr.push(1)
+        portraitIdleAr.push(1)
+        portraitEyesInspectAr.push(1)
+        portraitMouthOnForShader.push(0)
+        continue
+      }
+      const loader = textureLoaderRef.current
+      const cache = portraitTexCacheRef.current
+      const arCache = portraitArCacheRef.current
+      const getTex = (src: string) => {
+        const existing = cache.get(src)
+        if (existing) return existing
+        if (!loader) return null
+        const tex = loader.load(src, () => {
+          const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
+          const w = Number(img?.naturalWidth ?? img?.width ?? 0)
+          const h = Number(img?.naturalHeight ?? img?.height ?? 0)
+          if (w > 0 && h > 0) arCache.set(src, w / h)
+        })
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.minFilter = THREE.LinearFilter
+        tex.magFilter = THREE.LinearFilter
+        tex.generateMipmaps = false
+        cache.set(src, tex)
+        return tex
+      }
+      const idx = portraitMouthTex.length
+      const isOpen = (portraitMouthIsOpen[idx] ?? 0) > 0
+      const hasClosed = !!urls.mouthClosedSrc
+      const mouthSrc = isOpen ? urls.mouthSrc : (urls.mouthClosedSrc ?? urls.mouthSrc)
+      portraitMouthTex.push(getTex(mouthSrc))
+      portraitIdleTex.push(getTex(urls.idleSrc))
+      portraitEyesInspectTex.push(getTex(urls.eyesInspectSrc))
+      portraitMouthAr.push(arCache.get(mouthSrc) ?? 1)
+      portraitIdleAr.push(arCache.get(urls.idleSrc) ?? 1)
+      portraitEyesInspectAr.push(arCache.get(urls.eyesInspectSrc) ?? 1)
+      // If the species has a closed-mouth art, keep the compositor mouth overlay always active,
+      // swapping textures between open/closed for instant transitions without capture latency.
+      portraitMouthOnForShader.push(hasClosed ? 1 : isOpen ? 1 : 0)
+    }
+
+    const activeRoomPropRaw = roomPropertyUnderPlayer(latestStateRef.current)
+    const telegraphOverride = (
+      window as unknown as {
+        __elfensteinRoomTelegraph?:
+          | undefined
+          | {
+              mode?: 'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'
+              strength?: number
+            }
+      }
+    ).__elfensteinRoomTelegraph
+    const activeRoomProp =
+      telegraphOverride?.mode && telegraphOverride.mode !== 'auto'
+        ? telegraphOverride.mode === 'off'
+          ? null
+          : telegraphOverride.mode
+        : activeRoomPropRaw
+    const telegraph = (() => {
+      // Subtle vignette + tint when standing in a tagged room.
+      const strength = Number(telegraphOverride?.strength ?? 0.22)
+      if (activeRoomProp === 'Burning') return { strength, color: { r: 1.25, g: 0.82, b: 0.62 } }
+      if (activeRoomProp === 'Flooded') return { strength, color: { r: 0.78, g: 0.92, b: 1.28 } }
+      if (activeRoomProp === 'Infected') return { strength, color: { r: 0.86, g: 1.22, b: 0.76 } }
+      return { strength: 0.0, color: { r: 1.0, g: 1.0, b: 1.0 } }
+    })()
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
       uiTex: uiTexRef.current,
@@ -317,8 +626,74 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         width: gr.width / outerS,
         height: gr.height / outerS,
       },
+      telegraphStrength: telegraph.strength,
+      telegraphColor: telegraph.color,
+      telegraphVignette: { inner: 0.35, outer: 0.95 },
+      portraitRectsPx,
+      portraitMouthTex,
+      portraitIdleTex,
+      portraitMouthOn: portraitMouthOnForShader,
+      portraitIdleOn,
+      portraitEyesInspectTex,
+      portraitEyesInspectOn: portraitHoverEyesOn,
+      portraitMouthAr,
+      portraitIdleAr,
+      portraitEyesInspectAr,
+      portraitArtNudgeYCssPx: -30,
+      portraitStatsRectsPx,
+      navButtonRectsPx: navRectsPx,
+      navPushedOn: [
+        navPadPressedId === 'turnLeft' ? 1 : 0,
+        navPadPressedId === 'forward' ? 1 : 0,
+        navPadPressedId === 'turnRight' ? 1 : 0,
+        navPadPressedId === 'strafeLeft' ? 1 : 0,
+        navPadPressedId === 'back' ? 1 : 0,
+        navPadPressedId === 'strafeRight' ? 1 : 0,
+      ],
+      navPushedTex: (() => {
+        if (navPushedTexRef.current) return navPushedTexRef.current
+        const loader = textureLoaderRef.current
+        if (!loader) return null
+        const tex = loader.load(NAV_PUSHED_SRC)
+        tex.colorSpace = THREE.SRGBColorSpace
+        tex.minFilter = THREE.LinearFilter
+        tex.magFilter = THREE.LinearFilter
+        tex.generateMipmaps = false
+        navPushedTexRef.current = tex
+        return tex
+      })(),
     })
+    const tPresent0 = performance.now()
     presenter.render()
+    const tPresent1 = performance.now()
+
+    const t1 = performance.now()
+    const frameMs = t1 - t0
+    const presentMs = tPresent1 - tPresent0
+    const prev = perfEmaRef.current
+    const a = 0.15
+    const ema = {
+      frameMs: prev.frameMs ? prev.frameMs * (1 - a) + frameMs * a : frameMs,
+      worldMs: prev.worldMs ? prev.worldMs * (1 - a) + Number((window as any).__elfensteinPerf?.worldMs ?? 0) * a : Number((window as any).__elfensteinPerf?.worldMs ?? 0),
+      presentMs: prev.presentMs ? prev.presentMs * (1 - a) + presentMs * a : presentMs,
+    }
+    perfEmaRef.current = ema
+    ;(window as any).__elfensteinPerf = {
+      ...(window as any).__elfensteinPerf,
+      frameMs,
+      presentMs,
+      emaFrameMs: ema.frameMs,
+      emaWorldMs: ema.worldMs,
+      emaPresentMs: ema.presentMs,
+      uiCaptureMs: lastUiCaptureDurMsRef.current,
+      counts: {
+        tiles: latestStateRef.current.floor.tiles.length,
+        pois: latestStateRef.current.floor.pois.length,
+        npcs: latestStateRef.current.floor.npcs.length,
+        itemsOnFloor: latestStateRef.current.floor.itemsOnFloor.length,
+        floorGeomRevision: latestStateRef.current.floor.floorGeomRevision,
+      },
+    }
     return true
   }
 
@@ -326,7 +701,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   useEffect(() => {
     renderOnce()
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [world, layoutTick, state, navPadPressedId])
+  }, [world, layoutTick, state, navPadPressedId, cursor.state.hoverTarget, cursor.state.dragging?.started, cursor.state.isPointerDown])
 
   // During resize, the browser can stretch stale frames; keep redrawing for a short burst.
   useEffect(() => {
@@ -335,7 +710,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const loop = () => {
       if (stopped) return
       const now = performance.now()
-      const active = now < renderBurstUntilMsRef.current
+      const s = latestStateRef.current
+      const ui = s.ui
+      const anyShakeActive = (!!ui.shake && ui.shake.untilMs > s.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > s.nowMs)
+      const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > s.nowMs
+      const active = now < renderBurstUntilMsRef.current || anyShakeActive || mouthActive
       if (active) renderOnce()
       raf = window.requestAnimationFrame(loop)
     }
@@ -346,6 +725,15 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world])
+
+  useEffect(() => {
+    return () => {
+      const cancel = (window as any).cancelIdleCallback as undefined | ((h: number) => void)
+      if (captureIdleHandleRef.current != null && typeof cancel === 'function') cancel(captureIdleHandleRef.current)
+      captureIdleHandleRef.current = null
+      captureScheduledRef.current = false
+    }
+  }, [])
 
   const noopDispatch = useMemo(() => (() => {}) as Dispatch<Action>, [])
 
@@ -371,8 +759,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         />
       </div>
 
-      {state.ui.paperdollFor || state.ui.npcDialogFor ? (
+      {state.ui.screen === 'title' || state.ui.paperdollFor || state.ui.npcDialogFor || state.ui.death ? (
         <div className={styles.stageModalLayer}>
+          <TitleScreen state={state} dispatch={dispatch} />
+          <DeathModal state={state} dispatch={dispatch} />
           <PaperdollModal state={state} dispatch={dispatch} content={content} />
           <NpcDialogModal state={state} dispatch={dispatch} content={content} />
         </div>

@@ -1,0 +1,54 @@
+import type { ItemDefId, SkillId } from '../types'
+
+export type RecipeDef = {
+  /** Ordered ingredient A (order-sensitive recipes are allowed). */
+  a: ItemDefId
+  /** Ordered ingredient B (order-sensitive recipes are allowed). */
+  b: ItemDefId
+  result: ItemDefId
+  craftMs: number
+  failDestroyChancePct: number
+  /** Skill used for the craft check (party-best). */
+  skill: SkillId
+  /** Difficulty class for d20 + skill >= dc. */
+  dc: number
+}
+
+export function recipeKey(a: ItemDefId, b: ItemDefId) {
+  return `${a}+${b}`
+}
+
+export const ALL_RECIPES: RecipeDef[] = [
+  { a: 'Stick', b: 'Stone', result: 'Spear', craftMs: 1800, failDestroyChancePct: 25, skill: 'chipping', dc: 10 },
+  { a: 'Ash', b: 'Sulfur', result: 'Firebolt', craftMs: 1200, failDestroyChancePct: 20, skill: 'foraging', dc: 11 },
+  { a: 'Sulfur', b: 'Ash', result: 'Fireshield', craftMs: 1200, failDestroyChancePct: 20, skill: 'weaving', dc: 11 },
+
+  // Weapon/tool assembly.
+  { a: 'Stone', b: 'Chisel', result: 'StoneShard', craftMs: 1100, failDestroyChancePct: 15, skill: 'chipping', dc: 9 },
+  { a: 'Stick', b: 'StoneShard', result: 'Spear', craftMs: 1500, failDestroyChancePct: 18, skill: 'chipping', dc: 10 },
+  { a: 'Stick', b: 'Twine', result: 'Bow', craftMs: 1700, failDestroyChancePct: 22, skill: 'weaving', dc: 12 },
+  { a: 'Twine', b: 'Stick', result: 'Sling', craftMs: 1300, failDestroyChancePct: 16, skill: 'weaving', dc: 10 },
+  { a: 'Stone', b: 'Twine', result: 'Bolas', craftMs: 1400, failDestroyChancePct: 18, skill: 'weaving', dc: 11 },
+
+  // Remedies & cooking (edible so feed interactions work; some have extra cure logic).
+  { a: 'ClothScrap', b: 'ClothScrap', result: 'BandageStrip', craftMs: 900, failDestroyChancePct: 10, skill: 'weaving', dc: 9 },
+  { a: 'HerbLeaf', b: 'ClothScrap', result: 'HerbPoultice', craftMs: 1200, failDestroyChancePct: 14, skill: 'foraging', dc: 11 },
+  { a: 'BitterHerb', b: 'GlassVial', result: 'AntitoxinVial', craftMs: 1300, failDestroyChancePct: 16, skill: 'foraging', dc: 12 },
+  { a: 'Foodroot', b: 'Stone', result: 'MortarMeal', craftMs: 1000, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
+  { a: 'MortarMeal', b: 'WaterbagFull', result: 'Flourball', craftMs: 1600, failDestroyChancePct: 18, skill: 'cooking', dc: 12 },
+  { a: 'HerbLeaf', b: 'WaterbagFull', result: 'HerbTea', craftMs: 1100, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
+
+  // A few extra “breadth” combos (directional flavor, order-sensitive by design).
+  { a: 'Mushrooms', b: 'Ash', result: 'BitterHerb', craftMs: 900, failDestroyChancePct: 10, skill: 'foraging', dc: 10 },
+  { a: 'Ash', b: 'Mushrooms', result: 'HerbLeaf', craftMs: 900, failDestroyChancePct: 10, skill: 'foraging', dc: 10 },
+  { a: 'StoneShard', b: 'Twine', result: 'Chisel', craftMs: 1600, failDestroyChancePct: 25, skill: 'chipping', dc: 14 },
+  { a: 'Twine', b: 'StoneShard', result: 'GlassVial', craftMs: 1600, failDestroyChancePct: 25, skill: 'weaving', dc: 14 },
+]
+
+export function findRecipe(defA: ItemDefId, defB: ItemDefId): RecipeDef | null {
+  for (const r of ALL_RECIPES) {
+    if (r.a === defA && r.b === defB) return r
+  }
+  return null
+}
+

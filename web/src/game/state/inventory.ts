@@ -71,7 +71,10 @@ export function dropItemToFloor(state: GameState, itemId: ItemId, desiredPos?: V
     radius: cleared.render.dropJitterRadius ?? 0.28,
   })
   const itemsOnFloor = floor.itemsOnFloor.concat([{ id: itemId, pos: dropPos, jitter }])
-  return { ...cleared, floor: { ...floor, itemsOnFloor } }
+  return {
+    ...cleared,
+    floor: { ...floor, itemsOnFloor, floorGeomRevision: cleared.floor.floorGeomRevision + 1 },
+  }
 }
 
 function isValidFloorPos(state: GameState, pos: Vec2) {

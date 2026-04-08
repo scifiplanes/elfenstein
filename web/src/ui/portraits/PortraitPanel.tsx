@@ -20,7 +20,7 @@ const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
 const PORTRAIT_VITAL_CELL_KEYS = ['hp', 'sta', 'hun', 'thr'] as const
 
 type PortraitSprites =
-  | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; idleSrc?: string }
+  | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; mouthClosedSrc?: string; idleSrc?: string }
   | {
       kind: 'frosh'
       baseSrc: string
@@ -28,6 +28,7 @@ type PortraitSprites =
       eyesSrcR: string
       eyesInspectSrc?: string
       mouthSrc: string
+      mouthClosedSrc?: string
       idleSrc?: string
     }
 
@@ -57,17 +58,34 @@ const SPECIES_PORTRAIT: Partial<Record<GameState['party']['chars'][number]['spec
     mouthSrc: '/content/frosh_mouth_open.png',
     idleSrc: '/content/frosh_idle.png',
   },
+  Afonso: {
+    kind: 'simple',
+    baseSrc: '/content/Afonso_base.png',
+    eyesSrc: '/content/Afonso_eyes.png',
+    eyesInspectSrc: '/content/Afonso_eyes_inspect.png',
+    mouthSrc: '/content/Afonso_mouth_open.png',
+    mouthClosedSrc: '/content/Afonso_mouth_closed.png',
+    idleSrc: '/content/Afonso_base_idle.png',
+  },
 }
 
 const SPECIES_FALLBACK_FACE: Record<string, string> = {
   Igor: '🧟',
   Mycyclops: '👁️',
   Frosch: '🐸',
+  Afonso: '🧙',
 }
 
-export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB; characterId: string }) {
-  const { state, dispatch, characterId } = props
+export function PortraitPanel(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  content: ContentDB
+  characterId: string
+  captureForPostprocess?: boolean
+}) {
+  const { state, dispatch, characterId, captureForPostprocess = false } = props
   const cursor = useCursor()
+  const nowMs = performance.now()
   const c = state.party.chars.find((x) => x.id === characterId) ?? null
   const portrait = c ? SPECIES_PORTRAIT[c.species] : undefined
   const portraitBaseSrc = portrait?.baseSrc ?? ''
@@ -76,6 +94,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const portraitEyesSrcR = portrait && portrait.kind === 'frosh' ? portrait.eyesSrcR : ''
   const portraitEyesInspectSrc = portrait?.eyesInspectSrc ?? ''
   const portraitMouthSrc = portrait?.mouthSrc ?? ''
+  const portraitMouthClosedSrc = portrait?.mouthClosedSrc ?? ''
   const portraitIdleSrc = portrait?.idleSrc ?? ''
   const [blinkClosed, setBlinkClosed] = useState(false)
   const [blinkClosedL, setBlinkClosedL] = useState(false)
@@ -165,9 +184,9 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   useEffect(() => {
     if (!portrait) return
     if (portrait.kind === 'frosh') {
-      prefetchImages([portraitBaseSrc, portraitEyesSrcL, portraitEyesSrcR, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+      prefetchImages([portraitBaseSrc, portraitEyesSrcL, portraitEyesSrcR, portraitEyesInspectSrc, portraitMouthSrc, portraitMouthClosedSrc, portraitIdleSrc])
     } else {
-      prefetchImages([portraitBaseSrc, portraitEyesSrc, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+      prefetchImages([portraitBaseSrc, portraitEyesSrc, portraitEyesInspectSrc, portraitMouthSrc, portraitMouthClosedSrc, portraitIdleSrc])
     }
   }, [
     portrait?.kind,
@@ -177,6 +196,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     portraitEyesSrcR,
     portraitEyesInspectSrc,
     portraitMouthSrc,
+    portraitMouthClosedSrc,
     portraitIdleSrc,
   ])
 
@@ -228,7 +248,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
     cursor.state.hoverTarget?.kind === 'portrait' &&
     cursor.state.hoverTarget.characterId === characterId &&
     cursor.state.hoverTarget.target === 'mouth'
-  const mouthCue = state.ui.portraitMouth?.characterId === characterId && state.ui.portraitMouth.untilMs > state.nowMs ? state.ui.portraitMouth : null
+  const mouthCue = state.ui.portraitMouth?.characterId === characterId && state.ui.portraitMouth.untilMs > nowMs ? state.ui.portraitMouth : null
   const isMouthCueActive = !!mouthCue
   const mouthAnimKey = isMouthCueActive ? `mouth_${mouthCue?.startedAtMs ?? 0}` : 'mouth_idle'
 
@@ -240,9 +260,9 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const cueFlickerOn = (() => {
     if (!mouthCue) return false
     if (!flickerEnabled) return true
-    const startedAtMs = mouthCue.startedAtMs ?? state.nowMs
+    const startedAtMs = mouthCue.startedAtMs ?? nowMs
     const totalMs = Math.max(1, mouthCue.untilMs - startedAtMs)
-    const elapsedMs = Math.max(0, state.nowMs - startedAtMs)
+    const elapsedMs = Math.max(0, nowMs - startedAtMs)
 
     // Stretch the discrete on/off steps across the whole burst window so we don't “finish early”
     // when `untilMs` is clamped up (e.g. minimum burst duration for capture-to-texture).
@@ -252,15 +272,17 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   })()
   // Hover should show the mouth steadily as an affordance.
   // But once a feed cue is active, flicker should be visible even if the cursor is still hovering.
-  const showMouth = isMouthCueActive ? cueFlickerOn : isHoveringMouth
-  const showEyesInspect = isHoveringEyes && !!portrait && !!portrait.eyesInspectSrc
+  // In capture HUD mode, portrait interactions are rendered via compositor overlays (not capture-limited).
+  const showMouth = captureForPostprocess ? false : isMouthCueActive ? cueFlickerOn : isHoveringMouth
+  const mouthOpenActive = isMouthCueActive || isHoveringMouth
+  const showEyesInspect = captureForPostprocess ? false : isHoveringEyes && !!portrait && !!portrait.eyesInspectSrc
   const blinkHideEyes = blinkClosed && !showEyesInspect
   const blinkHideEyesL = blinkClosedL && !showEyesInspect
   const blinkHideEyesR = blinkClosedR && !showEyesInspect
   const __debug =
     import.meta.env.DEV && state.ui.debugOpen
       ? {
-          nowMs: Math.round(state.nowMs),
+          nowMs: Math.round(nowMs),
           globalCueChar: state.ui.portraitMouth?.characterId ?? null,
           startedAtMs: state.ui.portraitMouth?.startedAtMs != null ? Math.round(state.ui.portraitMouth.startedAtMs) : null,
           untilMs: state.ui.portraitMouth?.untilMs != null ? Math.round(state.ui.portraitMouth.untilMs) : null,
@@ -273,10 +295,10 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
 
   const ps = state.ui.portraitShake
   const portraitShakeStyle =
-    ps && ps.characterId === characterId && ps.untilMs > state.nowMs
+    ps && ps.characterId === characterId && ps.untilMs > nowMs
       ? {
           transform: shakeTransform(
-            state.nowMs,
+            nowMs,
             ps.startedAtMs ?? ps.untilMs - 160,
             ps.untilMs,
             ps.magnitude * state.render.portraitShakeMagnitudeScale,
@@ -293,9 +315,12 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
   const pulse = state.ui.portraitIdlePulse
-  const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > state.nowMs
-  const showIdle = idleFlash || pulseIdle
-  const idleHideEyes = showIdle && !showEyesInspect
+  const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > nowMs
+  // Idle art itself is compositor-rendered in capture mode, but the base portrait eye sprites
+  // still need to hide during idle so the composition matches the original DOM behavior.
+  const showIdleForEyes = idleFlash || pulseIdle
+  const showIdleSprite = captureForPostprocess ? false : showIdleForEyes
+  const idleHideEyes = showIdleForEyes && !showEyesInspect
 
   return (
     <div
@@ -350,6 +375,9 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             ) : (
               <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
             )}
+            {captureForPostprocess ? null : portrait.mouthClosedSrc && !mouthOpenActive ? (
+              <img className={styles.sprite} src={portrait.mouthClosedSrc} alt="" draggable={false} />
+            ) : null}
             {showMouth ? (
               <img
                 key={mouthAnimKey}
@@ -361,7 +389,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
             ) : null}
             {portrait.idleSrc ? (
               <img
-                className={`${styles.sprite} ${showIdle ? '' : styles.idleHidden}`}
+                className={`${styles.sprite} ${showIdleSprite ? '' : styles.idleHidden}`}
                 src={portrait.idleSrc}
                 alt=""
                 draggable={false}
@@ -436,7 +464,7 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
           data-drop-portrait-target="mouth"
         />
 
-        <div className={styles.statsOverlay} aria-hidden="true">
+        <div className={styles.statsOverlay} data-portrait-stats="true" aria-hidden="true">
           <div className={styles.vitalGrid}>
             {PORTRAIT_VITAL_CELL_KEYS.map((key) => (
               <div key={key} className={styles.statCell}>
