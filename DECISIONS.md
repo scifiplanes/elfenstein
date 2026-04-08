@@ -2429,7 +2429,6 @@ A short TTL keeps the viewport corner readable without a permanent backlog; tyin
 
 ---
 
-<<<<<<< HEAD
 ## ADR-0156 — Anchor NPC dialog to the game viewport top
 Date: 2026-04-08
 
@@ -2484,8 +2483,10 @@ Keeps the **~30 CSS px** move **resolution-aware**, matching the **100px** rule�
 
 ### Consequences
 **`DESIGN.md`** §7.5 documents both offsets.
-=======
-## ADR-0156 — Trigger portrait idle pulse on press (no paperdoll)
+
+---
+
+## ADR-0160 — Trigger portrait idle pulse on press (no paperdoll)
 Date: 2026-04-08
 
 ### Decision
@@ -2500,7 +2501,7 @@ Release-based (`pointerup`) portrait activation adds perceptible latency and can
 
 ---
 
-## ADR-0157 — Sync portrait idle press across compositor + captured HUD
+## ADR-0161 — Sync portrait idle press across compositor + captured HUD
 Date: 2026-04-08
 
 ### Decision
@@ -2518,7 +2519,7 @@ Portrait idle is rendered in two places (captured HUD + compositor overlays). If
 
 ---
 
-## ADR-0158 — Make hazard rooms apply a strong color telegraph
+## ADR-0162 — Make hazard rooms apply a strong color telegraph
 Date: 2026-04-08
 
 ### Decision
@@ -2533,7 +2534,7 @@ Hazard “grids” need to be readable instantly while moving; a subtle tint is 
 
 ---
 
-## ADR-0159 — Hazard telegraph is multiply tint only (no opaque colorize)
+## ADR-0163 — Hazard telegraph is multiply tint only (no opaque colorize)
 Date: 2026-04-08
 
 ### Decision
@@ -2547,7 +2548,7 @@ Blending toward a fixed RGB reads as an **opaque overlay** and hides detail; mul
 
 ---
 
-## ADR-0160 — Fix hazard telegraph flicker (room lookup + uniform tint)
+## ADR-0164 — Fix hazard telegraph flicker (room lookup + uniform tint)
 Date: 2026-04-08
 
 ### Decision
@@ -2564,7 +2565,7 @@ Nearest-room fallback could attribute the wrong room in corridors; radial vignet
 
 ---
 
-## ADR-0161 — Hazard telegraph: luma tint override, no vignette
+## ADR-0165 — Hazard telegraph: luma tint override, no vignette
 Date: 2026-04-08
 
 ### Decision
@@ -2578,7 +2579,7 @@ Multiply grading stayed too subtle on dark or strongly themed scenes; solid RGB 
 
 ---
 
-## ADR-0162 — Burning hazard telegraph: ember vs ruins_umber
+## ADR-0166 — Burning hazard telegraph: ember vs ruins_umber
 Date: 2026-04-08
 
 ### Decision
@@ -2589,15 +2590,15 @@ Players could not distinguish hazard rooms from umber-themed floors when both sk
 
 ### Consequences
 - `DitheredFrameRoot` hazard RGB for `Burning` is tuned yellower; `DESIGN.md` notes the separation intent.
-- **Superseded** for separation strategy and `Burning` hue by **ADR-0163** (brown `ruins_umber` + red `Burning` + pulse).
+- **Superseded** for separation strategy and `Burning` hue by **ADR-0167** (brown `ruins_umber` + red `Burning` + pulse).
 
 ---
 
-## ADR-0163 — Hazard telegraph pulse; Burning red; ruins_umber brown
+## ADR-0167 — Hazard telegraph pulse; Burning red; ruins_umber brown
 Date: 2026-04-08
 
 ### Decision
-- Modulate hazard telegraph with a **slow sine pulse** while `Burning` / `Flooded` / `Infected` is active (implementation: see **ADR-0164** — scale graded tint, not blend weight).
+- Modulate hazard telegraph with a **slow sine pulse** while `Burning` / `Flooded` / `Infected` is active (implementation: see **ADR-0168** — scale graded tint, not blend weight).
 - Restore **`Burning`** hazard tint to a **red** read (high R, low G/B).
 - Retune **`ruins_umber`** **light intent** to **brown umber** (`#9a6240` class) with slightly relaxed mix/torch/lantern multipliers so it no longer matches hazard fire.
 
@@ -2606,11 +2607,11 @@ Umber floors should read as **earth pigment**, not **flame**; pulsing makes haza
 
 ### Consequences
 - `themeTuning.ts` `ruins_umber` preset changes; `DitheredFrameRoot` telegraph math gains pulse factor.
-- **Pulse mechanics** revised in **ADR-0164** (scale graded tint, not `telegraphStrength`).
+- **Pulse mechanics** revised in **ADR-0168** (scale graded tint, not `telegraphStrength`).
 
 ---
 
-## ADR-0164 — Hazard pulse: single-hue (scale graded tint, not blend weight)
+## ADR-0168 — Hazard pulse: single-hue (scale graded tint, not blend weight)
 Date: 2026-04-08
 
 ### Decision
@@ -2624,6 +2625,7 @@ Varying blend weight mixes more/less with the underlying scene, which shifts **p
 
 ---
 
+<<<<<<< HEAD
 ## ADR-0165 — NPC dialog in HUD capture + invisible hit layer (dither parity)
 Date: 2026-04-08
 
@@ -2768,3 +2770,34 @@ Simpler chrome; iconography is redundant with the **3D billboard** and busy at l
 ### Consequences
 - **`NpcDialogModal.tsx`**: no **`npcDefs`** sprite import for the modal.
 - **`NpcDialogModal.module.css`**: remove **`.portrait`**; **`DESIGN.md`** §7.5 updated.
+=======
+## ADR-0169 — Procgen content audit + allowlist for non-spawn items
+Date: 2026-04-08
+
+### Decision
+- Add a **repeatable audit** (`npm run audit:procgen-content` in `web/`) that compares **`DEFAULT_ITEMS`** to the union of **procgen floor spawns** (`PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS` + lock keys), **POI chest/barrel/crate loot** (`poiLootTables.ts`), and **NPC quest** item refs (`population.ts`). Exit **non-zero** on gaps or orphan ids.
+- Maintain **`ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN`** for craft-only, transform-only, and quest items so the report stays actionable.
+- Document coverage policy in **`DESIGN.md` §13.2**.
+
+### Rationale
+Seeded content had drifted from what generation and POI loot actually used; without an automated check, new item defs could be added but never appear in runs.
+
+### Consequences
+- Adding an item requires either updating spawn/loot/quest tables or the allowlist.
+- Wider **NPC default pools** and **floor spawn** variety live in `spawnTables.ts`; **POI loot** tables are shared data in `poiLootTables.ts`.
+
+---
+
+## ADR-0170 — 3D floor items use the same icons as HUD inventory
+Date: 2026-04-08
+
+### Decision
+Render **dropped / spawned floor items** in `WorldRenderer` using each item def’s **`ContentDB` `icon`** (emoji via canvas billboard text using the HUD-aligned sans + emoji font stack, or **`sprite` path** via `TextureLoader`), instead of a single shared placeholder glyph. Pass **`ContentDB`** into **`WorldRenderer.renderFrame`**. When **`floorGeomRevision`** rebuilds dungeon geometry, **dispose** shared box geometries, shared Lambert materials for that build, and **per-floor-item** sprite materials—**dispose `CanvasTexture` maps** for emoji icons; **do not** dispose **cached `TextureLoader`** maps shared across instances.
+
+### Rationale
+Players should recognize loot at a glance; the HUD already shows the authoritative icon per def.
+
+### Consequences
+- `DitheredFrameRoot` passes `latestContentRef.current` into `world.renderFrame`.
+- `DESIGN.md` §7.2 notes parity between HUD and world floor-item billboards.
+>>>>>>> origin/main

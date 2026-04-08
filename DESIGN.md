@@ -146,6 +146,7 @@ The party has **up to 4** character portrait slots.
 - Hovering an **occupied** slot shows the item’s **name** in a small overlay rendered with the **cursor layer** (the interactive HUD grid is hit-only; labels align to the hovered slot in viewport space), set in **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** at **~33 CSS px** loaded as a **webfont** from Google Fonts.
 - **Button title** typography (primary label on modal/HUD buttons that use the display face at a slightly smaller size than the inventory hover tooltip) is centralized in **`web/src/index.css`** as **`--buttonTitleFontFamily`** (same stack as **`--fontInventoryTooltip`**), **`--buttonTitleFontSize`** (**25 CSS px**), **`--buttonTitleFontWeight`**, **`--buttonTitleLetterSpacing`**, **`--buttonTitleLineHeight`**, **`--buttonTitleColor`**, and **`--buttonTitleTextShadow`**. New UI should reference these instead of duplicating literals.
 - Dragging inventory item into empty 3D space drops it onto the floor (cell).
+- **Floor item billboards** in the **3D view** use the **same `ContentDB` icon** as inventory and paperdoll (emoji drawn to a canvas texture, or `icon.kind === 'sprite'` loaded as a PNG); **theme tint** on those sprites follows the same convention as other world billboards.
 
 ### 7.3 Items & crafting
 - Items are found on dungeon floor and via POIs/NPC drops.
@@ -256,7 +257,7 @@ The party has **up to 4** character portrait slots.
 6. **Room tagging**: quota-aware function assignment (e.g. try to keep at least one **Storage** among tiny rooms) plus rolls from **`floorProperties`** (Infested/Cursed/Destroyed/Overgrown). Derived connector rooms keep their fixed `Passage` function.
 6. **Tag constraints** (post-quota): **Storage** prefers a **dead-end** room center (swap with a tiny **Passage** room when needed); on **Cursed** floors, **Flooded** expands to **edge-adjacent** rooms with a fixed probability so hazards form a small cluster.
 7. Population pass:
-   - POIs (**Well** / **Bed** / **Chest** / **Exit**) from entrance–exit heuristics + storage-room bias for chest (Exit spawns at/near `gen.exit`)
+   - POIs (**Well** / **Bed** / **Chest** / **Barrel** / **Crate** / optional **Shrine** / optional **CrackedWall** / **Exit**) from entrance–exit heuristics + storage-room bias for chest/barrel/crate (Exit spawns at/near `gen.exit`)
    - NPCs and floor items from **`spawnTables.ts`** (room function, **`roomStatus`**, district, **`floorType`**, **`floorProperties`**, and whether the room center lies on a shortest entrance→exit path before locks) so balancing can stay data-shaped without touching placement loops
 8. **Lock/key pass** on the entrance→exit **shortest path**: place **ordered** separating `lockedDoor` tiles when possible. Long paths may get **two** gates (**A** + **IronKey**, **B** + **BrassKey**); shorter paths use **one** (**A** + **IronKey**); otherwise skip locks. Keys carry **`forLockId`** in **`floor.gen.floorItems`** for validation/debug.
 9. **`missionGraph`**: nodes (entrance, exit, POIs, locks, keys); **path** edges chain POIs by BFS distance from entrance, then the lock sequence, then exit; **`shortcut`** edge (entrance→exit) is present when multiple shortest-length routes exist; **`hasAlternateEntranceExitRoute`** mirrors that flag for tools.
@@ -362,6 +363,12 @@ Asset types:
 - Runtime-served assets (portraits, NPC sprites, UI art, cursor sprites) live under `web/public/content/` and are referenced via **stable** `/content/...` URLs.
 - The game relies on **browser HTTP caching** for these static URLs; avoid cache-busting query params for runtime art.
 - Imperative image loads (e.g., measuring portrait aspect ratio or preloading sprite layers) go through a small shared **in-app image cache** (`web/src/ui/assets/imageCache.ts`) to dedupe concurrent loads and reduce repeated decodes/revalidation requests.
+
+### 13.2 Procgen content coverage (data discipline)
+- **Seeded item defs** live in `web/src/game/content/items.ts` (`DEFAULT_ITEMS`). **Not every item is meant to appear from dungeon generation**: some are **craft-only**, **Well transforms**, or **quest-chain** items.
+- **Procgen** places floor items via `web/src/procgen/spawnTables.ts` (`pickFloorItemDefFromTable`); **locks** add keys via `web/src/procgen/locks.ts`. **Chest / barrel / crate** opening uses deterministic tables in `web/src/game/content/poiLootTables.ts` (rolled in `web/src/game/state/poi.ts`). **Neutral NPC quests** reference a small want/hated item set from `web/src/procgen/population.ts`.
+- **Policy**: when adding a new `ItemDefId`, either wire it into one of those pipelines or add it to **`ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN`** in `web/src/tools/procgenContentNonSpawnAllowlist.ts` so the audit stays honest.
+- **Audit CLI** (from `web/`): `npm run audit:procgen-content` — compares seeded items to the union of procgen + POI loot + quest references; exits non-zero if a seeded item is neither used nor allowlisted, or if listed ids are missing from `DEFAULT_ITEMS`. **Status effects** are not placed by procgen; they are applied in gameplay (combat, feed, hazards). Items may reference statuses via `feed.statusChances` (e.g. **Blessed** / **Sick** on mushrooms).
 
 ## 14) “Not now” ideas (parked)
 - **Left hand**: a persistent on-screen left-hand slot holding an item (e.g., torch).

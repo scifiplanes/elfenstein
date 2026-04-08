@@ -1,4 +1,5 @@
 import type { ContentDB } from '../content/contentDb'
+import { CHEST_LOOT_DEF_IDS, CONTAINER_LOOT_DEF_IDS } from '../content/poiLootTables'
 import type { GameState, ItemId } from '../types'
 import { removeStatus } from './status'
 import { consumeItem } from './inventory'
@@ -286,35 +287,13 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
 }
 
 function pickChestLootDefId(state: GameState, poiId: string): string {
-  // MVP deterministic loot table; replace with content-driven tables later.
-  const table = [
-    'Stick',
-    'Stone',
-    'Mushrooms',
-    'Foodroot',
-    'BandageStrip',
-    'AntitoxinVial',
-    'HerbPoultice',
-    'Chisel',
-  ] as const
   const seed = hashStr(`${state.floor.seed}:chest:${poiId}`)
-  return table[seed % table.length]
+  return CHEST_LOOT_DEF_IDS[seed % CHEST_LOOT_DEF_IDS.length]
 }
 
 function pickContainerLootDefId(state: GameState, poiId: string): string {
-  // MVP deterministic container loot; keep distinct seed namespace so barrels/crates don't mirror chests.
-  const table = [
-    'Stick',
-    'Stone',
-    'Mushrooms',
-    'Foodroot',
-    'BandageStrip',
-    'AntitoxinVial',
-    'HerbPoultice',
-    'Chisel',
-  ] as const
   const seed = hashStr(`${state.floor.seed}:container:${poiId}`)
-  return table[seed % table.length]
+  return CONTAINER_LOOT_DEF_IDS[seed % CONTAINER_LOOT_DEF_IDS.length]
 }
 
 function hashStr(s: string) {
