@@ -55,6 +55,7 @@ export type Action =
   | { type: 'ui/openPaperdoll'; characterId: string }
   /** Opens paperdoll and schedules idle overlay pulse (HUD capture path; avoids lost clicks). */
   | { type: 'ui/portraitFrameTap'; characterId: string }
+  | { type: 'ui/portraitIdleCancel'; characterId: string }
   | { type: 'ui/closePaperdoll' }
   | { type: 'ui/openNpcDialog'; npcId: string }
   | { type: 'ui/closeNpcDialog' }
@@ -207,6 +208,11 @@ export function reduce(state: GameState, action: Action): GameState {
           portraitIdlePulse: { characterId: action.characterId, untilMs: nowMs + ms },
         },
       }
+    }
+    case 'ui/portraitIdleCancel': {
+      const p = state.ui.portraitIdlePulse
+      if (!p || p.characterId !== action.characterId) return state
+      return { ...state, ui: { ...state.ui, portraitIdlePulse: undefined } }
     }
     case 'ui/closePaperdoll':
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }

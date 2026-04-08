@@ -18,6 +18,7 @@ import { STAGE_CSS_HEIGHT, STAGE_CSS_WIDTH } from '../../app/stageDesign'
 import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
+import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
 import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
 
 type SpeciesId = GameState['party']['chars'][number]['species']
@@ -112,6 +113,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const latestContentRef = useRef(content)
   const renderBurstUntilMsRef = useRef(0)
   const prevHighFpsUiRef = useRef(false)
+  const prevPoseKeyRef = useRef<string>('')
   const lastUiCaptureScaleRef = useRef<number | null>(null)
   const lastUiCaptureDurMsRef = useRef<number | null>(null)
   const perfEmaRef = useRef<{ frameMs: number; worldMs: number; presentMs: number }>({ frameMs: 0, worldMs: 0, presentMs: 0 })
@@ -123,6 +125,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cursor = useCursor()
+  const pointerDownStartedAtMsRef = useRef<number | null>(null)
+  const prevPointerDownRef = useRef(false)
 
   const onNavPadVisualPress = useCallback((id: NavPadButtonId) => {
     setNavPadPressedId(id)
@@ -203,6 +207,37 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const p = new FramePresenter(presentCanvasRef.current)
       presenterRef.current = p
       textureLoaderRef.current = new THREE.TextureLoader()
+      // Preload portrait overlay textures (idle/inspect/mouth) so the first press
+      // doesn't wait for async decode/load before compositor-time overlays can render.
+      {
+        const loader = textureLoaderRef.current
+        const cache = portraitTexCacheRef.current
+        const arCache = portraitArCacheRef.current
+        const preload = (src: string) => {
+          if (!src) return
+          if (cache.get(src)) return
+          const tex = loader.load(src, () => {
+            const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
+            const w = Number(img?.naturalWidth ?? img?.width ?? 0)
+            const h = Number(img?.naturalHeight ?? img?.height ?? 0)
+            if (w > 0 && h > 0) arCache.set(src, w / h)
+          })
+          tex.colorSpace = THREE.SRGBColorSpace
+          tex.minFilter = THREE.LinearFilter
+          tex.magFilter = THREE.LinearFilter
+          tex.generateMipmaps = false
+          cache.set(src, tex)
+        }
+        const species: SpeciesId[] = ['Igor', 'Mycyclops', 'Frosch', 'Afonso']
+        for (const s of species) {
+          const urls = portraitOverlayUrlsForSpecies(s)
+          if (!urls) continue
+          preload(urls.idleSrc)
+          preload(urls.eyesInspectSrc)
+          preload(urls.mouthSrc)
+          if (urls.mouthClosedSrc) preload(urls.mouthClosedSrc)
+        }
+      }
       w = new WorldRenderer(p.getRenderer())
       setWorld(w)
       setWebglError(null)
@@ -295,8 +330,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) ||
       (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
     const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
+    const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
+    const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
+    const portraitPressActive = pressedPortraitCharacterId != null
     // Portrait mouth is a compositor overlay, but it still benefits from a higher cadence so flicker reads.
-    const highFpsUi = anyShakeActive || mouthActive
+    const highFpsUi = anyShakeActive || mouthActive || idlePulseActive || portraitPressActive
 
     // When a high-FPS UI moment begins (e.g. portrait mouth flicker), force the next capture ASAP
     // so the burst doesn't "start late" waiting for a stale interval gate.
@@ -317,6 +355,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const maxStaleMs = 650
 
     const sForKey = latestStateRef.current
+    const poseKey = `${sForKey.floor.playerPos.x},${sForKey.floor.playerPos.y},${sForKey.floor.playerDir}`
+    const poseDirty = poseKey !== prevPoseKeyRef.current
+    if (poseDirty) {
+      prevPoseKeyRef.current = poseKey
+      // Pose changes (move/turn) should feel instantaneous in the captured HUD; don't wait
+      // for the default interval/backoff gate.
+      lastCaptureMsRef.current = 0
+    }
     const hudKey = (() => {
       // Keep this intentionally small: only include state that affects the captured HUD rendering.
       const invSlots = sForKey.party.inventory.slots.join(',')
@@ -324,7 +370,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         .map((c) => `${c.id}:${Math.round(c.hp)}:${Math.round(c.stamina)}:${Math.round(c.hunger)}:${Math.round(c.thirst)}`)
         .join('|')
       const itemsOnFloorN = sForKey.floor.itemsOnFloor.length
-      const pose = `${sForKey.floor.playerPos.x},${sForKey.floor.playerPos.y},${sForKey.floor.playerDir}`
       const crafting = sForKey.ui.crafting ? `${sForKey.ui.crafting.srcItemId}->${sForKey.ui.crafting.dstItemId}:${sForKey.ui.crafting.endsAtMs}` : ''
       const log = sForKey.ui.activityLog
       const logKey = log && log.length ? `${log.length}:${log[log.length - 1]!.id}` : '0'
@@ -332,12 +377,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const death = sForKey.ui.death ? `${sForKey.ui.death.runId}:${sForKey.ui.death.atMs}` : ''
       const pulse = sForKey.ui.portraitIdlePulse
       const pulseKey = pulse ? `${pulse.characterId}:${Math.round(pulse.untilMs)}` : ''
+      const pressKey = pressedPortraitCharacterId ?? ''
       // Portrait hover affordances (eyes inspect / mouth preview) are rendered inside the captured HUD
       // and depend on cursor hover state during drags.
       const ht = cursor.state.hoverTarget
       const hoverPortraitKey =
         cursor.state.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
-      return `inv=${invSlots}|chars=${chars}|pose=${pose}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|pHover=${hoverPortraitKey}`
+      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}`
     })()
     const hudDirty = hudKey !== lastHudKeyRef.current
     // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
@@ -348,13 +394,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // Schedule it in idle time and back off when captures are slow.
     const lastCapDur = lastUiCaptureDurMsRef.current ?? 0
     // Backoff is great for smooth frame pacing, but during interaction bursts we prefer immediacy.
-    const backoffMs = highFpsUi ? 0 : lastCapDur > 120 ? 600 : lastCapDur > 60 ? 350 : lastCapDur > 30 ? 180 : 0
-    const effectiveIntervalMs = highFpsUi ? 0 : captureIntervalMs + backoffMs
+    const immediateCapture = highFpsUi || poseDirty
+    const backoffMs = immediateCapture ? 0 : lastCapDur > 120 ? 600 : lastCapDur > 60 ? 350 : lastCapDur > 30 ? 180 : 0
+    const effectiveIntervalMs = immediateCapture ? 0 : captureIntervalMs + backoffMs
     const stale = now - lastCaptureMsRef.current > maxStaleMs
     const shouldAttemptCapture =
       !inResizeBurst &&
       !!captureEl &&
-      (highFpsUi || hudDirty || !uiTexRef.current || stale) &&
+      (immediateCapture || hudDirty || !uiTexRef.current || stale) &&
       !captureInFlightRef.current &&
       !captureScheduledRef.current &&
       now - lastCaptureMsRef.current > effectiveIntervalMs
@@ -362,13 +409,18 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     if (shouldAttemptCapture) {
       captureScheduledRef.current = true
       const schedule = (cb: () => void) => {
-        const ric = (window as any).requestIdleCallback as undefined | ((fn: () => void, opts?: { timeout?: number }) => number)
-        if (typeof ric === 'function') {
-          // Keep responsive during bursts: use a short timeout so the capture runs ASAP.
-          captureIdleHandleRef.current = ric(cb, { timeout: highFpsUi ? 16 : 120 })
+        // For interaction bursts, run capture ASAP (idle callbacks can be delayed under load).
+        if (immediateCapture) {
+          window.setTimeout(cb, 0)
           return
         }
-        // Fallback: next tick.
+        const ric = (window as any).requestIdleCallback as
+          | undefined
+          | ((fn: () => void, opts?: { timeout?: number }) => number)
+        if (typeof ric === 'function') {
+          captureIdleHandleRef.current = ric(cb, { timeout: 120 })
+          return
+        }
         window.setTimeout(cb, 0)
       }
 
@@ -526,7 +578,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const hz = Number(latestStateRef.current.render.portraitMouthFlickerHz ?? 0)
     const amount = Number(latestStateRef.current.render.portraitMouthFlickerAmount ?? 0)
     const portraitMouthOn = party.map((c) => computePortraitMouthOn({ nowMs, cue, characterId: c.id, hz, amount }))
-    const portraitIdleOn = party.map((c) => (pulse?.characterId === c.id && (pulse.untilMs ?? 0) > nowMs ? 1 : 0))
+    // Idle pulse needs to feel immediate on press; do not rely solely on reducer/React timing.
+    const portraitIdleOn = party.map((c) =>
+      pulse?.characterId === c.id && (pulse.untilMs ?? 0) > nowMs ? 1
+      : pressedPortraitCharacterId === c.id ? 1
+      : 0,
+    )
     const hover = cursor.state.hoverTarget
     const portraitHoverEyesOn = party.map((c) =>
       cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
@@ -609,13 +666,36 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           : telegraphOverride.mode
         : activeRoomPropRaw
     const telegraph = (() => {
-      // Subtle vignette + tint when standing in a tagged room.
-      const strength = Number(telegraphOverride?.strength ?? 0.22)
-      if (activeRoomProp === 'Burning') return { strength, color: { r: 1.25, g: 0.82, b: 0.62 } }
-      if (activeRoomProp === 'Flooded') return { strength, color: { r: 0.78, g: 0.92, b: 1.28 } }
-      if (activeRoomProp === 'Infected') return { strength, color: { r: 0.86, g: 1.22, b: 0.76 } }
-      return { strength: 0.0, color: { r: 1.0, g: 1.0, b: 1.0 } }
+      const rawStrength = telegraphOverride?.strength
+      const strength = (fallback: number) =>
+        rawStrength === undefined || rawStrength === null ? fallback : Number(rawStrength)
+
+      // Luma-preserving tint override (compositor mode 1): visible on dark scenes; replaces floor theme cast without vignette.
+      if (activeRoomProp === 'Burning')
+        return {
+          strength: strength(0.62),
+          tintMode: 1 as const,
+          color: { r: 1.0, g: 0.2, b: 0.07 },
+        }
+      if (activeRoomProp === 'Flooded')
+        return {
+          strength: strength(0.58),
+          tintMode: 1 as const,
+          color: { r: 0.12, g: 0.55, b: 1.0 },
+        }
+      if (activeRoomProp === 'Infected')
+        return {
+          strength: strength(0.6),
+          tintMode: 1 as const,
+          color: { r: 0.15, g: 0.95, b: 0.2 },
+        }
+      return { strength: 0.0, tintMode: 0 as const, color: { r: 1.0, g: 1.0, b: 1.0 } }
     })()
+    const hazardPulseMs = 3800
+    const hazardTintPulse =
+      activeRoomProp === 'Burning' || activeRoomProp === 'Flooded' || activeRoomProp === 'Infected'
+        ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
+        : 1
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
       uiTex: uiTexRef.current,
@@ -628,7 +708,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       },
       telegraphStrength: telegraph.strength,
       telegraphColor: telegraph.color,
-      telegraphVignette: { inner: 0.35, outer: 0.95 },
+      telegraphTintMode: telegraph.tintMode,
+      telegraphTintPulse: telegraph.tintMode === 1 ? hazardTintPulse : 1,
       portraitRectsPx,
       portraitMouthTex,
       portraitIdleTex,
@@ -686,6 +767,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       emaWorldMs: ema.worldMs,
       emaPresentMs: ema.presentMs,
       uiCaptureMs: lastUiCaptureDurMsRef.current,
+      pointer: {
+        isDown: cursor.state.isPointerDown,
+        downStartedAtMs: pointerDownStartedAtMsRef.current,
+        pressedPortraitCharacterId,
+      },
+      portraitIdleOn,
       counts: {
         tiles: latestStateRef.current.floor.tiles.length,
         pois: latestStateRef.current.floor.pois.length,
@@ -699,6 +786,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
   // Render on state changes (normal gameplay).
   useEffect(() => {
+    const prev = prevPointerDownRef.current
+    const cur = cursor.state.isPointerDown
+    prevPointerDownRef.current = cur
+    if (!prev && cur) pointerDownStartedAtMsRef.current = performance.now()
+    if (prev && !cur) pointerDownStartedAtMsRef.current = null
     renderOnce()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world, layoutTick, state, navPadPressedId, cursor.state.hoverTarget, cursor.state.dragging?.started, cursor.state.isPointerDown])
@@ -714,7 +806,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const ui = s.ui
       const anyShakeActive = (!!ui.shake && ui.shake.untilMs > s.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > s.nowMs)
       const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > s.nowMs
-      const active = now < renderBurstUntilMsRef.current || anyShakeActive || mouthActive
+      const hazardTelegraphActive = roomPropertyUnderPlayer(s) != null
+      const active =
+        now < renderBurstUntilMsRef.current || anyShakeActive || mouthActive || hazardTelegraphActive
       if (active) renderOnce()
       raf = window.requestAnimationFrame(loop)
     }

@@ -42,17 +42,39 @@ export function HudLayout(props: {
   const cursor = useCursor()
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
   const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
+  const PORTRAIT_TAP_SLOP_PX = 28
+
+  const cancelPortraitTap = (args: { pointerId?: number; reason: 'cancel' | 'slop' | 'drag' }) => {
+    const g = portraitTapRef.current
+    if (!g) return
+    if (args.pointerId != null && g.pointerId !== args.pointerId) return
+    portraitTapRef.current = null
+    dispatch({ type: 'ui/portraitIdleCancel', characterId: g.characterId })
+  }
 
   return (
     <div
       className={styles.root}
       data-capture={captureForPostprocess ? 'true' : 'false'}
       ref={rootRef}
-      onPointerMove={interactive ? cursor.onPointerMove : undefined}
+      onPointerMove={
+        interactive
+          ? (e) => {
+              cursor.onPointerMove(e)
+              const g = portraitTapRef.current
+              if (!g) return
+              if (g.pointerId !== e.pointerId) return
+              if (cursor.state.dragging?.started) return cancelPortraitTap({ pointerId: e.pointerId, reason: 'drag' })
+              const dx = e.clientX - g.x
+              const dy = e.clientY - g.y
+              if (dx * dx + dy * dy > PORTRAIT_TAP_SLOP_PX * PORTRAIT_TAP_SLOP_PX) return cancelPortraitTap({ pointerId: e.pointerId, reason: 'slop' })
+            }
+          : undefined
+      }
       onPointerCancel={
         interactive
           ? (e) => {
-              if (portraitTapRef.current?.pointerId === e.pointerId) portraitTapRef.current = null
+              cancelPortraitTap({ pointerId: e.pointerId, reason: 'cancel' })
               cursor.cancelDrag()
             }
           : undefined
@@ -71,6 +93,8 @@ export function HudLayout(props: {
                 x: e.clientX,
                 y: e.clientY,
               }
+              // Start the visual idle pulse immediately on press (not release).
+              dispatch({ type: 'ui/portraitFrameTap', characterId })
             }
           : undefined
       }
@@ -83,10 +107,7 @@ export function HudLayout(props: {
               portraitTapRef.current = null
               const el = (e.target as Element | null)?.closest?.('[data-portrait-character-id]')
               if (!el || el.getAttribute('data-portrait-character-id') !== g.characterId) return
-              const slop = 28
-              if ((e.clientX - g.x) ** 2 + (e.clientY - g.y) ** 2 > slop * slop) return
-              if (cursor.state.dragging?.started) return
-              dispatch({ type: 'ui/portraitFrameTap', characterId: g.characterId })
+              // No action on release: the idle pulse already started on pointerdown.
             }
           : undefined
       }

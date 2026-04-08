@@ -611,7 +611,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
               className={styles.slider}
               type="range"
               min={0}
-              max={0.6}
+              max={1}
               step={0.01}
               value={telegraphStrength}
               onChange={(e) => {
