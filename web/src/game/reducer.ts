@@ -15,13 +15,14 @@ import { feedCharacter, inspectCharacter } from './state/interactions'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import { equipItem, unequipItem } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
-import type { FloorType } from '../procgen/types'
+import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe, maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pushActivityLog } from './state/activityLog'
+import { descendToNextFloor } from './state/floorProgression'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -65,10 +66,15 @@ export type Action =
   | { type: 'drag/drop'; payload: DragPayload; target: DragTarget; nowMs?: number }
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
+  | { type: 'floor/descend' }
   /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
   /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
   | { type: 'floor/debugCycleDifficulty' }
+  /** Debug: set floor index (0-based). Regen/descend separately to materialize. */
+  | { type: 'floor/debugSetFloorIndex'; floorIndex: number }
+  /** Debug: toggle a procgen floor property. Regen/descend separately to materialize. */
+  | { type: 'floor/debugToggleFloorProperty'; property: FloorProperty }
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
@@ -88,7 +94,8 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'ui/setProcgenDebugOverlay':
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/openPaperdoll':
-      return { ...state, ui: { ...state.ui, paperdollFor: action.characterId } }
+      // Paperdoll popup disabled (global).
+      return state
     case 'ui/portraitFrameTap': {
       if (!state.party.chars.some((c) => c.id === action.characterId)) return state
       const min = state.render.portraitIdleFlashMinMs
@@ -99,7 +106,6 @@ export function reduce(state: GameState, action: Action): GameState {
         ...state,
         ui: {
           ...state.ui,
-          paperdollFor: action.characterId,
           portraitIdlePulse: { characterId: action.characterId, untilMs: state.nowMs + ms },
         },
       }
@@ -218,6 +224,36 @@ export function reduce(state: GameState, action: Action): GameState {
         `Next regen uses difficulty: ${label} (${next}).`,
       )
     }
+    case 'floor/debugSetFloorIndex': {
+      const raw = Number(action.floorIndex)
+      const nextFloorIndex = Math.max(0, Math.min(9999, Math.floor(Number.isFinite(raw) ? raw : state.floor.floorIndex)))
+      if (nextFloorIndex === state.floor.floorIndex) return state
+      return {
+        ...state,
+        floor: { ...state.floor, floorIndex: nextFloorIndex },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor index: ${nextFloorIndex}.`, untilMs: state.nowMs + 1400 },
+        },
+      }
+    }
+    case 'floor/debugToggleFloorProperty': {
+      const order: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
+      const cur = state.floor.floorProperties
+      const has = cur.includes(action.property)
+      const next = (has ? cur.filter((p) => p !== action.property) : cur.concat([action.property]))
+        .filter((p, i, a) => a.indexOf(p) === i)
+        .sort((a, b) => order.indexOf(a) - order.indexOf(b))
+      const label = next.length ? next.join(', ') : '—'
+      return {
+        ...state,
+        floor: { ...state.floor, floorProperties: next },
+        ui: {
+          ...state.ui,
+          toast: { id: `t_${state.nowMs}`, text: `Next regen uses floor props: ${label}.`, untilMs: state.nowMs + 1400 },
+        },
+      }
+    }
     case 'floor/regen': {
       const nextSeed = (action.seed ?? (Math.floor(state.nowMs) >>> 0)) >>> 0
       const w = state.floor.w
@@ -252,7 +288,13 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       return pushActivityLog(next, `Regenerated (seed ${nextSeed}).`)
     }
+<<<<<<< HEAD
 
+=======
+    case 'floor/descend': {
+      return descendToNextFloor(state)
+    }
+>>>>>>> 93911bb (Add floor progression, Exit POI, and theme tuning)
     case 'player/turn': {
       if (state.view.anim) return state
       const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
@@ -458,6 +500,21 @@ function clampShadowMapSize(n: number): RenderTuning['shadowMapSize'] {
 }
 
 function clampRenderTuning(r: RenderTuning): RenderTuning {
+  const globalIntensity = Math.max(0, Math.min(3, Number(r.globalIntensity ?? 1.0)))
+  const clampHue = (v: number) => Math.max(-180, Math.min(180, Number(v)))
+  const clampSat = (v: number) => Math.max(0, Math.min(3, Number(v)))
+  const themeHueShiftDeg_dungeon_warm = clampHue(r.themeHueShiftDeg_dungeon_warm ?? 0)
+  const themeHueShiftDeg_dungeon_cool = clampHue(r.themeHueShiftDeg_dungeon_cool ?? 0)
+  const themeHueShiftDeg_cave_damp = clampHue(r.themeHueShiftDeg_cave_damp ?? 0)
+  const themeHueShiftDeg_cave_deep = clampHue(r.themeHueShiftDeg_cave_deep ?? 0)
+  const themeHueShiftDeg_ruins_bleach = clampHue(r.themeHueShiftDeg_ruins_bleach ?? 0)
+  const themeHueShiftDeg_ruins_umber = clampHue(r.themeHueShiftDeg_ruins_umber ?? 0)
+  const themeSaturation_dungeon_warm = clampSat(r.themeSaturation_dungeon_warm ?? 1.0)
+  const themeSaturation_dungeon_cool = clampSat(r.themeSaturation_dungeon_cool ?? 1.0)
+  const themeSaturation_cave_damp = clampSat(r.themeSaturation_cave_damp ?? 1.0)
+  const themeSaturation_cave_deep = clampSat(r.themeSaturation_cave_deep ?? 1.0)
+  const themeSaturation_ruins_bleach = clampSat(r.themeSaturation_ruins_bleach ?? 1.0)
+  const themeSaturation_ruins_umber = clampSat(r.themeSaturation_ruins_umber ?? 1.0)
   const m = Math.round(r.ditherMatrixSize)
   const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
   const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
@@ -523,6 +580,19 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
   return {
     ...r,
+    globalIntensity,
+    themeHueShiftDeg_dungeon_warm,
+    themeHueShiftDeg_dungeon_cool,
+    themeHueShiftDeg_cave_damp,
+    themeHueShiftDeg_cave_deep,
+    themeHueShiftDeg_ruins_bleach,
+    themeHueShiftDeg_ruins_umber,
+    themeSaturation_dungeon_warm,
+    themeSaturation_dungeon_cool,
+    themeSaturation_cave_damp,
+    themeSaturation_cave_deep,
+    themeSaturation_ruins_bleach,
+    themeSaturation_ruins_umber,
     ditherMatrixSize,
     ditherPalette: p as RenderTuning['ditherPalette'],
     ditherPalette0Mix,
@@ -634,9 +704,6 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
     return tryOpenDoor(state, idx, tile)
   }
   if (tile !== 'floor') return bump(state)
-
-  const poi = state.floor.pois.find((p) => p.pos.x === nx && p.pos.y === ny)
-  if (poi) return reduce(state, { type: 'poi/use', poiId: poi.id })
 
   const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
   if (npc) {

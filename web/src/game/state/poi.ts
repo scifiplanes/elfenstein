@@ -4,6 +4,7 @@ import { removeStatus } from './status'
 import { consumeItem } from './inventory'
 import { makeDropJitter } from './dropJitter'
 import { pushActivityLog } from './activityLog'
+import { descendToNextFloor } from './floorProgression'
 
 export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
@@ -103,6 +104,9 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
       },
       'A cracked wall. Maybe a tool could pry it open.',
     )
+  }
+  if (poi.kind === 'Exit') {
+    return descendToNextFloor(state)
   }
 
   return state

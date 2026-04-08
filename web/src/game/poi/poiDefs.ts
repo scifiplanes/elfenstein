@@ -14,6 +14,7 @@ export const POI_SPRITE_SRC: Record<PoiKind, string> = {
   Bed: '/content/poi_placeholder.png',
   Shrine: '/content/poi_placeholder.png',
   CrackedWall: '/content/poi_placeholder.png',
+  Exit: '/content/poi_placeholder.png',
 }
 
 /** Drawn behind / on top of the main Well billboard (not pick targets). */

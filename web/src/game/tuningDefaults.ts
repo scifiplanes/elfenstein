@@ -2,6 +2,19 @@ import type { AudioTuning, RenderTuning } from './types'
 
 /** Baseline render/audio tuning when no `public/debug-settings.json` exists or keys are missing. */
 export const DEFAULT_RENDER: RenderTuning = {
+  globalIntensity: 1.0,
+  themeHueShiftDeg_dungeon_warm: 0,
+  themeHueShiftDeg_dungeon_cool: 0,
+  themeHueShiftDeg_cave_damp: 0,
+  themeHueShiftDeg_cave_deep: 0,
+  themeHueShiftDeg_ruins_bleach: 0,
+  themeHueShiftDeg_ruins_umber: 0,
+  themeSaturation_dungeon_warm: 1.0,
+  themeSaturation_dungeon_cool: 1.0,
+  themeSaturation_cave_damp: 1.0,
+  themeSaturation_cave_deep: 1.0,
+  themeSaturation_ruins_bleach: 1.0,
+  themeSaturation_ruins_umber: 1.0,
   baseEmissive: 0.02,
   lanternIntensity: 4.0,
   lanternDistance: 24,

@@ -292,6 +292,7 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
   const pulse = state.ui.portraitIdlePulse
   const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > state.nowMs
   const showIdle = idleFlash || pulseIdle
+  const idleHideEyes = showIdle && !showEyesInspect
 
   return (
     <div
@@ -330,8 +331,18 @@ export function PortraitPanel(props: { state: GameState; dispatch: Dispatch<Acti
               <img className={styles.sprite} src={portrait.eyesInspectSrc} alt="" draggable={false} />
             ) : portrait.kind === 'frosh' ? (
               <>
-                <img className={`${styles.sprite} ${blinkHideEyesL ? styles.eyesHidden : ''}`} src={portrait.eyesSrcL} alt="" draggable={false} />
-                <img className={`${styles.sprite} ${blinkHideEyesR ? styles.eyesHidden : ''}`} src={portrait.eyesSrcR} alt="" draggable={false} />
+                <img
+                  className={`${styles.sprite} ${blinkHideEyesL || idleHideEyes ? styles.eyesHidden : ''}`}
+                  src={portrait.eyesSrcL}
+                  alt=""
+                  draggable={false}
+                />
+                <img
+                  className={`${styles.sprite} ${blinkHideEyesR || idleHideEyes ? styles.eyesHidden : ''}`}
+                  src={portrait.eyesSrcR}
+                  alt=""
+                  draggable={false}
+                />
               </>
             ) : (
               <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />

@@ -6,9 +6,19 @@ import {
   type FloorGenOutput,
   type GenRoom,
 } from './types'
-import { pickEntranceExit, repairConnectivity, smoothWallsCarveOnly, center, carveRect, type Rect } from './layoutPasses'
+import {
+  countReachableDeadEnds,
+  countReachableFloorJunctions,
+  injectLoops,
+  pickEntranceExit,
+  repairConnectivity,
+  smoothWallsCarveOnly,
+  center,
+  carveRect,
+  type Rect,
+} from './layoutPasses'
 import { placeLocksOnPath, validateGen } from './locks'
-import { assignDistrictsToRooms, applyTagConstraints, tagRoomsWithQuotas } from './districtsTags'
+import { assignDistrictsToRooms, applyTagConstraints, computeMainPathBandRooms, solveRoomTags, tagRoomsWithQuotas } from './districtsTags'
 import { pickFloorTheme } from './floorTheme'
 import { placePois, spawnNpcsAndItems } from './population'
 import { buildMissionGraph } from './missionGraph'
@@ -18,6 +28,8 @@ import { runDungeonBspLayout } from './realizeDungeonBsp'
 import { runCaveLayout } from './realizeCave'
 import { runRuinsLayout } from './realizeRuins'
 import type { Tile } from '../game/types'
+import { shortestPathLatticeStats } from './validate'
+import { applyRoomShapingGuarded } from './shapeRooms'
 
 function maxAttemptsForDifficulty(d: FloorGenDifficulty): number {
   if (d === 0) return 8
@@ -103,10 +115,20 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   repairConnectivity(tiles, w, h, layoutRng)
   smoothWallsCarveOnly(tiles, w, h, 1)
 
+  applyRoomShapingGuarded({ tiles, w, h, rooms: genRooms, floorType, rng: layoutRng })
+
   const { entrance, exit } = pickEntranceExit({ tiles, w, h, rooms: genRooms, rng: layoutRng })
+
+  const loopsAdded = injectLoops({ tiles, w, h, rooms: genRooms, entrance, exit, rng: layoutRng }).added
+  const lattice = shortestPathLatticeStats(tiles, w, h, entrance, exit)
+  const wideness = lattice.shortestLen >= 0 ? lattice.latticeCells - lattice.shortestLen : 0
+  const { reachableFloors, junctions } = countReachableFloorJunctions(tiles, w, h, entrance)
+  const deadEnds = countReachableDeadEnds(tiles, w, h, entrance)
 
   assignDistrictsToRooms(genRooms, w, h, districtRng)
   tagRoomsWithQuotas(genRooms, floorProperties, tagsRng)
+  const onPathBand = computeMainPathBandRooms({ tiles, w, h, entrance, exit, rooms: genRooms, radius: 1 })
+  solveRoomTags({ rooms: genRooms, tiles, w, h, floorProperties, rng: tagsRng, onPathBand })
   applyTagConstraints(genRooms, tiles, w, h, floorProperties, tagsRng)
 
   const pois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng })
@@ -161,6 +183,13 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
       h,
       streams,
       difficulty,
+      layoutMetrics: {
+        wideness,
+        junctions,
+        deadEnds,
+        reachableFloors,
+        loopsAdded,
+      },
     },
     missionGraph: undefined,
   }

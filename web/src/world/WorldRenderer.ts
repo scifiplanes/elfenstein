@@ -15,6 +15,7 @@ import {
   POI_WELL_GLOW_SRC,
   POI_WELL_SPARKLE_FRAMES,
 } from '../game/poi/poiDefs'
+import { getThemeLightIntent } from './themeTuning'
 
 const TAU = Math.PI * 2
 
@@ -86,6 +87,8 @@ export class WorldRenderer {
   private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
   private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
   private lastPoiSpriteBoost = NaN
+  private themeSpriteColor = new THREE.Color('#ffffff')
+  private readonly tmpHsl = { h: 0, s: 0, l: 0 }
 
   private wellDrainedMat: THREE.SpriteMaterial | null = null
   private chestOpenMat: THREE.SpriteMaterial | null = null
@@ -469,26 +472,24 @@ export class WorldRenderer {
     const floorTex = this.getDungeonFloorTexture()
     const ceilTex = this.getDungeonCeilingTexture()
 
-    const theme = state.floor.gen?.theme
-
     // Small emissive lift so the scene never becomes pure-black,
     // but low enough that the lantern still changes visibility.
     const base = Math.max(0, state.render.baseEmissive)
     this.floorMat = new THREE.MeshLambertMaterial({
       map: floorTex,
-      color: new THREE.Color(theme?.floorColor ?? '#ffffff'),
+      color: new THREE.Color('#ffffff'),
       emissive: new THREE.Color('#101018'),
       emissiveIntensity: base * 1.0,
     })
     this.wallMat = new THREE.MeshLambertMaterial({
       map: wallTex,
-      color: new THREE.Color(theme?.wallColor ?? '#ffffff'),
+      color: new THREE.Color('#ffffff'),
       emissive: new THREE.Color('#161210'),
       emissiveIntensity: base * 0.8,
     })
     this.ceilMat = new THREE.MeshLambertMaterial({
       map: ceilTex,
-      color: new THREE.Color(theme?.ceilColor ?? '#ffffff'),
+      color: new THREE.Color('#ffffff'),
       emissive: new THREE.Color('#05050a'),
       emissiveIntensity: base * 0.6,
     })
@@ -607,6 +608,10 @@ export class WorldRenderer {
   }
 
   private syncTuning(state: GameState) {
+    const themeId = state.floor.gen?.theme?.id
+    const intent = getThemeLightIntent(themeId)
+    const globalI = Math.max(0, Number(state.render.globalIntensity ?? 1.0))
+
     if (state.render.fogEnabled > 0) {
       if (!this.expFog) this.expFog = new THREE.FogExp2(0x050508, 0)
       this.expFog.color.setHex(0x050508)
@@ -629,14 +634,25 @@ export class WorldRenderer {
         ? 1
         : 1 + state.render.lanternFlickerAmp * Math.sin(t * Math.PI * 2 * state.render.lanternFlickerHz)
 
-    this.lantern.intensity = Math.max(0, state.render.lanternIntensity * flicker)
+    this.lantern.intensity = Math.max(0, state.render.lanternIntensity * (intent.lanternIntensityMult ?? 1.0) * globalI * flicker)
     this.lantern.distance = state.render.lanternDistance
-    this.lantern.color.setHex(0xffd7a0)
-    this.lanternBeam.intensity = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * flicker)
+    {
+      const base = new THREE.Color(0xffd7a0)
+      const tint = new THREE.Color(intent.intentHex)
+      const tweak = this.getThemeHueSat(state, themeId)
+      tint.getHSL(this.tmpHsl)
+      this.tmpHsl.h = ((this.tmpHsl.h + tweak.hueShiftDeg / 360) % 1 + 1) % 1
+      this.tmpHsl.s = Math.max(0, Math.min(1, this.tmpHsl.s * tweak.saturationMult))
+      tint.setHSL(this.tmpHsl.h, this.tmpHsl.s, this.tmpHsl.l)
+      const final = base.lerp(tint, Math.max(0, Math.min(1, intent.mix)))
+      this.lantern.color.copy(final)
+      this.lanternBeam.color.copy(final)
+      this.themeSpriteColor.copy(final).multiplyScalar(globalI)
+    }
+    this.lanternBeam.intensity = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * globalI * flicker)
     this.lanternBeam.distance = Math.max(0.5, state.render.lanternDistance * state.render.lanternBeamDistanceScale)
     this.lanternBeam.angle = (Math.max(1, state.render.lanternBeamAngleDeg) * Math.PI) / 180
     this.lanternBeam.penumbra = Math.max(0, Math.min(1, state.render.lanternBeamPenumbra))
-    this.lanternBeam.color.setHex(0xffd7a0)
 
     const beamEff = Math.max(0, state.render.lanternIntensity * state.render.lanternBeamIntensityScale * flicker)
     const beamLit = beamEff > 1e-4
@@ -666,7 +682,7 @@ export class WorldRenderer {
     this.renderer.shadowMap.enabled = wantBeamShadow || wantPointShadow
 
     // Apply base emissive lift without forcing a rebuild.
-    const base = Math.max(0, state.render.baseEmissive)
+    const base = Math.max(0, state.render.baseEmissive) * globalI
     if (this.floorMat) this.floorMat.emissiveIntensity = base * 1.0
     if (this.wallMat) this.wallMat.emissiveIntensity = base * 0.8
     if (this.ceilMat) this.ceilMat.emissiveIntensity = base * 0.6
@@ -695,10 +711,13 @@ export class WorldRenderer {
       const tf = 0.85 + 0.15 * Math.sin(t * 7.0 + i * 1.7)
       this.torchLights[i].position.set(x, 0.9, z)
       this.torchLights[i].distance = state.render.torchDistance
-      this.torchLights[i].intensity = state.render.torchIntensity * tf
+      this.torchLights[i].intensity = state.render.torchIntensity * (intent.torchIntensityMult ?? 1.0) * globalI * tf
+      this.torchLights[i].color.copy(this.lantern.color)
     }
 
     this.syncPoiSpriteBoost(state)
+    this.syncNpcSpriteThemeTint()
+    this.syncFloorItemThemeTint()
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
     this.syncNpcIdleFrames(state)
@@ -707,15 +726,55 @@ export class WorldRenderer {
 
   private syncPoiSpriteBoost(state: GameState) {
     const next = Math.max(0, Number(state.render.poiSpriteBoost ?? 1.0))
-    if (next === this.lastPoiSpriteBoost) return
     this.lastPoiSpriteBoost = next
 
     for (const mat of Object.values(this.poiSpriteMats)) {
       if (!mat) continue
-      mat.color.setScalar(next)
+      mat.color.copy(this.themeSpriteColor).multiplyScalar(next)
     }
-    if (this.wellDrainedMat) this.wellDrainedMat.color.setScalar(next)
-    if (this.chestOpenMat) this.chestOpenMat.color.setScalar(next)
+    if (this.wellDrainedMat) this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
+    if (this.chestOpenMat) this.chestOpenMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
+  }
+
+  private syncNpcSpriteThemeTint() {
+    for (const mat of Object.values(this.npcSpriteMats)) {
+      if (!mat) continue
+      mat.color.copy(this.themeSpriteColor)
+    }
+  }
+
+  private syncFloorItemThemeTint() {
+    // Floor-item sprites use per-instance materials; update live sprites only.
+    for (const p of this.pickables) {
+      const ud = (p as any)?.userData as undefined | { kind?: string }
+      if (!ud || ud.kind !== 'floorItem') continue
+      const spr = p as THREE.Sprite
+      const mat = spr.material as THREE.SpriteMaterial
+      mat.color.copy(this.themeSpriteColor)
+    }
+  }
+
+  private getThemeHueSat(state: GameState, themeId: string | undefined): { hueShiftDeg: number; saturationMult: number } {
+    if (!themeId) return { hueShiftDeg: 0, saturationMult: 1.0 }
+    if (themeId === 'dungeon_warm') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_dungeon_warm, saturationMult: state.render.themeSaturation_dungeon_warm }
+    }
+    if (themeId === 'dungeon_cool') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_dungeon_cool, saturationMult: state.render.themeSaturation_dungeon_cool }
+    }
+    if (themeId === 'cave_damp') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_cave_damp, saturationMult: state.render.themeSaturation_cave_damp }
+    }
+    if (themeId === 'cave_deep') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_cave_deep, saturationMult: state.render.themeSaturation_cave_deep }
+    }
+    if (themeId === 'ruins_bleach') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_ruins_bleach, saturationMult: state.render.themeSaturation_ruins_bleach }
+    }
+    if (themeId === 'ruins_umber') {
+      return { hueShiftDeg: state.render.themeHueShiftDeg_ruins_umber, saturationMult: state.render.themeSaturation_ruins_umber }
+    }
+    return { hueShiftDeg: 0, saturationMult: 1.0 }
   }
 
   private currentPoiSpriteBoost() {
@@ -735,7 +794,7 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
     this.wellDrainedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.wellDrainedMat.color.setScalar(this.currentPoiSpriteBoost())
+    this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
     return this.wellDrainedMat
   }
 
@@ -752,7 +811,7 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
     this.chestOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.chestOpenMat.color.setScalar(this.currentPoiSpriteBoost())
+    this.chestOpenMat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
     return this.chestOpenMat
   }
 
@@ -808,7 +867,7 @@ export class WorldRenderer {
     tex.generateMipmaps = false
 
     const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    mat.color.setScalar(this.currentPoiSpriteBoost())
+    mat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
     this.poiSpriteMats[kind] = mat
     return mat
   }

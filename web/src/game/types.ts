@@ -37,7 +37,7 @@ export type PortraitDropTarget = 'eyes' | 'mouth'
 
 export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor'
 
-export type PoiKind = 'Well' | 'Chest' | 'Bed' | 'Shrine' | 'CrackedWall'
+export type PoiKind = 'Well' | 'Chest' | 'Bed' | 'Shrine' | 'CrackedWall' | 'Exit'
 
 export type FloorPoi = {
   id: Id
@@ -102,6 +102,22 @@ export type UiState = {
 }
 
 export type RenderTuning = {
+  /** Global scalar for 3D scene brightness (lights + 3D sprites). */
+  globalIntensity: number
+  /** Per-theme hue shift (degrees) applied to 3D light/sprite tint. */
+  themeHueShiftDeg_dungeon_warm: number
+  themeHueShiftDeg_dungeon_cool: number
+  themeHueShiftDeg_cave_damp: number
+  themeHueShiftDeg_cave_deep: number
+  themeHueShiftDeg_ruins_bleach: number
+  themeHueShiftDeg_ruins_umber: number
+  /** Per-theme saturation multiplier applied to 3D light/sprite tint. */
+  themeSaturation_dungeon_warm: number
+  themeSaturation_dungeon_cool: number
+  themeSaturation_cave_damp: number
+  themeSaturation_cave_deep: number
+  themeSaturation_ruins_bleach: number
+  themeSaturation_ruins_umber: number
   /** Base emissive lift applied to dungeon materials (multiplied by per-surface factors). */
   baseEmissive: number
   lanternIntensity: number

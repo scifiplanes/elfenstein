@@ -1,6 +1,6 @@
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
-import { bfsDistances, floodFillReachable, inBounds, isWalkable } from './validate'
+import { bfsDistances, floodFillReachable, inBounds, isWalkable, shortestPathLatticeStats } from './validate'
 import type { GenRoom } from './types'
 
 export type Rect = { x: number; y: number; w: number; h: number }
@@ -24,6 +24,52 @@ export function carveCorridor(tiles: Tile[], w: number, ax: number, ay: number, 
   } else {
     carveLine(tiles, w, ax, ay, ax, by)
     carveLine(tiles, w, ax, by, bx, by)
+  }
+}
+
+function carveLineThick(tiles: Tile[], w: number, h: number, x0: number, y0: number, x1: number, y1: number, ox: number, oy: number) {
+  const dx = Math.sign(x1 - x0)
+  const dy = Math.sign(y1 - y0)
+  let x = x0
+  let y = y0
+  const stamp = (sx: number, sy: number) => {
+    if (sx <= 0 || sy <= 0 || sx >= w - 1 || sy >= h - 1) return
+    tiles[sx + sy * w] = 'floor'
+    const tx = sx + ox
+    const ty = sy + oy
+    if (tx <= 0 || ty <= 0 || tx >= w - 1 || ty >= h - 1) return
+    tiles[tx + ty * w] = 'floor'
+  }
+  stamp(x, y)
+  while (x !== x1 || y !== y1) {
+    if (x !== x1) x += dx
+    if (y !== y1) y += dy
+    stamp(x, y)
+  }
+}
+
+/**
+ * Carves a 2-wide L corridor by thickening the carved line by one tile in a deterministic direction.
+ * Offsets `ox/oy` should be one of {±1,0} or {0,±1}.
+ */
+export function carveCorridorThick(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  ax: number,
+  ay: number,
+  bx: number,
+  by: number,
+  horizFirst: boolean,
+  ox: number,
+  oy: number,
+) {
+  if (horizFirst) {
+    carveLineThick(tiles, w, h, ax, ay, bx, ay, ox, oy)
+    carveLineThick(tiles, w, h, bx, ay, bx, by, ox, oy)
+  } else {
+    carveLineThick(tiles, w, h, ax, ay, ax, by, ox, oy)
+    carveLineThick(tiles, w, h, ax, by, bx, by, ox, oy)
   }
 }
 
@@ -111,6 +157,227 @@ export function repairConnectivity(tiles: Tile[], w: number, h: number, rng: Pic
     if (!anchor) return
     carveCorridor(tiles, w, anchor.x, anchor.y, target.x, target.y, rng.next() < 0.5)
   }
+}
+
+function manhattan(a: Vec2, b: Vec2): number {
+  return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
+}
+
+export function countReachableFloorJunctions(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  start: Vec2,
+): { reachableFloors: number; junctions: number } {
+  const reach = floodFillReachable(tiles, w, h, start)
+  let reachableFloors = 0
+  let junctions = 0
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = x + y * w
+      if (!reach[i] || tiles[i] !== 'floor') continue
+      reachableFloors++
+      let n = 0
+      if (isWalkable(tiles[i + 1])) n++
+      if (isWalkable(tiles[i - 1])) n++
+      if (isWalkable(tiles[i + w])) n++
+      if (isWalkable(tiles[i - w])) n++
+      if (n >= 3) junctions++
+    }
+  }
+  return { reachableFloors, junctions }
+}
+
+export function countReachableDeadEnds(tiles: Tile[], w: number, h: number, start: Vec2): number {
+  const reach = floodFillReachable(tiles, w, h, start)
+  let deadEnds = 0
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = x + y * w
+      if (!reach[i] || tiles[i] !== 'floor') continue
+      let n = 0
+      if (isWalkable(tiles[i + 1])) n++
+      if (isWalkable(tiles[i - 1])) n++
+      if (isWalkable(tiles[i + w])) n++
+      if (isWalkable(tiles[i - w])) n++
+      if (n <= 1) deadEnds++
+    }
+  }
+  return deadEnds
+}
+
+function pointInRect(p: Vec2, r: { x: number; y: number; w: number; h: number }): boolean {
+  return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h
+}
+
+function nearestRoomIndexByCenter(rooms: GenRoom[], p: Vec2): number {
+  let best = -1
+  let bestD = 1e9
+  for (let i = 0; i < rooms.length; i++) {
+    const c = rooms[i].center
+    const d = Math.abs(c.x - p.x) + Math.abs(c.y - p.y)
+    if (d < bestD) {
+      bestD = d
+      best = i
+    }
+  }
+  return best
+}
+
+function roomIndexForPoint(rooms: GenRoom[], p: Vec2): number {
+  for (let i = 0; i < rooms.length; i++) {
+    if (pointInRect(p, rooms[i].rect)) return i
+  }
+  return nearestRoomIndexByCenter(rooms, p)
+}
+
+function corridorSampleStats(args: {
+  tiles: Tile[]
+  w: number
+  ax: number
+  ay: number
+  bx: number
+  by: number
+  horizFirst: boolean
+}): { total: number; alreadyFloor: number } {
+  const { tiles, w, ax, ay, bx, by, horizFirst } = args
+  let total = 0
+  let alreadyFloor = 0
+  const count = (x: number, y: number) => {
+    total++
+    const t = tiles[x + y * w]
+    if (t === 'floor' || t === 'door' || t === 'lockedDoor') alreadyFloor++
+  }
+  if (horizFirst) {
+    const dx = Math.sign(bx - ax)
+    for (let x = ax; x !== bx; x += dx) count(x, ay)
+    count(bx, ay)
+    const dy = Math.sign(by - ay)
+    for (let y = ay; y !== by; y += dy) count(bx, y)
+    count(bx, by)
+  } else {
+    const dy = Math.sign(by - ay)
+    for (let y = ay; y !== by; y += dy) count(ax, y)
+    count(ax, by)
+    const dx = Math.sign(bx - ax)
+    for (let x = ax; x !== bx; x += dx) count(x, by)
+    count(bx, by)
+  }
+  return { total, alreadyFloor }
+}
+
+/**
+ * Deterministically carve a small number of extra connectors (loops) to widen the
+ * entrance→exit shortest-path lattice and reduce “single spine” layouts.
+ *
+ * This mutates `tiles` in place and should run on the `streams.layout` RNG.
+ */
+export function injectLoops(args: {
+  tiles: Tile[]
+  w: number
+  h: number
+  rooms: GenRoom[]
+  entrance: Vec2
+  exit: Vec2
+  rng: Pick<Rng, 'int' | 'next'>
+  maxLoops?: number
+}): { added: number } {
+  const { tiles, w, h, rooms, entrance, exit, rng } = args
+  if (w <= 0 || h <= 0 || tiles.length !== w * h) return { added: 0 }
+
+  const maxLoops = Math.max(0, Math.min(6, Math.floor(args.maxLoops ?? 2)))
+  if (maxLoops === 0) return { added: 0 }
+
+  const keyOf = (p: Vec2) => `${p.x},${p.y}`
+  const candidates: Vec2[] = []
+  const seen = new Set<string>()
+  const push = (p: Vec2) => {
+    if (!inBounds(p, w, h)) return
+    if (tiles[p.x + p.y * w] !== 'floor') return
+    const k = keyOf(p)
+    if (seen.has(k)) return
+    seen.add(k)
+    candidates.push({ ...p })
+  }
+
+  // Primary candidates: room centers
+  for (const r of rooms) push(r.center)
+
+  // Secondary candidates: a handful of random floor cells (bounded attempts)
+  for (let i = 0; i < 14; i++) {
+    const p = randomFloorCell({ tiles, w, h, rng })
+    if (p) push(p)
+  }
+
+  if (candidates.length < 2) return { added: 0 }
+
+  const base = shortestPathLatticeStats(tiles, w, h, entrance, exit)
+  let bestWideness = base.shortestLen >= 0 ? base.latticeCells - base.shortestLen : 0
+  const baseJ = countReachableFloorJunctions(tiles, w, h, entrance).junctions
+  let bestJ = baseJ
+  const baseDeadEnds = countReachableDeadEnds(tiles, w, h, entrance)
+  let bestDeadEnds = baseDeadEnds
+
+  let added = 0
+  const minD = Math.max(5, Math.min(12, Math.floor((w + h) / 6)))
+  const maxD = Math.max(minD + 4, Math.min(w + h, Math.floor((w + h) * 0.75)))
+
+  const maxTries = 48 + maxLoops * 28
+  for (let attempt = 0; attempt < maxTries && added < maxLoops; attempt++) {
+    const a = candidates[rng.int(0, candidates.length)]
+    const b = candidates[rng.int(0, candidates.length)]
+    if (a.x === b.x && a.y === b.y) continue
+
+    const d = manhattan(a, b)
+    if (d < minD || d > maxD) continue
+
+    // Prefer connecting distinct rooms when room data exists (reduces “micro-loops” inside one room).
+    if (rooms.length >= 2) {
+      const ra = roomIndexForPoint(rooms, a)
+      const rb = roomIndexForPoint(rooms, b)
+      if (ra === rb && rng.next() < 0.8) continue
+    }
+
+    const horizFirst = rng.next() < 0.5
+    const sample = corridorSampleStats({ tiles, w, ax: a.x, ay: a.y, bx: b.x, by: b.y, horizFirst })
+    const alreadyRatio = sample.total > 0 ? sample.alreadyFloor / sample.total : 1
+    if (alreadyRatio > 0.6) continue
+
+    const beforeTiles = tiles.slice()
+    // Occasionally carve 2-wide connectors for spatial variety (kept rare and deterministic).
+    const thick = rng.next() < 0.15
+    if (thick) {
+      // Pick a deterministic thickening direction (avoid diagonals).
+      const dir = rng.int(0, 4)
+      const ox = dir === 0 ? 1 : dir === 1 ? -1 : 0
+      const oy = dir === 2 ? 1 : dir === 3 ? -1 : 0
+      carveCorridorThick(tiles, w, h, a.x, a.y, b.x, b.y, horizFirst, ox, oy)
+    } else {
+      carveCorridor(tiles, w, a.x, a.y, b.x, b.y, horizFirst)
+    }
+
+    const after = shortestPathLatticeStats(tiles, w, h, entrance, exit)
+    const afterWideness = after.shortestLen >= 0 ? after.latticeCells - after.shortestLen : 0
+    const afterJ = countReachableFloorJunctions(tiles, w, h, entrance).junctions
+    const afterDeadEnds = countReachableDeadEnds(tiles, w, h, entrance)
+
+    const widened = afterWideness > bestWideness
+    const moreJunctions = afterJ > bestJ
+    const fewerDeadEnds = afterDeadEnds < bestDeadEnds
+
+    if (widened || moreJunctions || fewerDeadEnds) {
+      added++
+      bestWideness = Math.max(bestWideness, afterWideness)
+      bestJ = Math.max(bestJ, afterJ)
+      bestDeadEnds = Math.min(bestDeadEnds, afterDeadEnds)
+      continue
+    }
+
+    // Revert if it didn't help.
+    for (let i = 0; i < tiles.length; i++) tiles[i] = beforeTiles[i]
+  }
+
+  return { added }
 }
 
 export function findNearestReachable(reach: boolean[], w: number, h: number, target: Vec2): Vec2 | null {

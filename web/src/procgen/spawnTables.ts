@@ -11,12 +11,18 @@ export type NpcSpawnContext = {
   isNear: boolean
   /** Room center lies on a shortest entrance→exit path (pre-locks). */
   isOnEntranceExitShortestPath: boolean
+  /** Counts of adjacent rooms by function (for cluster-aware spawns). */
+  neighborRoomFunctions?: Partial<Record<'Passage' | 'Habitat' | 'Workshop' | 'Communal' | 'Storage', number>>
+  /** Connected-component id for rooms sharing the same `roomFunction` (optional). */
+  functionClusterId?: number
 }
 
 export type ItemSpawnContext = {
   floorProperties: readonly FloorProperty[]
   room: GenRoom
   isOnEntranceExitShortestPath: boolean
+  neighborRoomFunctions?: Partial<Record<'Passage' | 'Habitat' | 'Workshop' | 'Communal' | 'Storage', number>>
+  functionClusterId?: number
 }
 
 function pickWeighted<T extends string>(rng: Pick<Rng, 'next'>, entries: Array<{ id: T; w: number }>): T {
@@ -60,12 +66,15 @@ export function pickNpcKindFromTable(ctx: NpcSpawnContext, rng: Rng): NpcKind {
   const status = ctx.room.tags?.roomStatus
   const distTag = ctx.room.district
   const fp = ctx.floorProperties
+  const neigh = ctx.neighborRoomFunctions
 
   if (prop === 'Infected') return 'Skeleton'
   if (func === 'Workshop') return 'Catoctopus'
   if (func === 'Storage') return 'Bobr'
 
   let kind = pickWeighted(rng, NPC_DEFAULT_WEIGHTS_BY_FLOOR[ctx.floorType])
+  if (func === 'Habitat' && (neigh?.Habitat ?? 0) >= 2 && kind === 'Wurglepup' && rng.next() < 0.28) kind = 'Bobr'
+  if (func === 'Passage' && (neigh?.Passage ?? 0) >= 2 && kind === 'Wurglepup' && rng.next() < 0.22) kind = 'Catoctopus'
   if (distTag === 'Ruin' && rng.next() < 0.35) kind = 'Skeleton'
   if (distTag === 'Core' && kind === 'Wurglepup' && rng.next() < 0.25) kind = 'Catoctopus'
 
@@ -82,11 +91,13 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   const func = ctx.room.tags?.roomFunction
   const status = ctx.room.tags?.roomStatus
   const fp = ctx.floorProperties
+  const neigh = ctx.neighborRoomFunctions
 
   if (status === 'Overgrown' && func === 'Habitat') return 'Mushrooms'
   if (fp.includes('Destroyed') && func === 'Storage') return 'Stone'
 
   let defId = (func && ITEM_BY_ROOM_FUNCTION[func]) || (rng.next() < 0.5 ? 'Stick' : 'Stone')
+  if (func === 'Workshop' && (neigh?.Workshop ?? 0) >= 1 && rng.next() < 0.35) defId = 'Ash'
   if (ctx.room.district === 'EastWing' && rng.next() < 0.3) defId = 'Sulfur'
   if (fp.includes('Overgrown') && func === 'Communal' && rng.next() < 0.35) defId = 'Foodroot'
   if (ctx.isOnEntranceExitShortestPath && rng.next() < 0.22) defId = rng.next() < 0.5 ? 'Stick' : 'Ash'
