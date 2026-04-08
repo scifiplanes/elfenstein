@@ -99,6 +99,12 @@ The party has **up to 4** character portrait slots.
     - Eyes (inspect hover): `Content/frosh_eye_inspect.png`
     - Mouth: `Content/frosh_mouth_open.png`
     - Idle overlay: `Content/frosh_idle.png`
+  - **Afonso**:
+    - Base: `Content/Afonso_base.png`
+    - Eyes (open): `Content/Afonso_eyes.png`
+    - Eyes (inspect hover): `Content/Afonso_eyes_inspect.png`
+    - Mouth: `Content/Afonso_mouth_open.png`
+    - Idle overlay: `Content/Afonso_base_idle.png`
 - **Portrait click (frame)**: a **primary-button tap** on the **portrait frame** opens the **paperdoll** and schedules a short **`ui.portraitIdlePulse`** window so the **idle sprite** shows for one burst (same **min/max ms** tuning as ambient idle flashes: `portraitIdleFlashMinMs` / `portraitIdleFlashMaxMs` in F2). **`HudLayout`** handles **`pointerdown`/`pointerup` in capture** on `[data-portrait-character-id]` (movement threshold ~28px; skips when `dragging.started`) and dispatches **`ui/portraitFrameTap`** so activation does not depend on synthetic **`click`**. The pulse expires on **`time/tick`** like other short UI cues.
 - **Portrait scaling**: the portrait frame scales up to fill as much of its HUD slot as possible while **preserving the portrait asset aspect ratio**; portrait art is rendered using **no-crop fit** (scaled as large as possible while fully visible within the frame). Layered portrait sprites are offset **30px upward** from the geometric center of the frame for composition; mouth “chomp” animations preserve that offset.
 - **Portrait stats presentation**: character vitals + status use a **compact bottom overlay inside the portrait frame**. Vitals sit in a **2×2 grid**: **row 1** = **Health** | **Stamina**, **row 2** = **Hunger** | **Thirst** (left-to-right). Each cell is a small panel (**black** **`#000`**, **`2px solid`** border matching **inventory slots** **`rgba(171, 136, 107, 0.75)`**, **`border-radius: 0`**, inner **padding**) containing **only** a **horizontal bar** (**no** emoji): bar **track** **black**, **~9px** tall, **square** corners (**`border-radius: 0`** on track and fill), **fill** colors: **HP** **`#ff2400`**, **STA** **`#d6bdb5`**, **HUN** **`#547d39`**, **THR** **`#3d75dd`** (see **`VITAL_BAR_FILL`** in **`PortraitPanel.tsx`**). Grid and overlay use tight **`3px`** gaps; status line **`~3px`** below the grid. Overlay padding **`6px 70px 20px`**. **Interim:** each bar’s fill is **always full** until **max** + **current** exist in state. No numeric readout. A **status** line below (**`Status: …`**) stays **single-line truncated** when long.
@@ -120,7 +126,7 @@ The party has **up to 4** character portrait slots.
 
 **Properties**
 - **Identity axes (initial sets, extendable)**:
-  - Species: `Igor` (goatmen), `Mycyclops` (one-eyed mushroom person), `Frosch` (frog person)
+  - Species: `Igor` (goatmen), `Mycyclops` (one-eyed mushroom person), `Frosch` (frog person), `Afonso`
   - Class: `Warrior`, `Wizard`, `Cleric`
   - Culture: `Barbarian`, `Villager`, `Nomad`
   - Ideology: `Animist`, `Ancients`, `The One`

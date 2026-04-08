@@ -25,7 +25,7 @@ const NAV_PUSHED_SRC = '/content/ui/navigation/ui_navigationbutton_pushed.png'
 
 function portraitOverlayUrlsForSpecies(
   species: SpeciesId,
-): { mouthSrc: string; idleSrc: string; eyesInspectSrc: string } | null {
+): { mouthSrc: string; mouthClosedSrc?: string; idleSrc: string; eyesInspectSrc: string } | null {
   // Keep in sync with `ui/portraits/PortraitPanel.tsx` until portrait assets are centralized.
   if (species === 'Igor')
     return {
@@ -44,6 +44,13 @@ function portraitOverlayUrlsForSpecies(
       mouthSrc: '/content/frosh_mouth_open.png',
       idleSrc: '/content/frosh_idle.png',
       eyesInspectSrc: '/content/frosh_eye_inspect.png',
+    }
+  if (species === 'Afonso')
+    return {
+      mouthSrc: '/content/Afonso_mouth_open.png',
+      mouthClosedSrc: '/content/Afonso_mouth_closed.png',
+      idleSrc: '/content/Afonso_base_idle.png',
+      eyesInspectSrc: '/content/Afonso_eyes_inspect.png',
     }
   return null
 }
@@ -528,7 +535,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
     )
     // Hover mouth should show steadily (original affordance); cue mouth flicker wins when active.
-    const portraitMouthOnFinal = portraitMouthOn.map((v, i) => (v > 0 ? v : portraitHoverMouthOn[i] ?? 0))
+    const portraitMouthIsOpen = portraitMouthOn.map((v, i) => (v > 0 ? v : portraitHoverMouthOn[i] ?? 0))
 
     const portraitMouthTex: Array<THREE.Texture | null> = []
     const portraitIdleTex: Array<THREE.Texture | null> = []
@@ -536,6 +543,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const portraitMouthAr: number[] = []
     const portraitIdleAr: number[] = []
     const portraitEyesInspectAr: number[] = []
+    const portraitMouthOnForShader: number[] = []
     for (const c of party) {
       const urls = portraitOverlayUrlsForSpecies(c.species)
       if (!urls) {
@@ -545,6 +553,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         portraitMouthAr.push(1)
         portraitIdleAr.push(1)
         portraitEyesInspectAr.push(1)
+        portraitMouthOnForShader.push(0)
         continue
       }
       const loader = textureLoaderRef.current
@@ -567,12 +576,19 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         cache.set(src, tex)
         return tex
       }
-      portraitMouthTex.push(getTex(urls.mouthSrc))
+      const idx = portraitMouthTex.length
+      const isOpen = (portraitMouthIsOpen[idx] ?? 0) > 0
+      const hasClosed = !!urls.mouthClosedSrc
+      const mouthSrc = isOpen ? urls.mouthSrc : (urls.mouthClosedSrc ?? urls.mouthSrc)
+      portraitMouthTex.push(getTex(mouthSrc))
       portraitIdleTex.push(getTex(urls.idleSrc))
       portraitEyesInspectTex.push(getTex(urls.eyesInspectSrc))
-      portraitMouthAr.push(arCache.get(urls.mouthSrc) ?? 1)
+      portraitMouthAr.push(arCache.get(mouthSrc) ?? 1)
       portraitIdleAr.push(arCache.get(urls.idleSrc) ?? 1)
       portraitEyesInspectAr.push(arCache.get(urls.eyesInspectSrc) ?? 1)
+      // If the species has a closed-mouth art, keep the compositor mouth overlay always active,
+      // swapping textures between open/closed for instant transitions without capture latency.
+      portraitMouthOnForShader.push(hasClosed ? 1 : isOpen ? 1 : 0)
     }
 
     const activeRoomPropRaw = roomPropertyUnderPlayer(latestStateRef.current)
@@ -616,7 +632,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       portraitRectsPx,
       portraitMouthTex,
       portraitIdleTex,
-      portraitMouthOn: portraitMouthOnFinal,
+      portraitMouthOn: portraitMouthOnForShader,
       portraitIdleOn,
       portraitEyesInspectTex,
       portraitEyesInspectOn: portraitHoverEyesOn,

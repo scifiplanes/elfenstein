@@ -6,7 +6,7 @@ export type ItemId = Id
 export type ItemDefId = Id
 export type CharacterId = Id
 
-export type Species = 'Igor' | 'Mycyclops' | 'Frosch'
+export type Species = 'Igor' | 'Mycyclops' | 'Frosch' | 'Afonso'
 export type SkillId = 'weaving' | 'chipping' | 'cooking' | 'foraging'
 export type StatusEffectId =
   | 'Poisoned'

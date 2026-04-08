@@ -148,7 +148,7 @@ export function makeInitialState(_content: ContentDB): GameState {
         {
           id: 'c4',
           name: 'Char4',
-          species: 'Igor',
+          species: 'Afonso',
           endurance: 6,
           skills: { chipping: 1, weaving: 1 },
           hunger: 60,

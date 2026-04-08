@@ -2382,3 +2382,18 @@ Hold-only drag start can miss fast click-drag gestures, resulting in no drop dis
 ### Consequences
 - Cursor drag state transitions now start either via movement threshold or the existing hold timer.
 - `DESIGN.md` §6.2 reflects the updated gesture truth (drag starts on movement; hold is fallback).
+
+---
+
+## ADR-0154 — Add Afonso as a party species (portrait art hookup)
+Date: 2026-04-08
+
+### Decision
+Add a new playable party **species** `Afonso` and hook it into the existing portrait pipeline (DOM portrait stack + capture-mode compositor overlays), served via stable `/content/...` URLs.
+
+### Rationale
+We have a complete Afonso portrait art set (base/eyes/inspect/mouth/idle). Wiring it as a first-class species expands the roster while keeping the existing layered-portrait UX and rendering architecture unchanged.
+
+### Consequences
+- `Species` union expands; any code that switches on species must handle `Afonso`.
+- The Afonso PNGs must be mirrored to `web/public/content/` so `/content/Afonso_*.png` loads reliably at runtime.

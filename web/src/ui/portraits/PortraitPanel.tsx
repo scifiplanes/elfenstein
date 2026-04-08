@@ -20,7 +20,7 @@ const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
 const PORTRAIT_VITAL_CELL_KEYS = ['hp', 'sta', 'hun', 'thr'] as const
 
 type PortraitSprites =
-  | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; idleSrc?: string }
+  | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; mouthClosedSrc?: string; idleSrc?: string }
   | {
       kind: 'frosh'
       baseSrc: string
@@ -28,6 +28,7 @@ type PortraitSprites =
       eyesSrcR: string
       eyesInspectSrc?: string
       mouthSrc: string
+      mouthClosedSrc?: string
       idleSrc?: string
     }
 
@@ -57,12 +58,22 @@ const SPECIES_PORTRAIT: Partial<Record<GameState['party']['chars'][number]['spec
     mouthSrc: '/content/frosh_mouth_open.png',
     idleSrc: '/content/frosh_idle.png',
   },
+  Afonso: {
+    kind: 'simple',
+    baseSrc: '/content/Afonso_base.png',
+    eyesSrc: '/content/Afonso_eyes.png',
+    eyesInspectSrc: '/content/Afonso_eyes_inspect.png',
+    mouthSrc: '/content/Afonso_mouth_open.png',
+    mouthClosedSrc: '/content/Afonso_mouth_closed.png',
+    idleSrc: '/content/Afonso_base_idle.png',
+  },
 }
 
 const SPECIES_FALLBACK_FACE: Record<string, string> = {
   Igor: '🧟',
   Mycyclops: '👁️',
   Frosch: '🐸',
+  Afonso: '🧙',
 }
 
 export function PortraitPanel(props: {
@@ -83,6 +94,7 @@ export function PortraitPanel(props: {
   const portraitEyesSrcR = portrait && portrait.kind === 'frosh' ? portrait.eyesSrcR : ''
   const portraitEyesInspectSrc = portrait?.eyesInspectSrc ?? ''
   const portraitMouthSrc = portrait?.mouthSrc ?? ''
+  const portraitMouthClosedSrc = portrait?.mouthClosedSrc ?? ''
   const portraitIdleSrc = portrait?.idleSrc ?? ''
   const [blinkClosed, setBlinkClosed] = useState(false)
   const [blinkClosedL, setBlinkClosedL] = useState(false)
@@ -172,9 +184,9 @@ export function PortraitPanel(props: {
   useEffect(() => {
     if (!portrait) return
     if (portrait.kind === 'frosh') {
-      prefetchImages([portraitBaseSrc, portraitEyesSrcL, portraitEyesSrcR, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+      prefetchImages([portraitBaseSrc, portraitEyesSrcL, portraitEyesSrcR, portraitEyesInspectSrc, portraitMouthSrc, portraitMouthClosedSrc, portraitIdleSrc])
     } else {
-      prefetchImages([portraitBaseSrc, portraitEyesSrc, portraitEyesInspectSrc, portraitMouthSrc, portraitIdleSrc])
+      prefetchImages([portraitBaseSrc, portraitEyesSrc, portraitEyesInspectSrc, portraitMouthSrc, portraitMouthClosedSrc, portraitIdleSrc])
     }
   }, [
     portrait?.kind,
@@ -184,6 +196,7 @@ export function PortraitPanel(props: {
     portraitEyesSrcR,
     portraitEyesInspectSrc,
     portraitMouthSrc,
+    portraitMouthClosedSrc,
     portraitIdleSrc,
   ])
 
@@ -261,6 +274,7 @@ export function PortraitPanel(props: {
   // But once a feed cue is active, flicker should be visible even if the cursor is still hovering.
   // In capture HUD mode, portrait interactions are rendered via compositor overlays (not capture-limited).
   const showMouth = captureForPostprocess ? false : isMouthCueActive ? cueFlickerOn : isHoveringMouth
+  const mouthOpenActive = isMouthCueActive || isHoveringMouth
   const showEyesInspect = captureForPostprocess ? false : isHoveringEyes && !!portrait && !!portrait.eyesInspectSrc
   const blinkHideEyes = blinkClosed && !showEyesInspect
   const blinkHideEyesL = blinkClosedL && !showEyesInspect
@@ -361,6 +375,9 @@ export function PortraitPanel(props: {
             ) : (
               <img className={`${styles.sprite} ${blinkHideEyes ? styles.eyesHidden : ''}`} src={portrait.eyesSrc} alt="" draggable={false} />
             )}
+            {captureForPostprocess ? null : portrait.mouthClosedSrc && !mouthOpenActive ? (
+              <img className={styles.sprite} src={portrait.mouthClosedSrc} alt="" draggable={false} />
+            ) : null}
             {showMouth ? (
               <img
                 key={mouthAnimKey}
