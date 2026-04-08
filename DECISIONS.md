@@ -2008,3 +2008,17 @@ Avoid “black” **void** / phantom grid squares; show **only** cells that exis
 Near floor edges the minimap looks **gapped** or asymmetric inside the circle. **`DESIGN.md`** §6.4 updated accordingly.
 
 ---
+
+## ADR-0132 — Centralize “button title” Jim Nightshade typography
+Date: 2026-04-08
+
+### Decision
+Define shared **CSS custom properties** in **`web/src/index.css`** (`--buttonTitleFontFamily` … `--buttonTitleTextShadow`) for the **Jim Nightshade** headline stack used on **button primary labels** at **25 CSS px**, matching weight, spacing, color, and shadow. The NPC dialog **Pet** control consumes these variables via **`NpcDialogModal.module.css`**.
+
+### Rationale
+Keeps modal/button label styling consistent and makes the project’s chosen “button title” face and metrics easy to reuse without copy-pasting declarations.
+
+### Consequences
+New UI that needs the same look should prefer **`--buttonTitle*`** over ad hoc rules; changing the style updates all consumers. **`DESIGN.md`** §7.2 documents the tokens.
+
+---

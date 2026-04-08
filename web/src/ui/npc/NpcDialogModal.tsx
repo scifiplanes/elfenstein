@@ -50,6 +50,11 @@ export function NpcDialogModal(props: { state: GameState; dispatch: Dispatch<Act
 
         <div className={styles.body}>{gib}</div>
         <div className={styles.hint}>Tip: drag an item from inventory onto them.</div>
+        <div className={styles.footer}>
+          <button className={styles.pet} type="button">
+            Pet {npc.name}
+          </button>
+        </div>
       </div>
     </div>
   )

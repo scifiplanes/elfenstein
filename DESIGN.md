@@ -128,6 +128,7 @@ The party has **up to 4** character portrait slots.
 - **Capacity**: number of grid cells is informed by **total party Endurance**.
 - Inventory UI is **scrollable in sections** (paged), not continuous.
 - Hovering an **occupied** slot shows the item’s **name** in a small overlay rendered with the **cursor layer** (the interactive HUD grid is hit-only; labels align to the hovered slot in viewport space), set in **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** loaded as a **webfont** from Google Fonts.
+- **Button title** typography (primary label on modal/HUD buttons that use the display face at a slightly smaller size than the inventory hover tooltip) is centralized in **`web/src/index.css`** as **`--buttonTitleFontFamily`** (same stack as **`--fontInventoryTooltip`**), **`--buttonTitleFontSize`** (**25 CSS px**), **`--buttonTitleFontWeight`**, **`--buttonTitleLetterSpacing`**, **`--buttonTitleLineHeight`**, **`--buttonTitleColor`**, and **`--buttonTitleTextShadow`**. New UI should reference these instead of duplicating literals.
 - Dragging inventory item into empty 3D space drops it onto the floor (cell).
 
 ### 7.3 Items & crafting
@@ -174,7 +175,8 @@ The party has **up to 4** character portrait slots.
   - NPC billboards **preserve the sprite PNG aspect ratio** (no squashing); sprite **height** is set by per-kind tuning and width is derived from the texture aspect.
   - F2 Debug exposes per-kind **NPC size (height)** and deterministic **±% size variation**; values persist via `web/public/debug-settings.json`.
   - NPC sprite placement aligns the **feet/ground point** with the **floor surface** so NPCs appear grounded. F2 Debug exposes a small global lift (`npcFootLift`) plus per-kind ground pivot offsets (`npcGroundY_*`) to compensate for transparent padding differences across NPC art.
-  - The NPC dialog shows a small matching **base** sprite next to the NPC’s name (same path as the in-world primary frame).
+  - The NPC dialog shows a small matching **base** sprite next to the NPC’s name (same path as the in-world primary frame); the header line uses the same **font** as **inventory item name tooltips** (`--fontInventoryTooltip`, Jim Nightshade) with matching weight, size, and shadow.
+  - The NPC dialog includes a bottom button labeled **Pet** plus that NPC’s display name, using **`--buttonTitle*`** tokens (placeholder; no game effect yet).
   - **Wurglepup** uses **`/content/npc_slime.png`** as its primary billboard (kind id stays `Wurglepup` in data). **Catoctopus** and **Wurglepup** alternate between base and **idle** PNGs (`npc_catoctopus_idle.png`, `npc_slime_idle.png`) on a short shared timer in `WorldRenderer` (one material per kind, so all instances share the same phase).
   - Until per-kind art exists for every `NpcKind`, any remaining missing URLs are still satisfied by **binary copies** of **`Placeholders/Placeholder_NPC.png`** under `web/public/content/` at the path expected by `NPC_SPRITE_SRC` / `POI_SPRITE_SRC`.
 
