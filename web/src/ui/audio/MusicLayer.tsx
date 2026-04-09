@@ -14,8 +14,8 @@ const BG_XFADE_SEC = 2.5
  */
 const OVERLAY_VOL_TAU = 0.6
 /** Random sfx plays every [MIN, MAX] seconds. */
-const BG_SFX_MIN_SEC = 20
-const BG_SFX_MAX_SEC = 60
+const BG_SFX_MIN_SEC = 60
+const BG_SFX_MAX_SEC = 120
 
 export function MusicLayer(props: { state: GameState }) {
   const { state } = props
