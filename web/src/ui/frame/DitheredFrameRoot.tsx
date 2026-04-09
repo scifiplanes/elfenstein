@@ -390,7 +390,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const ht = cursor.state.hoverTarget
       const hoverPortraitKey =
         cursor.state.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
-      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}`
+      const screenKey = sForKey.ui.screen
+      const paperdollKey = sForKey.ui.paperdollFor ?? ''
+      const dbgDeathKey = sForKey.ui.debugShowDeathPopup ? '1' : '0'
+      const dbgNpcDlgKey = sForKey.ui.debugShowNpcDialogPopup ? '1' : '0'
+      const checkpointKey = sForKey.run.checkpoint ? '1' : '0'
+      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}`
     })()
     const hudDirty = hudKey !== lastHudKeyRef.current
     // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
@@ -868,7 +873,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       (state.ui.screen === 'game' && state.ui.debugShowDeathPopup) ? (
         <div className={styles.stageModalLayer}>
           <TitleScreen state={state} dispatch={dispatch} />
-          <DeathModal state={state} dispatch={dispatch} />
+          <DeathModal state={state} dispatch={dispatch} gameViewportRef={gameViewportRef} />
           <PaperdollModal state={state} dispatch={dispatch} content={content} />
           <NpcDialogModal state={state} dispatch={dispatch} content={content} gameViewportRef={gameViewportRef} />
         </div>
@@ -896,9 +901,17 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
                   navPadPressedId={navPadPressedId}
                   onNavPadVisualPress={onNavPadVisualPress}
                   captureNpcOverlay={
-                    state.ui.npcDialogFor ||
-                    (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
+                    state.ui.death || (state.ui.screen === 'game' && state.ui.debugShowDeathPopup) ? (
+                      <DeathModal variant="capture" state={state} dispatch={noopDispatch} />
+                    ) : state.ui.npcDialogFor || (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
                       <NpcDialogModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
+                    ) : null
+                  }
+                  captureFullHudOverlay={
+                    state.ui.screen === 'title' ? (
+                      <TitleScreen variant="capture" state={state} dispatch={noopDispatch} />
+                    ) : state.ui.paperdollFor ? (
+                      <PaperdollModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
                     ) : null
                   }
                 />

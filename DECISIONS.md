@@ -1363,6 +1363,8 @@ The final image is **WebGL presenter canvas** (3D + HUD **`html2canvas` texture*
 - **`HudLayout`** no longer imports modal components.
 - **`stageModalLayer`** must use **`pointer-events: auto`** and mount **only when** a modal is open; a **`pointer-events: none`** wrapper let events fall through to **`.interactiveHud`**, so **Close** and other controls never received clicks.
 
+**Superseded (behavior):** **ADR-0205** — capture HUD now includes modal pixels; visible modal is the **dithered** bitmap; **DOM** modals **portal** invisibly for hits.
+
 ---
 
 ## ADR-0088 — Minimap local viewport (~12×12, player-centered)
@@ -3011,3 +3013,139 @@ Keeps alignment tied to the **game rect** while satisfying a **%-based** stack; 
 
 ### Consequences
 **`captureRoot`** gets a **ref** + observer only for this metric; **`DESIGN.md`** §7.5 documents the formula.
+
+---
+
+## ADR-0202 — NPC dialog closes on player movement
+Date: 2026-04-09
+
+### Decision
+Before handling **`player/turn`**, **`player/step`**, or **`player/strafe`**, **`reduce`** clears **`ui.npcDialogFor`** and **`ui.debugShowNpcDialogPopup`** when either is set (`dismissNpcDialogOnMovement`), matching **`ui/closeNpcDialog`**, then proceeds with the move (so a forward step into a **non-hostile** NPC can reopen the dialog in the same dispatch chain).
+
+### Rationale
+Players expect map control to exit contextual UI; leaving the dialog up while walking felt sticky.
+
+### Consequences
+Pure reducer change in **`web/src/game/reducer.ts`**; **`DESIGN.md`** §7.5 notes the rule.
+
+---
+
+## ADR-0203 — Remove HUD statue rails; widen game column
+Date: 2026-04-09
+
+### Decision
+Drop the **`statueL`** / **`statueR`** grid tracks and **`StatuePanel`** from **`HudLayout`**. The root grid is **three** columns **`minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr)`**; **`bottomRow`** uses **`0.75fr 1.62fr 0.75fr`** with **`map | inventory | navigation`**. Delete **`web/src/ui/statue/StatuePanel.tsx`**.
+
+### Rationale
+The **120px** statue columns were empty (**`StatuePanel`** returned **`null`**) but still reserved space, producing black side strips beside the 3D view. Removing them gives the **game** cell that width.
+
+### Consequences
+**`DESIGN.md`** §6.4 updated. **ADR-0110** (statue slot titles) applied only to removed UI; no statue placeholders remain in the shell.
+
+---
+
+## ADR-0204 — HUD: restore outer rail tracks; game spans center three columns
+Date: 2026-04-09
+
+### Decision
+Revert **`HudLayout`** root and **`bottomRow`** column templates to the **pre–ADR-0203** **`1fr 120px 1.12fr 120px 1fr`** and **`0.75fr 120px 1.62fr 120px 0.75fr`** definitions. Give the **game** `<section>` a **`grid-area`** that covers the **three** middle columns (same names in **`grid-template-areas`**) so the **3D view** fills the band formerly split between statue rails and the center track—**no** black strips, **no** separate statue UI.
+
+### Rationale
+A flat **three-column** root widened the **1fr** portrait and **0.75fr** map/nav tracks compared to the original five-column math. Restoring the **120px** tracks preserves prior rail sizes while merging them into the **game** panel keeps the wide viewport.
+
+### Consequences
+**`DESIGN.md`** §6.4 describes merged **game** span + original track list. **ADR-0203** column summary is superseded for layout structure; statue **components** remain removed.
+
+---
+
+## ADR-0205 — Title, death, paperdoll: HUD capture + body hit layer (dither parity)
+Date: 2026-04-09
+
+### Decision
+Extend the **NPC dialog** pattern to **`TitleScreen`**, **`DeathModal`**, and **`PaperdollModal`**: each has **`capture`** vs **`interactive`** variants; **capture** renders inside the offscreen **`html2canvas`** tree; **interactive** **`createPortal`**s the same DOM (wrapped in **`GamePopup.module.css`** **`modalPortalHitRoot`**) to **`document.body`**. **`HudLayout`** gains **`captureFullHudOverlay`** (**`fullHudCaptureLayer`**, full-bleed over the HUD grid). **`DitheredFrameRoot`** composes capture overlays with priority **title → death / debug death preview → paperdoll** alongside the existing **`captureNpcOverlay`** game-cell path. Expand **`hudKey`** with **`screen`**, **`paperdollFor`**, **`debugShowDeathPopup`**, **`debugShowNpcDialogPopup`**, and a **checkpoint** flag so previews and title actions refresh captures.
+
+### Rationale
+Ordinary modals in **`stageModalLayer`** sat **above** the presenter as **clean** vector UI; only the **NPC** path was in the rasterized HUD, so **death / title / paperdoll** broke the unified **dithered** look.
+
+### Consequences
+Three modals double-render while open; **`PaperdollModal`** **capture** omits drag/drop handlers (display-only). Slightly larger **`hudKey`** string; shared **`modalPortalHitRoot`** for stacking consistency with **NPC**.
+
+**Revision:** **ADR-0206** moves **death** capture from **`fullHudCaptureLayer`** into the **game-cell** overlay.
+
+---
+
+## ADR-0206 — Death modal centered in game viewport (capture + interactive)
+Date: 2026-04-09
+
+### Decision
+**`DeathModal`** **capture** mounts in **`npcCaptureLayer`** (**`captureNpcOverlay`**), **before** the **NPC** dialog branch, so death (or **debug death preview**) replaces the NPC capture slot. **`captureFullHudOverlay`** carries **title** and **paperdoll** only. **Interactive** **`DeathModal`** accepts **`gameViewportRef`**; a **`position: fixed`** shell matches the **live** viewport **`getBoundingClientRect()`** ( **`ResizeObserver`**, **resize** / **`visualViewport`** / **scroll**), with **dim + panel** **flex-centered** inside the shell ( **`inset: 0`** fallback until measured).
+
+### Rationale
+The death screen should sit **on the 3D game widget**, not over the **entire HUD grid**, consistent with **NPC** anchoring and player attention.
+
+### Consequences
+**Death** and **NPC** **capture** previews are **mutually exclusive** when death is active; **`DESIGN.md`** § frame pipeline updated accordingly.
+
+---
+
+## ADR-0207 — Overgrown rooms: selective env texture swap
+Date: 2026-04-09
+
+### Decision
+- Add a second dungeon environment texture triple served from repo `Content/` as stable URLs:
+  - **`/content/overgrown_floor.png`**
+  - **`/content/overgrown_wall.png`**
+  - **`/content/overgrown_ceiling.png`**
+- In **`WorldRenderer.buildGeometry`**, apply those textures **selectively**:
+  - **Floor + ceiling**: for walkable tiles inside procgen rooms tagged **`roomStatus: Overgrown`** (rect intersection with walkable tiles).
+  - **Walls**: for wall tiles that are **4-neighbor adjacent** to any overgrown walkable tile (so room boundaries read clearly).
+
+### Rationale
+The `Overgrown` floor property should have a strong local visual identity without requiring a full meshing rewrite or globally replacing a floor type’s environment textures.
+
+### Consequences
+- Slightly more materials/texture loads; no new `GameState` fields.
+- Overgrown boundaries on walls are adjacency-based (not a separate wall-tagging pass).
+- **`DESIGN.md`** §11 and §13 updated to reflect selective overgrown env textures and Content-only `/content/*` serving.
+
+---
+
+## ADR-0208 — Inventory: fixed two rows (20 slots)
+Date: 2026-04-09
+
+### Decision
+Initialize party inventory as **10** columns × **2** rows (**20** slots). Remove endurance-derived cell count and the previous minimum of three rows.
+
+### Rationale
+A **compact HUD** inventory reads faster and matches a deliberate **small-bag** feel for the jam scope.
+
+### Consequences
+Lower carry capacity than the old endurance-scaled grid; **`makeInitialState`** item placements must stay within **20** indices. **`DESIGN.md`** §7.2 updated (fixed capacity; removed paging/scroll copy tied to the old large grid).
+
+---
+
+## ADR-0209 — HUD inventory: 20 px downward offset
+Date: 2026-04-09
+
+### Decision
+Add **`margin-top: 20px`** to the **`HudLayout`** **`.inventory`** panel so the widget sits **20 CSS px** lower in the bottom HUD row.
+
+### Rationale
+Nudges the inventory grid to align better with the chrome / neighboring widgets without changing slot layout or padding.
+
+### Consequences
+**`DESIGN.md`** §7.2 notes the offset; slightly less vertical room inside the **285 px** bottom row before clip (**`overflow: hidden`** on **`panel`**).
+
+---
+
+## ADR-0210 — HUD inventory grid: 5% smaller
+Date: 2026-04-09
+
+### Decision
+Make the **`InventoryPanel`** root grid **95%** of the inventory panel’s inner width (**`.inventory`** **`display: flex`** + **`justify-content` / `align-items: center`** and **`.inventory > *`** **`width` / `max-width: 95%`** in **`HudLayout.module.css`**).
+
+### Rationale
+Slightly reduces slot size so the block reads lighter on the bar while keeping hit targets and aspect-ratio cells aligned (no **`transform: scale`**).
+
+### Consequences
+**`DESIGN.md`** §7.2 updated. Slot **emoji** size in CSS stays **~55 px** but renders smaller because cells are narrower.

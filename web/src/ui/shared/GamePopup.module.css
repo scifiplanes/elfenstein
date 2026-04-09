@@ -135,3 +135,15 @@
 .backdropDim {
   background: rgba(0, 0, 0, 0.55);
 }
+
+/*
+ * Invisible full-screen hit tree portaled to `document.body` (above CursorLayer).
+ * The dithered pixels come from the offscreen html2canvas HUD capture.
+ */
+.modalPortalHitRoot {
+  position: fixed;
+  inset: 0;
+  z-index: 10100;
+  pointer-events: auto;
+  opacity: 0;
+}

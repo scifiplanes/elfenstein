@@ -49,6 +49,12 @@ export const PROXIMITY_OVERLAYS: ProximityOverlay[] = [
     fullDist: 0.5,
     zeroDist: 3,
   },
+  {
+    track: '/sounds/music/chant_1.mp3',
+    poiKinds: ['Shrine'],
+    fullDist: 1,
+    zeroDist: 4,
+  },
 ]
 
 /** Flat list of every music URL — used to preload all tracks up front. */

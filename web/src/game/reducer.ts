@@ -515,22 +515,23 @@ export function reduce(state: GameState, action: Action): GameState {
       return descendToNextFloor(state)
     }
     case 'player/turn': {
-      if (state.view.anim) return state
-      const dir = (((state.floor.playerDir + action.dir) % 4) + 4) % 4
-      const fromYaw = state.view.camYaw
+      const stateAfterDialog = dismissNpcDialogOnMovement(state)
+      if (stateAfterDialog.view.anim) return stateAfterDialog
+      const dir = (((stateAfterDialog.floor.playerDir + action.dir) % 4) + 4) % 4
+      const fromYaw = stateAfterDialog.view.camYaw
       const baseToYaw = (dir * Math.PI) / 2
       const toYaw = nearestEquivalentAngle(fromYaw, baseToYaw)
-      const startedAtMs = state.nowMs
+      const startedAtMs = stateAfterDialog.nowMs
       const endsAtMs = startedAtMs + 90
       return {
-        ...state,
-        floor: { ...state.floor, playerDir: dir as any },
+        ...stateAfterDialog,
+        floor: { ...stateAfterDialog.floor, playerDir: dir as any },
         view: {
-          ...state.view,
+          ...stateAfterDialog.view,
           anim: {
             kind: 'turn',
-            fromPos: state.view.camPos,
-            toPos: state.view.camPos,
+            fromPos: stateAfterDialog.view.camPos,
+            toPos: stateAfterDialog.view.camPos,
             fromYaw,
             toYaw,
             startedAtMs,
@@ -540,21 +541,23 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     }
     case 'player/step': {
-      if (state.view.anim) return state
-      const { playerDir, playerPos } = state.floor
+      const s0 = dismissNpcDialogOnMovement(state)
+      if (s0.view.anim) return s0
+      const { playerDir, playerPos } = s0.floor
       const step = action.forward
       const v = dirVec(playerDir)
       const nx = playerPos.x + v.x * step
       const ny = playerPos.y + v.y * step
-      return attemptMoveTo(state, nx, ny)
+      return attemptMoveTo(s0, nx, ny)
     }
     case 'player/strafe': {
-      if (state.view.anim) return state
-      const { playerDir, playerPos } = state.floor
+      const s0 = dismissNpcDialogOnMovement(state)
+      if (s0.view.anim) return s0
+      const { playerDir, playerPos } = s0.floor
       const v = strafeVec(playerDir, action.side)
       const nx = playerPos.x + v.x
       const ny = playerPos.y + v.y
-      return attemptMoveTo(state, nx, ny)
+      return attemptMoveTo(s0, nx, ny)
     }
     case 'poi/use': {
       return applyPoiUse(state, CONTENT, action.poiId)
@@ -1139,6 +1142,15 @@ function applyRoomHazardOnEnter(state: GameState, x: number, y: number): GameSta
   }
 
   return state
+}
+
+/** Close NPC dialog (and F2 preview flag) before the player turns, steps, or strafes. */
+function dismissNpcDialogOnMovement(state: GameState): GameState {
+  if (!state.ui.npcDialogFor && !state.ui.debugShowNpcDialogPopup) return state
+  return {
+    ...state,
+    ui: { ...state.ui, npcDialogFor: undefined, debugShowNpcDialogPopup: false },
+  }
 }
 
 function dirVec(dir: 0 | 1 | 2 | 3) {

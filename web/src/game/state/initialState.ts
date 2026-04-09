@@ -22,11 +22,8 @@ export function makeInitialState(_content: ContentDB): GameState {
   const floorSeed = randomFloorSeed()
   const defaultCamEyeHeight = DEFAULT_RENDER.camEyeHeight
 
-  const partyEndurance = 6 + 7 + 5 + 6
   const cols = 10
-  const baseCells = 20
-  const cells = baseCells + partyEndurance * 2
-  const rows = Math.max(3, Math.ceil(cells / cols))
+  const rows = 2
   const inv = mkInventory(cols, rows)
   const items: GameState['party']['items'] = {
     i_mush: { id: 'i_mush', defId: 'Mushrooms', qty: 1 },

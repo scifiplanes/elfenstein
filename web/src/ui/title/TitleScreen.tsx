@@ -1,16 +1,23 @@
 import type { Dispatch } from 'react'
+import { createPortal } from 'react-dom'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import popup from '../shared/GamePopup.module.css'
 import styles from './TitleScreen.module.css'
 
-export function TitleScreen(props: { state: GameState; dispatch: Dispatch<Action> }) {
-  const { state, dispatch } = props
+export type TitleScreenVariant = 'interactive' | 'capture'
+
+export function TitleScreen(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  variant?: TitleScreenVariant
+}) {
+  const { state, dispatch, variant = 'interactive' } = props
   if (state.ui.screen !== 'title') return null
 
   const hasCheckpoint = !!state.run.checkpoint
 
-  return (
+  const tree = (
     <div className={`${styles.backdrop} ${popup.backdropDim}`}>
       <div
         className={`${popup.panel} ${popup.panelWidthMd} ${styles.modal}`}
@@ -34,5 +41,13 @@ export function TitleScreen(props: { state: GameState; dispatch: Dispatch<Action
       </div>
     </div>
   )
-}
 
+  if (variant === 'capture') {
+    return tree
+  }
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(<div className={popup.modalPortalHitRoot}>{tree}</div>, document.body)
+  }
+  return tree
+}

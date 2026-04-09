@@ -4,12 +4,12 @@
   display: grid;
   isolation: isolate;
   touch-action: none;
-  /* Outer columns flex equally; center viewport track ~1.12× one outer side (matches former ~518px : ~580px split at typical widths). Map/nav cells fill their rail. */
+  /* Same column tracks as pre–statue-merge: 1fr outer + 120 + 1.12fr center + 120 + 1fr; game spans the three middle tracks so the viewport is wide without separate statue cells. */
   grid-template-columns: minmax(0, 1fr) 120px minmax(0, 1.12fr) 120px minmax(0, 1fr);
   grid-template-rows: 1fr 1fr 285px;
   grid-template-areas:
-    "char2 statueL game statueR char4"
-    "char1 statueL game statueR char3"
+    "char2 game game game char4"
+    "char1 game game game char3"
     "bottomRow bottomRow bottomRow bottomRow bottomRow";
   gap: 10px;
   padding: 12px;
@@ -79,6 +79,14 @@
   pointer-events: none;
 }
 
+/* Title / death / paperdoll (capture): rasterize over the entire HUD stage box. */
+.fullHudCaptureLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
 /* NPC dialog (capture): same box as the 3D view; inner `captureRoot` pins top/bottom for html2canvas. */
 .npcCaptureLayer {
   position: absolute;
@@ -102,6 +110,19 @@
 .inventory {
   grid-area: inventory;
   padding: 20px;
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.inventory > * {
+  width: 95%;
+  max-width: 95%;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .map {
@@ -137,15 +158,6 @@
   align-items: center;
   justify-content: center;
   min-height: 0;
-}
-
-.statueL {
-  grid-area: statueL;
-  padding: 10px;
-}
-.statueR {
-  grid-area: statueR;
-  padding: 10px;
 }
 
 .char1 {
