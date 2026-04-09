@@ -359,8 +359,8 @@ export function PortraitPanel(props: {
       onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
-        const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+        const { drop } = cursor.endPointerUp(e)
+        if (drop) dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
       }}
     >
       <div

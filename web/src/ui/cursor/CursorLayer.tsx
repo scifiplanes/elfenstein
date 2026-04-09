@@ -6,6 +6,7 @@ import type { ContentDB } from '../../game/content/contentDb'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { findRecipe, recipeKey } from '../../game/content/recipes'
 import { currentTurn } from '../../game/state/combat'
+import { tradeStockRows } from '../../game/state/trade'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const api = useContext(CursorContext)
@@ -128,6 +129,10 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const contextualAffordance =
     dragging?.started
       ? (() => {
+          const src = dragging.payload.source
+          if (src.kind === 'tradeStockSlot' && props.state.ui.tradeSession && hoverTarget?.kind === 'tradeAskSlot') {
+            return { icon: '☑', label: 'Request' }
+          }
           const item = props.state.party.items[dragging.payload.itemId]
           if (!item) return null
           const def = props.content.item(item.defId)
@@ -169,6 +174,14 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
   const ghostText = (() => {
     if (!ghost) return ''
+    const src = dragging?.payload.source
+    if (src?.kind === 'tradeStockSlot' && props.state.ui.tradeSession) {
+      const rows = tradeStockRows(props.state, props.state.ui.tradeSession)
+      const row = rows[src.stockIndex]
+      if (!row) return ''
+      const def = props.content.item(row.defId)
+      return def.icon.kind === 'emoji' ? def.icon.value : def.name
+    }
     const item = props.state.party.items[ghost.itemId]
     const def = item ? props.content.item(item.defId) : null
     if (!def) return ghost.itemId

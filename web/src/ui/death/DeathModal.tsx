@@ -1,9 +1,15 @@
 import type { Dispatch, RefObject } from 'react'
-import { useLayoutEffect, useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
+import {
+  MODAL_CHROME_HIT_ATTR,
+  modalChromeClickActivate,
+  modalChromePointerUpActivate,
+} from '../cursor/modalChromeActivate'
 import { useCursor } from '../cursor/useCursor'
+import { npcCaptureInteractiveRectFromGameViewportEl } from '../hud/npcCaptureInteractiveRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './DeathModal.module.css'
 
@@ -28,6 +34,8 @@ export function DeathModal(props: {
   const { state, dispatch, variant = 'interactive', gameViewportRef } = props
   const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
   const cursor = useCursor()
+  const suppressReloadClick = useRef(false)
+  const suppressNewRunClick = useRef(false)
 
   const death = state.ui.death
   const preview =
@@ -45,8 +53,12 @@ export function DeathModal(props: {
       return
     }
     const sync = () => {
-      const r = el.getBoundingClientRect()
-      setViewportRect({ left: r.left, top: r.top, width: r.width, height: r.height })
+      const r = npcCaptureInteractiveRectFromGameViewportEl(el)
+      if (!r) {
+        setViewportRect(null)
+        return
+      }
+      setViewportRect(r)
     }
     sync()
     const ro = new ResizeObserver(sync)
@@ -130,8 +142,30 @@ export function DeathModal(props: {
           <button
             className={`${popup.actionBtn} ${styles.deathActionBtn} ${!hasCheckpoint ? popup.actionBtnDisabled : ''}`}
             type="button"
-            disabled={!hasCheckpoint}
-            onClick={() => dispatch({ type: 'run/reloadCheckpoint' })}
+            {...{ [MODAL_CHROME_HIT_ATTR]: '' }}
+            aria-disabled={!hasCheckpoint}
+            tabIndex={!hasCheckpoint ? -1 : 0}
+            onPointerUp={(e) =>
+              modalChromePointerUpActivate(
+                cursor,
+                e,
+                () => {
+                  if (!hasCheckpoint) return
+                  dispatch({ type: 'run/reloadCheckpoint' })
+                },
+                suppressReloadClick,
+              )
+            }
+            onClick={(e) =>
+              modalChromeClickActivate(
+                e,
+                () => {
+                  if (!hasCheckpoint) return
+                  dispatch({ type: 'run/reloadCheckpoint' })
+                },
+                suppressReloadClick,
+              )
+            }
             title={hasCheckpoint ? 'Reload the last well checkpoint' : 'No checkpoint saved yet'}
           >
             Reload checkpoint
@@ -139,7 +173,11 @@ export function DeathModal(props: {
           <button
             className={`${popup.actionBtn} ${styles.deathActionBtn} ${popup.actionBtnPrimary}`}
             type="button"
-            onClick={() => dispatch({ type: 'run/new' })}
+            {...{ [MODAL_CHROME_HIT_ATTR]: '' }}
+            onPointerUp={(e) =>
+              modalChromePointerUpActivate(cursor, e, () => dispatch({ type: 'run/new' }), suppressNewRunClick)
+            }
+            onClick={(e) => modalChromeClickActivate(e, () => dispatch({ type: 'run/new' }), suppressNewRunClick)}
           >
             New run
           </button>
@@ -167,7 +205,10 @@ export function DeathModal(props: {
         {inner}
       </div>
     ) : (
-      <div className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`} {...pointerHandlers}>
+      <div
+        className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`}
+        {...pointerHandlers}
+      >
         {inner}
       </div>
     )

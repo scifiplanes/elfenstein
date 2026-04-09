@@ -35,7 +35,7 @@
     "fogDensity": 0,
     "camEyeHeight": 0.38,
     "camForwardOffset": -1.03,
-    "camFov": 36,
+    "camFov": 25,
     "camPitchDeg": 0,
     "camShakePosAmp": 0.12,
     "camShakeRollDeg": 0.35,
@@ -116,8 +116,8 @@
       "tavern": {
         "x": 0.12,
         "y": 0.55,
-        "w": 0.22,
-        "h": 0.18
+        "w": 0.25,
+        "h": 0.28
       },
       "cave": {
         "x": 0.68,
@@ -128,10 +128,10 @@
     },
     "tavern": {
       "innkeeper": {
-        "x": 0.38,
-        "y": 0.35,
-        "w": 0.24,
-        "h": 0.28
+        "x": 0,
+        "y": 0,
+        "w": 1,
+        "h": 1
       },
       "exit": {
         "x": 0.08,

@@ -24,16 +24,17 @@
 }
 
 /*
- * Modals live above `.interactiveHud` (z-index 3). The layer must use `pointer-events: auto` when
- * present; with `pointer-events: none` on the wrapper, hits fall through to the invisible HUD and
- * never reach the Close button. The wrapper mounts only while a modal is open so it does not
- * block the HUD when closed.
+ * Modals live above `.interactiveHud` (z-index 3) in the React tree; most **interactive** modals
+ * `createPortal` to `document.body` (`modalPortalHitRoot`, z-index 10100) for real hits. **Trade**
+ * (interactive) mounts inside `HudLayout` instead (**ADR-0258**). This wrapper stays empty of hit
+ * targets; if it used `pointer-events: auto`, it would sit on top of `.interactiveHud` and swallow
+ * moves (breaking `HudLayout`’s `cursor.onPointerMove`).
  */
 .stageModalLayer {
   position: absolute;
   inset: 0;
   z-index: 8;
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .captureHud {

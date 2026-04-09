@@ -13,12 +13,18 @@ export type CursorState = {
   affordance: null | { icon: string; label: string }
 }
 
+export type PointerUpOutcome = {
+  drop: { payload: DragPayload; target: DragTarget } | null
+  /** True once movement passes the drag threshold or the hold timer fires (matches drag ghost / drop resolution). */
+  promotedToDrag: boolean
+}
+
 export type CursorApi = {
   state: CursorState
   beginPointerDown(payload: DragPayload, e: React.PointerEvent): void
   onPointerMove(e: React.PointerEvent): void
   setVirtualHover(target: DragTarget | null, rect: CursorState['hoverRect']): void
-  endPointerUp(e: React.PointerEvent): { payload: DragPayload; target: DragTarget } | null
+  endPointerUp(e: React.PointerEvent): PointerUpOutcome
   cancelDrag(): void
 }
 

@@ -3717,9 +3717,6 @@ PoI tiles **block occupancy**; a single PoI on a **1-wide articulation** between
 ### Consequences
 - Fewer container PoIs on unavoidable choke tiles; optional PoIs may be omitted slightly more often. **`DESIGN.md`** §8.2 / §8.3 / §9 updated.
 
----
-
-<<<<<<< HEAD
 ## ADR-0236 — Equipment strip drag affordance borders
 Date: 2026-04-09
 
@@ -3733,8 +3730,10 @@ Clear default chrome aligned with inventory; during drag, valid equip targets re
 
 ### Consequences
 - **`PortraitPanel.tsx`** stamina fill uses **`var(--hud-stamina-vital-fill)`**; **`DESIGN.md`** §6.2 / §6.4 / equipment strip spec updated.
-=======
-## ADR-0236 — In-combat portrait feed is intentional triage (policy A)
+
+---
+
+## ADR-0237 — In-combat portrait feed is intentional triage (policy A)
 Date: 2026-04-09
 
 ### Decision
@@ -3748,7 +3747,7 @@ Matches the **cursor-first** model and **party-as-one-organism** pillar (§4): p
 
 ---
 
-## ADR-0237 — Fire-damage Skeleton + minor NPC combat tuning
+## ADR-0238 — Fire-damage Skeleton + minor NPC combat tuning
 Date: 2026-04-09
 
 ### Decision
@@ -3762,7 +3761,7 @@ All other kinds were physical-only; **Fireshield** had no default roster counter
 
 ---
 
-## ADR-0238 — Combat core unit tests
+## ADR-0239 — Combat core unit tests
 Date: 2026-04-09
 
 ### Decision
@@ -3776,7 +3775,7 @@ Combat logic is concentrated in **`combat.ts`** but wired through a large **`red
 
 ---
 
-## ADR-0239 — Encounter turn preview + combat miss SFX
+## ADR-0240 — Encounter turn preview + combat miss SFX
 Date: 2026-04-09
 
 ### Decision
@@ -3791,7 +3790,7 @@ Diegetic readability for initiative order; **miss** feedback should not reuse th
 
 ---
 
-## ADR-0240 — Quest text occasionally in combat activity log
+## ADR-0241 — Quest text occasionally in combat activity log
 Date: 2026-04-09
 
 ### Decision
@@ -3805,21 +3804,21 @@ Gives a **diegetic hint** under pressure without opening dialog; stays **replaya
 
 ---
 
-## ADR-0241 — NPC dialog gibberish: gnome tokens + procedural Mojibake/Zalgo
+## ADR-0242 — NPC dialog gibberish: gnome tokens + procedural Mojibake/Zalgo
 Date: 2026-04-09
 
 ### Decision
 Replace English-derived **`toGibberish`** behavior with three **procedural** presentation modes: **Deep Gnome** = **4–8** tokens from a fixed **safe** list of **“gnome”** spellings (diacritics / **ñ** only); **Mojibake** = **2–4** longer fake words via **UTF-8 bytes → Latin-1-style** display; **Zalgo** = **2–5** shorter **a–z** words plus **combining marks**, using a **separate RNG lane** from Mojibake. **`toGibberish(lang, _english, seed, salt)`** folds **`salt`** ( **`npc.id`** from **`NpcDialogModal`**) into the seed so NPCs on the same floor differ. The **`english`** argument is reserved, unused.
 
 ### Rationale
-Matches the intended **visual** identity of each language without encoding item names in the speech strip; keeps **determinism** for replay/sync; **combat / hint / log** paths still carry readable English where needed (**ADR-0240**).
+Matches the intended **visual** identity of each language without encoding item names in the speech strip; keeps **determinism** for replay/sync; **combat / hint / log** paths still carry readable English where needed (**ADR-0241**).
 
 ### Consequences
 - **`web/src/game/npc/gibberish.ts`**, **`NpcDialogModal.tsx`**, **`web/src/game/npc/gibberish.test.ts`**; **`DESIGN.md`** §7.6 / §15.
 
 ---
 
-## ADR-0242 — Portrait equipment mirror (read-only icons)
+## ADR-0243 — Portrait equipment mirror (read-only icons)
 Date: 2026-04-09
 
 ### Decision
@@ -3833,7 +3832,7 @@ Players see **at a glance** what a character is wearing without reading the side
 
 ---
 
-## ADR-0243 — Portrait equip mirror must appear in HUD capture
+## ADR-0244 — Portrait equip mirror must appear in HUD capture
 Date: 2026-04-09
 
 ### Decision
@@ -3847,7 +3846,7 @@ Mouth/idle reaction sprites are compositor overlays and are suppressed in captur
 
 ---
 
-## ADR-0244 — Fix equipment slot-to-slot drag duplicating items
+## ADR-0245 — Fix equipment slot-to-slot drag duplicating items
 Date: 2026-04-09
 
 ### Decision
@@ -3858,3 +3857,274 @@ On **`drag/drop`** with **`target.kind === 'equipmentSlot`**, when **`payload.so
 
 ### Consequences
 - **`reducer.ts`**; **`DESIGN.md`** §7.4 **HUD equip** bullet.
+## ADR-0246 — Reusable trade modal (tavern + friendly NPCs)
+Date: 2026-04-09
+
+### Decision
+- Replace **`ui.tavernTradeOpen`** with **`ui.tradeSession`**: a discriminated union (**`hub_innkeeper`** carries **`stock`**, **`wants`**, **`offerItemId`**, **`askStockIndex`**; **`floor_npc`** carries **`npcId`** plus offer/ask indices, reading **`npc.trade.stock` / `wants`** from **`floor.npcs`**). **Innkeeper** catalog defaults live in **`web/src/game/content/trading.ts`**; **`run.hubInnkeeperTradeStock`** persists remaining hub stock for the run.
+- **Barter rule**: **one** unit from the offered stack for **one** unit from the chosen stock row (**`consumeItem`** on the offer, decrement row **`qty`**, **`mintItemToInventoryOrFloor`** for the gain). **`trade/close`** and backdrop dismiss **restow** a staged offer via **`moveItemToInventorySlot`**.
+- **Drag/drop**: new **`DragTarget`** **`tradeOfferSlot`**, **`tradeAskSlot`**; **`DragSource`** **`tradeOffer`**, **`tradeStockSlot`**. While a session is open, invalid **trade stock** drops **reject**; **trade offer** drops outside inventory **reject**.
+- **Hub guard** in **`reducer.ts`**: allow **`drag/drop`**, **`ui/sfx`**, **`ui/shake`**, and **`ui/toast`** through the hub whitelist so tavern trade and nested feedback actions reach the main switch (same pattern as other hub-approved actions).
+- **UI**: **`TradeModal`** (`web/src/ui/trade/`) — dual DOM + **`gameViewportRef`** anchoring; **`InventoryPanel`** highlights **want** slots; **`NpcDialogModal`** **Trade** button for **`friendly` + `npc.trade`**. **Debug spawn `Bobr`** seeds a **friendly** NPC with **`trade`** for manual testing.
+
+### Rationale
+The stub modal could not express stock, validation, or exchange logic; a single session model keeps tavern and floor merchants consistent under one cursor/drag pipeline and preserves the dithered **capture + portaled hits** contract.
+
+### Consequences
+- **`types.ts`**, **`reducer.ts`**, **`state/trade.ts`**, **`content/trading.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`HudLayout.tsx`**, **`InventoryPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`NpcDialogModal.tsx`**, **`trade.test.ts`**; removed **`TavernTradeModal.tsx`**; **`DESIGN.md`** §5.1 / §6.2 / §7.5 / §11.
+
+---
+
+## ADR-0247 — `stageModalLayer` is non-interactive; trade panel forwards pointer chrome
+Date: 2026-04-09
+
+### Decision
+- Set **`DitheredFrameRoot.module.css` `.stageModalLayer`** to **`pointer-events: none`**. Interactive modals already use **`createPortal(..., document.body)`** with **`modalPortalHitRoot`** (`pointer-events: auto`, high z-index) for real hits; the in-tree wrapper was an empty full-screen **`auto`** layer above **`.interactiveHud`**, so after the trade portal became pass-through for HUD inventory, events reached that wrapper first and **`HudLayout`’s `onPointerMove` never ran** (hand cursor / hover broke).
+- On **`TradeModal`’s** outer **panel** shell (interactive), attach **`onPointerMove`**, **`onPointerCancel`**, and **`onPointerUp`** (same **`endPointerUp` → `drag/drop`** path as the viewport dismiss strip) so panel chrome and padding still drive the cursor and complete drags.
+
+### Rationale
+Preserves **ADR-0205** / **ADR-0087** intent (modals portaled for hits + dither parity) while matching the newer trade UX (HUD stays live under a selective portal).
+
+### Consequences
+- **`DitheredFrameRoot.module.css`**, **`TradeModal.tsx`**, **`DESIGN.md`** §11.
+
+---
+
+## ADR-0248 — `endPointerUp` returns `{ drop, promotedToDrag }` + sync ref
+Date: 2026-04-09
+
+### Decision
+- Track drag promotion (**movement past threshold** or **140ms hold**) in **`dragPromotedRef`** updated synchronously alongside **`setState`**, and use that ref inside **`endPointerUp`** to decide **`drop`** (instead of **`state.dragging.started`**, which could still be **false** on **`pointerup` in the same frame** as **`pointerdown`**).
+- Change **`CursorApi.endPointerUp`** to return **`PointerUpOutcome`**: **`{ drop, promotedToDrag }`**. **Trade** stock rows and **inventory** tap-to-stage use **`promotedToDrag`** plus a **release position vs `getBoundingClientRect()`** check (**ADR-0249**); stock **`pointerup`** uses **`stopPropagation`** so the **panel** shell does not call **`endPointerUp`** twice.
+
+### Rationale
+Fixes **trade/selectStock** and **trade/stageOfferFromInventory** feeling broken: **`preventDefault`** on **`pointerdown`** already removed **`click`**, and reading **`cursor.state.dragging.started`** before React flushed **`beginPointerDown`** made **`endPointerUp`** think the drag never promoted, while **`state.dragging.started`** inside **`endPointerUp`** could be stale the other way; the ref matches **`drop`** resolution exactly.
+
+### Consequences
+- **`CursorContext.ts`**, **`CursorProvider.tsx`**, **`TradeModal.tsx`**, **`InventoryPanel.tsx`**, **`HudLayout.tsx`**, **`NpcDialogModal.tsx`**, **`PaperdollModal.tsx`**, **`PortraitPanel.tsx`**.
+
+---
+
+## ADR-0249 — Trade merchant stock matches HUD inventory chrome
+Date: 2026-04-09
+
+### Decision
+- **`TradeModal`** **their stock** reuses **`InventoryPanel.module.css`** (**`.grid`**, **`.slot`**, **`.item`**, **`.qty`**) with the same **`--inv-cols`** as **`party.inventory`**; **your offer** / **you request** are single **inventory-style** slots (**`exchangeInvSlot`** width clamp, dashed border when empty). Selected request row uses a light **outline** on the slot.
+- **Tap-to-request / tap-to-offer** use **`getBoundingClientRect()`** on the **`.item`** button (see **ADR-0248** correction) instead of **`elementFromPoint`**.
+- **`InventoryPanel.module.css`**: **`.item:disabled`** opacity for empty/disabled inventory-style buttons.
+
+### Rationale
+Keeps merchant stock visually and spatially consistent with the player grid; fixes unreliable **“still on control”** detection for trade taps.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`InventoryPanel.tsx`**, **`InventoryPanel.module.css`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0250 — Trade portaled root: inline `pointer-events: none`, no inner pass-through shell
+Date: 2026-04-09
+
+### Decision
+- On **`TradeModal`’s** **`createPortal`** wrapper (still using **`modalPortalHitRoot`** for **`z-index`** + **`opacity: 0`**), set **`style={{ pointerEvents: 'none' }}`** so **`pointer-events: none`** reliably overrides **`GamePopup`’s** **`modalPortalHitRoot { pointer-events: auto }`** regardless of CSS module bundle order.
+- Drop the full-screen **`backdropPassThrough`** wrapper around the **panel**; render **`viewportDismiss`** + **`panel`** as **siblings** under the portaled root. Keep **`pointer-events: auto`** on the **panel** via merged **`panelStyle`** (and existing **`tradePanelInteractive`**) so **Close**, **Trade**, stock rows, and **Clear request** receive hits.
+
+### Rationale
+Users saw **dead** trade controls: when **`auto`** on the invisible full-screen root won, or when a **`pointer-events: none`** ancestor sat between root and panel, hit testing could fail in practice; **inline** **`none`** on the root plus **no** intermediate pass-through shell matches the intended “HUD stays live outside the panel” contract (**ADR-0247**) without starving the modal’s own buttons.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §11.
+
+---
+
+## ADR-0251 — Cursor move-drag promotion uses refs; trade/inventory dedupe `pointermove`
+Date: 2026-04-09
+
+### Decision
+- In **`CursorProvider`’s** **`onPointerMove`**, detect **movement past the drag threshold** using **`pendingPayload.current`**, **`dragStartPos.current`**, and **`dragPromotedRef`** (not **`state.isPointerDown` / `state.dragging`** from the hook closure). Merge promotion into the same **`setState`** pass as hover updates; if React has not yet applied **`beginPointerDown`’s** **`dragging: { started: false }`**, synthesize **`dragging: { payload, started: true }`** from the pending ref.
+- **`TradeModal`**: remove redundant **`onPointerMove` / `onPointerUp` / `onPointerCancel`** from the **offer/ask** slot shells and from the **staged-offer** button’s **`pointerup`** path—**one** **`endPointerUp`** on the **panel** handles drops onto **`tradeOfferSlot`**. Stock and staged-offer **`.item`** buttons call **`cursor.onPointerMove` then `stopPropagation`** so the **panel** does not handle the same move twice.
+- **`InventoryPanel`**: same **`stopPropagation` after `onPointerMove`** on item buttons vs the grid wrapper.
+
+### Rationale
+Stale closure reads meant the **8px** movement gate often never fired until the **140ms** timer, which felt slow and unreliable after the first drag; nested handlers multiplied **`document.elementsFromPoint`** and **`setState`** work per move.
+
+### Consequences
+- **`CursorProvider.tsx`**, **`TradeModal.tsx`**, **`InventoryPanel.tsx`**, **`InventoryPanel.module.css`** (**.qty** **`pointer-events: none`**), **`DESIGN.md`** §6.2.
+
+---
+
+## ADR-0252 — Trade portal: no `modalPortalHitRoot` / no root `opacity: 0`
+Date: 2026-04-09
+
+### Decision
+- Replace the interactive **`TradeModal`** **`createPortal`** wrapper (**`modalPortalHitRoot` + `tradePortalRoot` + inline `pointerEvents`**) with **`TradeModal.module.css` `.tradeInteractivePortalRoot`**: **`position: fixed; inset: 0; z-index: 10100; pointer-events: none; isolation: isolate`**, **without** **`opacity: 0`** on that node.
+- Raise **`.tradePanelInteractive`** **`z-index`** (**`10`**) vs **`.viewportDismiss`** (**`1`**) so overlap always hits the panel.
+
+### Rationale
+With **`opacity: 0`** and **`pointer-events: none`** on the **same** full-screen root (as **`modalPortalHitRoot` + inline none** produced), some engines effectively **fail to hit-test descendants**, so **no** trade control (including **Close**) received **click**/**pointer** events.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §5.1 / §11.
+
+---
+
+## ADR-0253 — Trade invisible hit layers (`opacity: 0` + `auto`) under pass-through root
+Date: 2026-04-09
+
+### Decision
+- Keep **`tradeInteractivePortalRoot`** as **`pointer-events: none`** without root **`opacity: 0`** (**ADR-0252**).
+- Add **`opacity: 0`** to **`.viewportDismiss`** and to a new **`.tradePanelHitLayer`** wrapper around the interactive **panel**; both retain **`pointer-events: auto`** so the portaled trade UI stays **invisible** (dither + **`CursorLayer`** show through) while remaining clickable.
+
+### Rationale
+Removing root **`opacity: 0`** fixed hit-testing but made the trade **panel** render as normal opaque DOM above the hand cursor and undithered vs the presenter pipeline.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §5.1 / §11.
+
+---
+
+## ADR-0254 — Trade invisibility on `.tradePanelInteractive`, not a wrapper
+Date: 2026-04-09
+
+### Decision
+- Remove **`tradePanelHitLayer`**. Apply **`opacity: 0`** (and **`z-index: 10`**) on **`.tradePanelInteractive`** (the same **`position: fixed`** root as the modal chrome).
+
+### Rationale
+A wrapper around a **`position: fixed`** panel does not expand to the panel’s box; it collapses (~**0×0**), so pointer hits fell through to **`.viewportDismiss`** and **`onClick`** with **`target === currentTarget`** closed the session on almost every click.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §5.1 / §11; revises the panel portion of **ADR-0253**.
+
+---
+
+## ADR-0255 — Trade: `tradePanelPositionShell` + in-flow panel (not `opacity` on fixed card)
+Date: 2026-04-09
+
+### Decision
+- Replace **`.tradePanelInteractive`’s** **`opacity: 0`** on the **`position: fixed`** **`popup.panel`** root with **`tradePanelPositionShell`**: outer **`fixed`** + **`opacity: 0`** + viewport **`left`/`top`/`transform`**; inner **`panelChrome`** stays **in-flow** (no **`.modal`** **`position: fixed`**) so the shell sizes from content and hit-tests like **NpcDialog**’s subtree.
+
+### Rationale
+**ADR-0254**’s approach (opacity on the fixed panel) regressed to **dead** controls in some environments; **`opacity: 0`** on the same element as the fixed card is unreliable. A **fixed** invisible shell plus an **in-flow** panel avoids both the **0×0** wrapper pitfall and the flaky fixed+opacity node.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §5.1 / §11.
+
+---
+
+## ADR-0256 — Align portaled modal hits with capture layout (trade = full HUD; death/NPC = `npcCaptureLayer` padding)
+Date: 2026-04-09
+
+### Decision
+- **Trade (`TradeModal`, interactive)**: measure **`interactiveHudRef`** (**`HudLayout` root**) for **`position: fixed`** panel anchoring and the invisible dismiss rect, matching **`captureFullHudOverlay` / `.fullHudCaptureLayer`** (not the 3D/hub cell ref alone).
+- **Death + NPC dialog (interactive)**: derive the portaled shell rect from the **`.panel.game`** bounds minus the same padding as **`HudLayout.module.css` `.npcCaptureLayer`** (**`npcCaptureInteractiveRectFromGameViewportEl`**), matching **`captureNpcOverlay`** placement.
+
+### Rationale
+Runtime logs showed almost all **`pointerdown`** targets inside modal portals were **`DIV`** chrome (epitaph, stock grid, etc.), not **`BUTTON`**, while **`elementFromPoint`** matched the event target—so stacking was fine but **geometry** was wrong: users clicked where the **dithered** UI drew controls, while invisible DOM controls were offset. **Trade** visibility is rasterized from the **full HUD** overlay but interactive hits were anchored to the **center cell** only; **death/NPC** capture lives in **`npcCaptureLayer`** with **padding**, but interactive hits used the **full** viewport cell.
+
+### Consequences
+- New **`web/src/ui/hud/npcCaptureInteractiveRect.ts`**; **`DeathModal.tsx`**, **`NpcDialogModal.tsx`**, **`TradeModal.tsx`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`**, **`TradeModal.module.css`** comment.
+
+---
+
+## ADR-0257 — No native `disabled` on invisible dual-DOM modal buttons (hit-test pass-through)
+Date: 2026-04-09
+
+### Decision
+- On portaled **invisible** modal hit layers (**death**, **trade** stock + **Trade** action), avoid HTML **`disabled`** on **`button`** where the player still aims at the **dithered** bitmap of a control. Use **`aria-disabled`**, **`tabIndex`**, **`actionBtnDisabled` / dim styling**, and **early-return guards** in **`onClick`** / pointer handlers instead.
+
+### Rationale
+**`disabled`** controls are **skipped in hit testing**; **`pointerdown`** / **`click`** land on ancestor **`DIV`**s. The composited UI can still **look** like a button at that pixel, so the game felt “dead” while logs showed **`targetTag: "DIV"`** and no button handlers. **ADR-0256** alignment helped **Close** (always enabled) but not **Trade** / **Reload checkpoint** when gated off, nor **footer** clicks that missed the small enabled target.
+
+### Consequences
+- **`DeathModal.tsx`**, **`TradeModal.tsx`**, **`InventoryPanel.module.css`** (`.item[aria-disabled='true']`); **`DESIGN.md`** §6 / modal notes.
+
+---
+
+## ADR-0258 — `GamePopup` header/footer: center actions + pass-through pointer hits
+Date: 2026-04-09
+
+### Decision
+- **`GamePopup.module.css`**: **`footer`** uses **`justify-content: center`** (was **`flex-end`**) and **`pointer-events: none`** with **`.footer > * { pointer-events: auto }`**. **`header`** uses **`pointer-events: none`** with **`.header > * { pointer-events: auto }`**.
+
+### Rationale
+Debug logs showed **`pointerdown`** on modal portals with **`targetTag: "DIV"`** at footer **y** while users aimed at **Trade** / **death** actions. **`flex-end`** left a wide **non-button** strip inside the footer flex box that remained the top hit target. **`space-between`** headers had a similar dead band between title and **Close**. Invisible dual-DOM modals make that feel like “dead” controls.
+
+### Consequences
+- **`GamePopup.module.css`** (title / trade / death / any shared **`popup.header`** / **`popup.footer`**); **`DESIGN.md`**.
+
+---
+
+## ADR-0259 — Stop `pointerup` bubble on modal buttons before parent `endPointerUp`
+Date: 2026-04-09
+
+### Decision
+- Add **`stopModalPointerUpBubbleUnlessDragging`** (`web/src/ui/cursor/stopModalPointerUpBubble.ts`) and call it from **`onPointerUp`** on **trade** / **NPC dialog** / **paperdoll** chrome **`button`**s (when **`cursor.state.dragging?.started`** is false).
+
+### Rationale
+Those surfaces wrap content in a parent **`onPointerUp`** that calls **`cursor.endPointerUp`** (state updates during pointer-up). That interfered with the normal **`click`** sequence on child **`button`**s, so modal actions stayed **unreactive** even when hit-testing and layout were corrected (**ADR-0256**–**0254**).
+
+### Consequences
+- **`TradeModal.tsx`**, **`NpcDialogModal.tsx`**, **`PaperdollModal.tsx`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0260 — Activate modal chrome on `pointerup` and dedupe synthetic `click`
+Date: 2026-04-09
+
+### Decision
+- Replace **`stopModalPointerUpBubbleUnlessDragging`** with **`modalChromePointerUpActivate`** + **`modalChromeClickActivate`** in **`web/src/ui/cursor/modalChromeActivate.ts`**.
+- On **`pointerup`** (primary button, not mid-drag): **`stopPropagation`**, run the action immediately, set a per-button **`suppressClickRef`**, clear it on the next animation frame.
+- On **`click`**: **`stopPropagation`**; if the ref is set, **`preventDefault`** and skip the action (avoids double dispatch); otherwise run the action (keyboard / edge cases).
+
+### Rationale
+Stopping bubble alone still left cases where the synthetic **`click`** never reached the **`button`** after a parent handled **`pointerup`** (**`cursor.endPointerUp`**). The HUD already documents the same “lost synthetic **`click`**” class of bug for portrait taps; modal chrome now mirrors that pattern: **activate on `pointerup`**, tolerate missing **`click`**.
+
+### Consequences
+- **Removed** **`web/src/ui/cursor/stopModalPointerUpBubble.ts`**.
+- **Wired** in **`TradeModal.tsx`**, **`NpcDialogModal.tsx`**, **`PaperdollModal.tsx`**, **`DeathModal.tsx`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0261 — Modal chrome during drag + retarget under `pointer` capture
+Date: 2026-04-09
+
+### Decision
+- **`modalChromePointerUpActivate`**: always **`stopPropagation`** on primary-button **`pointerup`**. If **`cursor.state.dragging?.started`**, call **`cursor.cancelDrag()`** then run the chrome action (no silent early return — that previously let parents handle **`pointerup`** and never activated the button).
+- Mark portaled modal chrome **`button`**s with **`data-modal-chrome-hit`** (**`MODAL_CHROME_HIT_ATTR`**).
+- **`CursorProvider.endPointerUp`**: after normal teardown, **`queueMicrotask`** + **`elementFromPoint`**: if the top hit is a marked chrome **`button`** and the **`pointerup`** **`target`** is not that button, **`hit.click()`** so **`click`** handlers run when capture targeted a drag source.
+
+### Rationale
+Drags use **`setPointerCapture`**, so **`pointerup`** can be delivered to the captured node while the cursor is visually over modal chrome. Separately, an active drag that *did* deliver **`pointerup`** to chrome previously hit the **`dragging?.started`** early return without **`stopPropagation`**, so **`endPointerUp`** on ancestors still ran and the chrome action did not.
+
+### Consequences
+- **`modalChromeActivate.ts`**, **`CursorProvider.tsx`**, modal **`button`**s in **`TradeModal`**, **`NpcDialogModal`**, **`PaperdollModal`**, **`DeathModal`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0262 — Stop `pointerup` bubble after `endPointerUp` on nested modal surfaces
+Date: 2026-04-09
+
+### Decision
+- **`TradeModal`**: after **`endPointerUp`** on the **panel** wrapper (`panelPointerChrome`), call **`e.stopPropagation()`** so the same **`pointerup` does not reach **`tradeGameOverlay`** (which also called **`endPointerUp`**).
+- **`PaperdollModal`**: equipment **`onPointerUp`** (after **`endPointerUp`**) **`stopPropagation`** so the **backdrop** does not run **`endPointerUp`** a second time.
+- **`CursorProvider.endPointerUp`**: run modal-chrome **retarget** (`elementFromPoint` + **`hit.click()`**) only when **`hadPointerSession`** (`pendingPayload` was non-null), avoiding spurious chrome activation from unrelated **`endPointerUp`** callers (e.g. **DebugPanel**).
+
+### Rationale
+A second **`endPointerUp`** on the same **`pointerup`** ran with **refs/state already cleared**, corrupting cursor bookkeeping and leaving modal chrome unreliable (interactive **trade** nests **panel** inside **overlay**; **paperdoll** nests **panel** inside **backdrop**).
+
+### Consequences
+- **`TradeModal.tsx`**, **`PaperdollModal.tsx`**, **`CursorProvider.tsx`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0263 — Interactive `TradeModal` in `HudLayout` game cell (inventory depth)
+Date: 2026-04-09
+
+### Decision
+- Render **`TradeModal variant="interactive"`** inside **`HudLayout`**’s **`.panel.game`** (sibling stack above **`HubViewport`** / **`GameViewport`**), with **`tradeGameOverlay`** (**`position: absolute; inset: 0`**) and **`tradePanelInGameCell`** for the **`popup.panel`** — **no** **`createPortal(..., document.body)`**, no **`tradeInteractivePortalRoot`** / **`viewportDismiss`** / **`tradePanelPositionShell`**.
+- Keep **`TradeModal variant="capture"`** in **`captureFullHudOverlay`** only; **remove** interactive **trade** from **`DitheredFrameRoot`’s `stageModalLayer`** and from the **`stageModalLayer`** mount condition (**`tradeModalOpen`** remains only for choosing capture overlay content).
+
+### Rationale
+Body-portaled trade hit layers fought **`opacity`**, **`pointer-events`**, and **client-rect** alignment vs the dithered **full-HUD** capture. Mounting trade **in the same `interactiveHud` subtree as `InventoryPanel`** uses **stage-local** coordinates, matches **scale**, and avoids a separate **z-index 10100** stack.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`HudLayout.tsx`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`DESIGN.md`** §5.1 / §11; supersedes interactive body-portal trade geometry described in **ADR-0250**–**ADR-0255** for the **interactive** path (capture + dual-DOM unchanged).

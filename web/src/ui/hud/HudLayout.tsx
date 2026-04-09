@@ -12,7 +12,9 @@ import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
 import { CombatIndicator } from './CombatIndicator'
+import { TradeModal } from '../trade/TradeModal'
 import { useCursor } from '../cursor/useCursor'
+import { tradeWants } from '../../game/state/trade'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 
 /**
@@ -61,6 +63,14 @@ export function HudLayout(props: {
     captureFullHudOverlay,
   } = props
   const cursor = useCursor()
+  const tsTrade = state.ui.tradeSession
+  const tradeModalInteractiveOpen =
+    interactive &&
+    !captureForPostprocess &&
+    tsTrade != null &&
+    ((tsTrade.kind === 'hub_innkeeper' && state.ui.screen === 'hub') ||
+      (tsTrade.kind === 'floor_npc' && state.ui.screen === 'game'))
+  const tradeWantDefIds = state.ui.tradeSession ? tradeWants(state, state.ui.tradeSession) : undefined
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
   const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
   const PORTRAIT_TAP_SLOP_PX = 28
@@ -205,12 +215,12 @@ export function HudLayout(props: {
       onPointerUp={
         interactive
           ? (e) => {
-              const result = cursor.endPointerUp(e)
-              if (!result) return
+              const { drop } = cursor.endPointerUp(e)
+              if (!drop) return
 
               // Cursor-aimed 3D floor drop: if the drop resolves to `floorDrop` and the pointer is
               // over the 3D viewport, compute a snapped grid cell near the ray hit.
-              if (result.target.kind === 'floorDrop' && state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
+              if (drop.target.kind === 'floorDrop' && state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
                 const rect = gameViewportRef.current.getBoundingClientRect()
                 if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
                   const p = world.pickFloorPoint(rect, e.clientX, e.clientY)
@@ -222,7 +232,7 @@ export function HudLayout(props: {
                     if (snapped) {
                       dispatch({
                         type: 'drag/drop',
-                        payload: result.payload,
+                        payload: drop.payload,
                         target: { kind: 'floorDrop', dropPos: snapped },
                         nowMs: performance.now(),
                       })
@@ -232,7 +242,7 @@ export function HudLayout(props: {
                 }
               }
 
-              dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+              dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
             }
           : undefined
       }
@@ -276,6 +286,9 @@ export function HudLayout(props: {
         ) : (
           <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
         )}
+        {tradeModalInteractiveOpen ? (
+          <TradeModal state={state} dispatch={dispatch} content={content} variant="interactive" />
+        ) : null}
         <div className={styles.gameCornerStack}>
           <ActivityLog entries={state.ui.activityLog ?? []} />
           <CombatIndicator state={state} dispatch={dispatch} interactive={interactive} />
@@ -361,7 +374,7 @@ export function HudLayout(props: {
         </section>
 
         <section className={`${styles.panel} ${styles.inventory}`}>
-          <InventoryPanel state={state} dispatch={dispatch} content={content} />
+          <InventoryPanel state={state} dispatch={dispatch} content={content} tradeWantDefIds={tradeWantDefIds} />
         </section>
 
         <section className={`${styles.panel} ${styles.navigation}`}>

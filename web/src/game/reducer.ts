@@ -60,6 +60,16 @@ import {
   pruneCombatTurnQueue,
 } from './state/combat'
 import { roomForCell } from './state/roomGeometry'
+import {
+  closeTradeSession,
+  openFloorNpcTrade,
+  openHubInnkeeperTrade,
+  tryClearTradeAsk,
+  tryExecuteTrade,
+  tryReturnTradeOfferToInventory,
+  trySetTradeAsk,
+  tryStageTradeOffer,
+} from './state/trade'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -167,6 +177,13 @@ export type Action =
   | { type: 'hub/enterDungeon' }
   | { type: 'hub/openTavernTrade' }
   | { type: 'hub/closeTavernTrade' }
+  | { type: 'trade/openNpc'; npcId: string }
+  | { type: 'trade/close' }
+  | { type: 'trade/execute' }
+  | { type: 'trade/clearAsk' }
+  | { type: 'trade/selectStock'; stockIndex: number }
+  /** While trading: put a wanted inventory item into the offer slot (click path; same rules as drag to offer). */
+  | { type: 'trade/stageOfferFromInventory'; slotIndex: number }
   /** F2: preview the NPC dialog modal (first NPC on the floor) without affecting real dialog state. */
   | { type: 'debug/setShowNpcDialogPopupPreview'; show: boolean }
   /** F2: preview the death modal without killing the party. */
@@ -242,6 +259,16 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'hub/enterDungeon':
       case 'hub/openTavernTrade':
       case 'hub/closeTavernTrade':
+      case 'trade/openNpc':
+      case 'trade/close':
+      case 'trade/execute':
+      case 'trade/clearAsk':
+      case 'trade/selectStock':
+      case 'trade/stageOfferFromInventory':
+      case 'drag/drop':
+      case 'ui/sfx':
+      case 'ui/shake':
+      case 'ui/toast':
         break
       default:
         return state
@@ -283,7 +310,7 @@ export function reduce(state: GameState, action: Action): GameState {
           ...state.ui,
           screen: 'title',
           hubScene: undefined,
-          tavernTradeOpen: undefined,
+          tradeSession: undefined,
           paperdollFor: undefined,
           npcDialogFor: undefined,
           debugShowNpcDialogPopup: false,
@@ -303,7 +330,7 @@ export function reduce(state: GameState, action: Action): GameState {
           ...fresh.ui,
           screen: 'hub',
           hubScene: 'village',
-          tavernTradeOpen: undefined,
+          tradeSession: undefined,
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
@@ -357,7 +384,7 @@ export function reduce(state: GameState, action: Action): GameState {
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
           hubScene: undefined,
-          tavernTradeOpen: undefined,
+          tradeSession: undefined,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
@@ -366,14 +393,14 @@ export function reduce(state: GameState, action: Action): GameState {
       if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'village') return state
       return {
         ...state,
-        ui: { ...state.ui, hubScene: 'tavern', tavernTradeOpen: undefined },
+        ui: { ...state.ui, hubScene: 'tavern', tradeSession: undefined },
       }
     }
     case 'hub/goVillage': {
       if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
       return {
         ...state,
-        ui: { ...state.ui, hubScene: 'village', tavernTradeOpen: undefined },
+        ui: { ...state.ui, hubScene: 'village', tradeSession: undefined },
       }
     }
     case 'hub/enterDungeon': {
@@ -384,16 +411,47 @@ export function reduce(state: GameState, action: Action): GameState {
           ...state.ui,
           screen: 'game',
           hubScene: undefined,
-          tavernTradeOpen: undefined,
+          tradeSession: undefined,
         },
       }
     }
     case 'hub/openTavernTrade': {
-      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
-      return { ...state, ui: { ...state.ui, tavernTradeOpen: true } }
+      return openHubInnkeeperTrade(state)
     }
-    case 'hub/closeTavernTrade': {
-      return { ...state, ui: { ...state.ui, tavernTradeOpen: false } }
+    case 'hub/closeTavernTrade':
+    case 'trade/close': {
+      return closeTradeSession(state)
+    }
+    case 'trade/openNpc': {
+      return openFloorNpcTrade(state, action.npcId)
+    }
+    case 'trade/clearAsk': {
+      const ts = state.ui.tradeSession
+      if (!ts) return state
+      return tryClearTradeAsk(state, ts)
+    }
+    case 'trade/selectStock': {
+      const ts = state.ui.tradeSession
+      if (!ts) return state
+      return trySetTradeAsk(state, ts, action.stockIndex) ?? state
+    }
+    case 'trade/stageOfferFromInventory': {
+      if (state.combat) return rejectNotWhileInCombat(state)
+      const ts = state.ui.tradeSession
+      if (!ts) return state
+      const itemId = state.party.inventory.slots[action.slotIndex]
+      if (!itemId) return state
+      const applied = tryStageTradeOffer(state, ts, itemId, action.slotIndex)
+      if (!applied) return reduce(state, { type: 'ui/sfx', kind: 'reject' })
+      return reduce(reduce(applied, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.12, ms: 70 })
+    }
+    case 'trade/execute': {
+      if (state.combat) return rejectNotWhileInCombat(state)
+      const ts = state.ui.tradeSession
+      if (!ts) return state
+      const next = tryExecuteTrade(state, ts, state.nowMs)
+      if (!next) return reduce(state, { type: 'ui/sfx', kind: 'reject' })
+      return reduce(pushActivityLog(next, 'Trade complete.'), { type: 'ui/sfx', kind: 'pickup' })
     }
     case 'debug/loadHubHotspots': {
       return { ...state, hubHotspots: mergeHubHotspotConfig(state.hubHotspots, action.patch) }
@@ -598,17 +656,30 @@ export function reduce(state: GameState, action: Action): GameState {
       const dv = dirVec(state.floor.playerDir)
       const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
       const hpMax = npcKindHpMax(action.kind)
-      const npc = {
+      const base = {
         id: `debug_npc_${state.nowMs}`,
         kind: action.kind,
         name: action.kind,
         pos,
-        status: 'neutral' as const,
         hp: hpMax,
         hpMax,
         language: 'DeepGnome' as const,
         statuses: [] as GameState['floor']['npcs'][number]['statuses'],
       }
+      const npc: GameState['floor']['npcs'][number] =
+        action.kind === 'Bobr'
+          ? {
+              ...base,
+              status: 'friendly' as const,
+              trade: {
+                stock: [
+                  { defId: 'Mushrooms' as const, qty: 3 },
+                  { defId: 'Flourball' as const, qty: 1 },
+                ],
+                wants: ['Stone' as const, 'Stick' as const],
+              },
+            }
+          : { ...base, status: 'neutral' as const }
       return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
     case 'debug/spawnPoi': {
@@ -784,6 +855,30 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'drag/drop': {
       const stateAtAction = action.nowMs != null ? { ...state, nowMs: action.nowMs } : state
       const { payload, target } = action
+      const ts0 = stateAtAction.ui.tradeSession
+      if (ts0) {
+        if (target.kind === 'inventorySlot' && payload.source.kind === 'tradeOffer') {
+          const applied = tryReturnTradeOfferToInventory(stateAtAction, ts0, payload.itemId, target.slotIndex)
+          if (applied) return applied
+          return stateAtAction
+        }
+        if (payload.source.kind === 'tradeOffer' && target.kind !== 'inventorySlot') {
+          return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
+        }
+        if (target.kind === 'tradeOfferSlot' && payload.source.kind === 'inventorySlot') {
+          const applied = tryStageTradeOffer(stateAtAction, ts0, payload.itemId, payload.source.slotIndex)
+          if (applied) return reduce(reduce(applied, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.12, ms: 70 })
+          return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
+        }
+        if (target.kind === 'tradeAskSlot' && payload.source.kind === 'tradeStockSlot') {
+          const applied = trySetTradeAsk(stateAtAction, ts0, payload.source.stockIndex)
+          if (applied) return reduce(applied, { type: 'ui/sfx', kind: 'ui' })
+          return stateAtAction
+        }
+        if (payload.source.kind === 'tradeStockSlot') {
+          return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
+        }
+      }
       const itemId: ItemId = payload.itemId
 
       if (target.kind === 'stowEquipped') {

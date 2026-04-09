@@ -22,6 +22,14 @@
   outline-offset: 2px;
 }
 
+.slotTradeEligible {
+  border-color: rgba(110, 220, 150, 0.95);
+  box-shadow:
+    inset 0 0 0 2px rgba(90, 210, 140, 0.9),
+    0 0 12px rgba(60, 200, 120, 0.55);
+  background: rgba(25, 95, 55, 0.42);
+}
+
 .item {
   box-sizing: border-box;
   width: 100%;
@@ -40,6 +48,11 @@
   place-items: center;
 }
 
+.item:disabled,
+.item[aria-disabled='true'] {
+  opacity: 0.35;
+}
+
 .qty {
   position: absolute;
   right: 6px;
@@ -47,5 +60,6 @@
   font-family: var(--mono);
   font-size: 11px;
   color: rgba(255, 255, 255, 0.75);
+  pointer-events: none;
 }
 

@@ -7,6 +7,12 @@ import { npcQuestEnglishLine } from '../../game/npc/npcQuestSpeech'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
+import {
+  MODAL_CHROME_HIT_ATTR,
+  modalChromeClickActivate,
+  modalChromePointerUpActivate,
+} from '../cursor/modalChromeActivate'
+import { npcCaptureInteractiveRectFromGameViewportEl } from '../hud/npcCaptureInteractiveRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './NpcDialogModal.module.css'
 
@@ -38,6 +44,8 @@ export function NpcDialogModal(props: {
   const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
   const [captureSpeechBottomPct, setCaptureSpeechBottomPct] = useState<number | null>(null)
   const captureRootRef = useRef<HTMLDivElement>(null)
+  const suppressTradeClick = useRef(false)
+  const suppressCloseClick = useRef(false)
   const cursor = useCursor()
   const dialogNpcId = state.ui.npcDialogFor
   const previewNpc =
@@ -55,7 +63,11 @@ export function NpcDialogModal(props: {
       return
     }
     const sync = () => {
-      const r = el.getBoundingClientRect()
+      const r = npcCaptureInteractiveRectFromGameViewportEl(el)
+      if (!r) {
+        setViewportRect(null)
+        return
+      }
       const h = typeof window !== 'undefined' ? window.innerHeight : 1
       const bottom = h - (r.top + r.height) + NPC_SPEECH_BOTTOM_INSET_PX
       const speechBottomPct = h > 0 ? (bottom / h) * 100 : 0
@@ -139,9 +151,41 @@ export function NpcDialogModal(props: {
             {npc.name} · {npc.status}
           </div>
         </div>
-        <button className={popup.close} type="button" onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}>
-          Close
-        </button>
+        <div style={{ display: 'flex', gap: 10, alignItems: 'center', flexShrink: 0 }}>
+          {npc.status === 'friendly' && npc.trade && variant === 'interactive' ? (
+            <button
+              className={popup.actionBtn}
+              type="button"
+              {...{ [MODAL_CHROME_HIT_ATTR]: '' }}
+              onPointerUp={(e) =>
+                modalChromePointerUpActivate(
+                  cursor,
+                  e,
+                  () => dispatch({ type: 'trade/openNpc', npcId: npc.id }),
+                  suppressTradeClick,
+                )
+              }
+              onClick={(e) =>
+                modalChromeClickActivate(e, () => dispatch({ type: 'trade/openNpc', npcId: npc.id }), suppressTradeClick)
+              }
+            >
+              Trade
+            </button>
+          ) : null}
+          <button
+            className={popup.close}
+            type="button"
+            {...{ [MODAL_CHROME_HIT_ATTR]: '' }}
+            onPointerUp={(e) =>
+              modalChromePointerUpActivate(cursor, e, () => dispatch({ type: 'ui/closeNpcDialog' }), suppressCloseClick)
+            }
+            onClick={(e) =>
+              modalChromeClickActivate(e, () => dispatch({ type: 'ui/closeNpcDialog' }), suppressCloseClick)
+            }
+          >
+            Close
+          </button>
+        </div>
       </div>
 
       <div className={popup.hint}>Tip: drag an item from inventory onto them.</div>
@@ -192,8 +236,8 @@ export function NpcDialogModal(props: {
       onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
-        const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+        const { drop } = cursor.endPointerUp(e)
+        if (drop) dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
       }}
     >
       {topPanel}

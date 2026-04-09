@@ -109,12 +109,32 @@ export type HubHotspotConfig = {
   tavern: { innkeeper: HubNormRect; exit: HubNormRect }
 }
 
+/** Merchant row: remaining quantity (hub persists in `run.hubInnkeeperTradeStock`; floor NPCs store under `npc.trade`). */
+export type TradeStockRow = { defId: ItemDefId; qty: number }
+
+export type NpcTrade = { stock: TradeStockRow[]; wants: ItemDefId[] }
+
+export type TradeSession =
+  | {
+      kind: 'hub_innkeeper'
+      offerItemId: ItemId | null
+      askStockIndex: number | null
+      stock: TradeStockRow[]
+      wants: ItemDefId[]
+    }
+  | {
+      kind: 'floor_npc'
+      npcId: Id
+      offerItemId: ItemId | null
+      askStockIndex: number | null
+    }
+
 export type UiState = {
   screen: UiScreen
   /** When `screen === 'hub'`, which bespoke 2D scene is shown. */
   hubScene?: 'village' | 'tavern'
-  /** Stub trade UI from tavern innkeeper hotspot. */
-  tavernTradeOpen?: boolean
+  /** Active barter UI (tavern innkeeper or a trading floor NPC). */
+  tradeSession?: TradeSession
   debugOpen: boolean
   /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
   procgenDebugOverlay?: ProcgenDebugOverlayMode
@@ -422,6 +442,8 @@ export type GameState = {
       damageBonusPct: number
     }
     checkpoint?: RunCheckpoint
+    /** Remaining tavern innkeeper stock for this run (undefined = use content defaults on next open). */
+    hubInnkeeperTradeStock?: TradeStockRow[]
   }
 
   combat?: CombatState
@@ -473,6 +495,7 @@ export type GameState = {
       hpMax: number
       language: NpcLanguage
       quest?: { wants: ItemDefId; hated: ItemDefId[] }
+      trade?: NpcTrade
       statuses: Array<{ id: StatusEffectId; untilMs?: number }>
     }>
     playerPos: Vec2
@@ -497,6 +520,10 @@ export type DragSource =
       fromPortrait?: boolean
     }
   | { kind: 'floorItem'; itemId: ItemId }
+  /** Staged offer in the trade modal (`itemId` is the offered stack). */
+  | { kind: 'tradeOffer'; itemId: ItemId }
+  /** NPC merchant row in the trade modal (`stockIndex` into current stock list). */
+  | { kind: 'tradeStockSlot'; stockIndex: number }
 
 export type DragPayload = {
   itemId: ItemId
@@ -513,4 +540,6 @@ export type DragTarget =
   | { kind: 'equipmentSlot'; characterId: CharacterId; slot: EquipmentSlot }
   /** Portrait-only: drop with no valid target stows to first free inventory slot (via unequip). */
   | { kind: 'stowEquipped' }
+  | { kind: 'tradeOfferSlot' }
+  | { kind: 'tradeAskSlot' }
 

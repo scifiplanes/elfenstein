@@ -1,6 +1,7 @@
 import { type PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragPayload, DragTarget } from '../../game/types'
 import { CursorContext, type CursorApi, type CursorState } from './CursorContext'
+import { MODAL_CHROME_HIT_ATTR } from './modalChromeActivate'
 
 function parseTargetFromEl(el: Element | null): DragTarget | null {
   const node = el?.closest?.('[data-drop-kind]') as HTMLElement | null
@@ -20,6 +21,25 @@ function parseTargetFromEl(el: Element | null): DragTarget | null {
     return { kind: 'portrait', characterId: String(node.dataset.dropCharacterId ?? ''), target }
   }
   if (kind === 'equipmentSlot') return { kind: 'equipmentSlot', characterId: String(node.dataset.dropCharacterId ?? ''), slot: String(node.dataset.dropEquipSlot ?? '') as any }
+  if (kind === 'tradeOfferSlot') return { kind: 'tradeOfferSlot' }
+  if (kind === 'tradeAskSlot') return { kind: 'tradeAskSlot' }
+  return null
+}
+
+/** Walk top-to-bottom so opacity-0 portaled modals still resolve `tradeAskSlot` / etc. */
+function hitTestDropTargetAtPoint(
+  x: number,
+  y: number,
+): { target: DragTarget; rect: { left: number; top: number; right: number; bottom: number } } | null {
+  if (typeof document === 'undefined' || !document.elementsFromPoint) return null
+  for (const raw of document.elementsFromPoint(x, y)) {
+    const node = raw instanceof Element ? (raw.closest('[data-drop-kind]') as HTMLElement | null) : null
+    if (!node) continue
+    const target = parseTargetFromEl(node)
+    if (!target) continue
+    const r = node.getBoundingClientRect()
+    return { target, rect: { left: r.left, top: r.top, right: r.right, bottom: r.bottom } }
+  }
   return null
 }
 
@@ -46,6 +66,10 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
       return { icon: '⛭', label: 'Equip' }
     case 'stowEquipped':
       return { icon: '↔', label: 'Stow' }
+    case 'tradeOfferSlot':
+      return { icon: '🤝', label: 'Offer' }
+    case 'tradeAskSlot':
+      return { icon: '☑', label: 'Request' }
     default:
       return null
   }
@@ -57,6 +81,8 @@ export function CursorProvider(props: PropsWithChildren) {
   const virtualHover = useRef<{ target: DragTarget | null; rect: CursorState['hoverRect'] } | null>(null)
   const capture = useRef<{ el: Element; pointerId: number } | null>(null)
   const dragStartPos = useRef<{ x: number; y: number } | null>(null)
+  /** Mirrors “drag promoted” synchronously so `pointerup` handlers don’t read a stale `state.dragging.started`. */
+  const dragPromotedRef = useRef(false)
 
   // Drag should start on normal click-drag, not only after a hold delay.
   // Use a small movement threshold to avoid treating simple clicks as drags.
@@ -84,6 +110,7 @@ export function CursorProvider(props: PropsWithChildren) {
     e.preventDefault()
     e.stopPropagation()
     clearHoldTimer()
+    dragPromotedRef.current = false
     pendingPayload.current = payload
     const { clientX: x, clientY: y } = e
     dragStartPos.current = { x, y }
@@ -99,6 +126,7 @@ export function CursorProvider(props: PropsWithChildren) {
     }
     setState((s) => ({ ...s, pointer: { x, y }, isPointerDown: true, dragging: { payload, started: false } }))
     holdTimer.current = window.setTimeout(() => {
+      dragPromotedRef.current = true
       setState((s) => (s.dragging ? { ...s, dragging: { ...s.dragging, started: true } } : s))
     }, 140)
   }, [clearHoldTimer])
@@ -106,40 +134,55 @@ export function CursorProvider(props: PropsWithChildren) {
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     const { clientX: x, clientY: y } = e
 
-    // If the pointer moved enough while pressed, start the drag immediately.
-    // This makes crafting/swapping work with a normal click-drag gesture.
+    // Promote drag on movement using refs + pending payload, not React state from the closure.
+    // `beginPointerDown` sets those synchronously, but `dragging` in state may not have committed
+    // yet on the first moves — reading `state.isPointerDown` here skipped the threshold and forced
+    // the 140ms hold timer (felt laggy; trade/stock could fail after one interaction).
     const start = dragStartPos.current
-    if (state.isPointerDown && state.dragging && !state.dragging.started && start) {
+    const pending = pendingPayload.current
+    let promotedByMove = false
+    if (pending && !dragPromotedRef.current && start) {
       const dx = x - start.x
       const dy = y - start.y
-      const d2 = dx * dx + dy * dy
-      if (d2 >= DRAG_START_PX * DRAG_START_PX) {
+      if (dx * dx + dy * dy >= DRAG_START_PX * DRAG_START_PX) {
         clearHoldTimer()
-        setState((s) => (s.dragging ? { ...s, dragging: { ...s.dragging, started: true } } : s))
+        dragPromotedRef.current = true
+        promotedByMove = true
       }
     }
 
-    const el = document.elementFromPoint(x, y)
-    const node = (el?.closest?.('[data-drop-kind]') as HTMLElement | null) ?? null
-    const domTarget = parseTargetFromEl(node)
-    const domRect = node ? node.getBoundingClientRect() : null
+    const hit = hitTestDropTargetAtPoint(x, y)
+    const domTarget = hit?.target ?? null
+    const domRect = hit?.rect ?? null
     const v = virtualHover.current
     // Treat virtual hover as a one-move override. This prevents the viewport's
     // `floorDrop` hover from "leaking" into UI hover when the pointer leaves the WebGL canvas.
     if (v) virtualHover.current = null
     const target = v?.target ?? domTarget
-    const rect = v?.rect ?? (domRect ? { left: domRect.left, top: domRect.top, right: domRect.right, bottom: domRect.bottom } : null)
-    setState((s) => ({
-      ...s,
-      pointer: { x, y },
-      hoverTarget: target,
-      hoverRect: rect,
-      affordance: s.dragging?.started ? affordanceForTarget(target) : null,
-    }))
-  }, [clearHoldTimer, state.dragging, state.dragging?.started, state.isPointerDown])
+    const rect = v?.rect ?? domRect
+    setState((s) => {
+      let next = s
+      if (promotedByMove) {
+        const p = pendingPayload.current
+        if (s.dragging && !s.dragging.started) {
+          next = { ...s, dragging: { ...s.dragging, started: true } }
+        } else if (!s.dragging && p) {
+          next = { ...s, isPointerDown: true, dragging: { payload: p, started: true } }
+        }
+      }
+      return {
+        ...next,
+        pointer: { x, y },
+        hoverTarget: target,
+        hoverRect: rect,
+        affordance: next.dragging?.started ? affordanceForTarget(target) : null,
+      }
+    })
+  }, [clearHoldTimer])
 
   const cancelDrag = useCallback(() => {
     clearHoldTimer()
+    dragPromotedRef.current = false
     pendingPayload.current = null
     virtualHover.current = null
     dragStartPos.current = null
@@ -166,14 +209,17 @@ export function CursorProvider(props: PropsWithChildren) {
     }))
   }, [])
 
-  const endPointerUp = useCallback((e: React.PointerEvent): { payload: DragPayload; target: DragTarget } | null => {
+  const endPointerUp = useCallback((e: React.PointerEvent) => {
     clearHoldTimer()
+    const promotedToDrag = dragPromotedRef.current
+    dragPromotedRef.current = false
     const { clientX: x, clientY: y } = e
     const v = virtualHover.current
-    const el = document.elementFromPoint(x, y)
-    let target = v?.target ?? parseTargetFromEl(el)
+    const hit = hitTestDropTargetAtPoint(x, y)
+    let target = v?.target ?? hit?.target ?? null
     virtualHover.current = null
     const payload = pendingPayload.current
+    const hadPointerSession = payload != null
     pendingPayload.current = null
     dragStartPos.current = null
     try {
@@ -190,21 +236,54 @@ export function CursorProvider(props: PropsWithChildren) {
     if (
       !target &&
       payload &&
-      state.dragging?.started &&
+      promotedToDrag &&
       payload.source.kind === 'equipmentSlot' &&
       payload.source.fromPortrait
     ) {
       target = { kind: 'stowEquipped' }
     }
 
-    const result =
-      payload && state.dragging?.started && target
+    const drop =
+      payload && promotedToDrag && target
         ? { payload, target }
         : null
 
     setState((s) => ({ ...s, isPointerDown: false, dragging: null, affordance: null, hoverTarget: target, pointer: { x, y } }))
-    return result
-  }, [clearHoldTimer, state.dragging?.started])
+
+    // `setPointerCapture` on drag sources sends `pointerup` to the captured node, not the element
+    // under the cursor — modal chrome may never see `pointerup`. If the release point hits a
+    // marked chrome button and the event target is not that button, synthesize a click next tick.
+    const origTarget = e.target
+    queueMicrotask(() => {
+      if (typeof document === 'undefined') return
+      if (!hadPointerSession) return
+      const raw = document.elementFromPoint(x, y)
+      const sel = `[${MODAL_CHROME_HIT_ATTR}]`
+      const hit = raw?.closest?.(sel)
+      if (!hit || !(hit instanceof HTMLButtonElement)) return
+      if (origTarget instanceof Node && (hit === origTarget || hit.contains(origTarget))) return
+      if (hit.getAttribute('aria-disabled') === 'true') return
+      if (hit.disabled) return
+      // #region agent log
+      fetch('http://127.0.0.1:7778/ingest/894c4eea-1ecd-42c9-95f9-1525a8a4b392', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9e1d47' },
+        body: JSON.stringify({
+          sessionId: '9e1d47',
+          runId: 'post-fix3',
+          hypothesisId: 'V4',
+          location: 'CursorProvider.tsx:endPointerUp',
+          message: 'retarget modal chrome click after capture-target pointerup',
+          data: { origTag: origTarget instanceof Element ? origTarget.tagName : String(origTarget) },
+          timestamp: Date.now(),
+        }),
+      }).catch(() => {})
+      // #endregion
+      hit.click()
+    })
+
+    return { drop, promotedToDrag }
+  }, [clearHoldTimer])
 
   useEffect(() => {
     const onBlur = () => cancelDrag()

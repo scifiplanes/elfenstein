@@ -10,7 +10,7 @@ import { HudLayout } from '../hud/HudLayout'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { NpcDialogModal } from '../npc/NpcDialogModal'
 import { DeathModal } from '../death/DeathModal'
-import { TavernTradeModal } from '../hub/TavernTradeModal'
+import { TradeModal } from '../trade/TradeModal'
 import { TitleScreen } from '../title/TitleScreen'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
@@ -839,6 +839,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
   const noopDispatch = useMemo(() => (() => {}) as Dispatch<Action>, [])
 
+  const tradeModalOpen =
+    Boolean(state.ui.tradeSession) &&
+    ((state.ui.screen === 'hub' && state.ui.tradeSession!.kind === 'hub_innkeeper') ||
+      (state.ui.screen === 'game' && state.ui.tradeSession!.kind === 'floor_npc'))
+
+  /* `tradeModalOpen` only for capture HUD overlay; interactive trade mounts in `HudLayout`. */
+
   return (
     <div className={styles.root}>
       <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
@@ -865,12 +872,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       state.ui.paperdollFor ||
       state.ui.npcDialogFor ||
       state.ui.death ||
-      (state.ui.screen === 'hub' && state.ui.tavernTradeOpen) ||
       (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ||
       (state.ui.screen === 'game' && state.ui.debugShowDeathPopup) ? (
         <div className={styles.stageModalLayer}>
           <TitleScreen state={state} dispatch={dispatch} />
-          <TavernTradeModal state={state} dispatch={dispatch} />
           <DeathModal state={state} dispatch={dispatch} gameViewportRef={gameViewportRef} />
           <PaperdollModal state={state} dispatch={dispatch} content={content} />
           <NpcDialogModal state={state} dispatch={dispatch} content={content} gameViewportRef={gameViewportRef} />
@@ -910,8 +915,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
                       <TitleScreen variant="capture" state={state} dispatch={noopDispatch} />
                     ) : state.ui.paperdollFor ? (
                       <PaperdollModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
-                    ) : state.ui.screen === 'hub' && state.ui.tavernTradeOpen ? (
-                      <TavernTradeModal variant="capture" state={state} dispatch={noopDispatch} />
+                    ) : tradeModalOpen ? (
+                      <TradeModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
                     ) : null
                   }
                 />

@@ -5,6 +5,11 @@ import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { EquipmentSlot, GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
+import {
+  MODAL_CHROME_HIT_ATTR,
+  modalChromeClickActivate,
+  modalChromePointerUpActivate,
+} from '../cursor/modalChromeActivate'
 import popup from '../shared/GamePopup.module.css'
 import styles from './PaperdollModal.module.css'
 
@@ -23,6 +28,7 @@ export function PaperdollModal(props: {
   const characterId = state.ui.paperdollFor
   /** Opening from a portrait tap dispatches before the synthetic `click`; the click then hits this full-screen backdrop and would close immediately. */
   const suppressBackdropCloseUntilRef = useRef(0)
+  const suppressCloseClick = useRef(false)
   useLayoutEffect(() => {
     if (characterId && variant === 'interactive') {
       suppressBackdropCloseUntilRef.current = performance.now() + 450
@@ -56,8 +62,8 @@ export function PaperdollModal(props: {
       onPointerUp={
         variant === 'interactive'
           ? (e) => {
-              const result = cursor.endPointerUp(e)
-              if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+              const { drop } = cursor.endPointerUp(e)
+              if (drop) dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
             }
           : undefined
       }
@@ -67,7 +73,22 @@ export function PaperdollModal(props: {
           <div className={popup.titleRow}>
             <div className={popup.title}>Paperdoll · {c.name}</div>
           </div>
-          <button className={popup.close} type="button" onClick={() => dispatch({ type: 'ui/closePaperdoll' })}>
+          <button
+            className={popup.close}
+            type="button"
+            {...{ [MODAL_CHROME_HIT_ATTR]: '' }}
+            onPointerUp={(e) =>
+              modalChromePointerUpActivate(
+                cursor,
+                e,
+                () => dispatch({ type: 'ui/closePaperdoll' }),
+                suppressCloseClick,
+              )
+            }
+            onClick={(e) =>
+              modalChromeClickActivate(e, () => dispatch({ type: 'ui/closePaperdoll' }), suppressCloseClick)
+            }
+          >
             Close
           </button>
         </div>
@@ -101,8 +122,9 @@ export function PaperdollModal(props: {
                       onPointerMove={cursor.onPointerMove}
                       onPointerCancel={cursor.cancelDrag}
                       onPointerUp={(e) => {
-                        const result = cursor.endPointerUp(e)
-                        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+                        const { drop } = cursor.endPointerUp(e)
+                        e.stopPropagation()
+                        if (drop) dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
                       }}
                       onDoubleClick={() => {
                         dispatch({ type: 'equip/unequip', characterId, slot })
