@@ -4,6 +4,7 @@ import { DEFAULT_HUB_HOTSPOTS } from '../hubHotspotDefaults'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { generateDungeon } from '../../procgen/generateDungeon'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { pickPlayerSpawnCell } from './playerFloorCell'
 import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 
@@ -68,7 +69,7 @@ export function makeInitialState(_content: ContentDB): GameState {
     difficulty,
   })
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(DEFAULT_RENDER, gen.floorItems, floorSeed)
-  const playerPos = { ...gen.entrance }
+  const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
   const playerDir = 0 as const
 
   return {
@@ -78,6 +79,8 @@ export function makeInitialState(_content: ContentDB): GameState {
       debugOpen: false,
       sfxQueue: [],
       procgenDebugOverlay: undefined,
+      roomTelegraphMode: 'auto',
+      roomTelegraphStrength: 0.22,
       activityLog: [],
       death: undefined,
     },

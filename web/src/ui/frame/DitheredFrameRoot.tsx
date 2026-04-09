@@ -662,16 +662,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
 
     const activeRoomPropRaw = roomPropertyUnderPlayer(latestStateRef.current)
-    const telegraphOverride = (
-      window as unknown as {
-        __elfensteinRoomTelegraph?:
-          | undefined
-          | {
-              mode?: 'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'
-              strength?: number
-            }
-      }
-    ).__elfensteinRoomTelegraph
+    const uiSnap = latestStateRef.current.ui
+    const telegraphOverride = {
+      mode: uiSnap.roomTelegraphMode,
+      strength: uiSnap.roomTelegraphStrength,
+    }
     const activeRoomProp =
       telegraphOverride?.mode && telegraphOverride.mode !== 'auto'
         ? telegraphOverride.mode === 'off'

@@ -28,18 +28,51 @@ export function CombatIndicator(props: {
     : turn.kind === 'pc' ? `PC turn: ${pcName(state, turn.id)}`
     : `NPC turn: ${npcName(state, turn.id)}`
 
+  const q = state.combat.turnQueue
+  const nq = q.length
+  let nextLine: string | null = null
+  if (nq > 1) {
+    const cur = ((state.combat.turnIndex % nq) + nq) % nq
+    const nt = q[(cur + 1) % nq]!
+    nextLine = nt.kind === 'pc' ? `Next: ${pcName(state, nt.id)}` : `Next: ${npcName(state, nt.id)}`
+  }
+
   const npcs = state.combat.participants.npcs
     .map((id) => state.floor.npcs.find((n) => n.id === id))
     .filter(Boolean) as Array<GameState['floor']['npcs'][number]>
 
-  const enemyLabel = npcs.length ? npcs.map((n) => n.name).join(', ') : 'Unknown'
   const canDefend = turn?.kind === 'pc'
 
   return (
     <div className={styles.wrap} aria-label="Combat status">
       <div className={styles.title}>ENCOUNTER</div>
-      <div className={styles.enemies}>{enemyLabel}</div>
+      <div className={styles.enemyList} aria-label="Encounter enemies">
+        {npcs.length ? (
+          npcs.map((n) => {
+            const max = Math.max(1, n.hpMax ?? n.hp)
+            const pct = Math.round((100 * Math.max(0, n.hp)) / max)
+            return (
+              <div key={n.id} className={styles.enemyRow}>
+                <span className={styles.enemyName}>{n.name}</span>
+                <div
+                  className={styles.hpTrack}
+                  role="progressbar"
+                  aria-valuenow={n.hp}
+                  aria-valuemin={0}
+                  aria-valuemax={max}
+                  aria-label={`${n.name} health`}
+                >
+                  <div className={styles.hpFill} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div className={styles.enemies}>Unknown</div>
+        )}
+      </div>
       <div className={styles.turn}>{turnText}</div>
+      {nextLine ? <div className={styles.nextTurn}>{nextLine}</div> : null}
       {interactive ? (
         <div className={styles.actions} role="group" aria-label="Combat actions">
           <button

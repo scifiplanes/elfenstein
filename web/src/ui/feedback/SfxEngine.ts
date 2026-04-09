@@ -1,4 +1,4 @@
-export type SfxKind = 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones'
+export type SfxKind = 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones'
 type SfxTuning = {
   masterSfx: number
   munchVol: number
@@ -150,8 +150,17 @@ export class SfxEngine {
           vol = 0.055 * masterSfx
         } else {
           o.type = kind === 'reject' ? 'sawtooth' : 'triangle'
-          base = kind === 'hit' ? 120 : kind === 'pickup' ? 520 : kind === 'reject' ? 160 : 420
-          vol = (kind === 'hit' ? 0.08 : kind === 'reject' ? 0.06 : 0.04) * masterSfx
+          base =
+            kind === 'hit' ? 120
+            : kind === 'swing' ? 220
+            : kind === 'pickup' ? 520
+            : kind === 'reject' ? 160
+            : 420
+          vol =
+            (kind === 'hit' ? 0.08
+            : kind === 'swing' ? 0.045
+            : kind === 'reject' ? 0.06
+            : 0.04) * masterSfx
         }
         o.frequency.setValueAtTime(base, now)
         o.frequency.exponentialRampToValueAtTime(base * 0.75, now + 0.08)

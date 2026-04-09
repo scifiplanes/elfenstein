@@ -8,6 +8,7 @@ import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { loadImage, prefetchImages } from '../assets/imageCache'
+import { hpMax, staminaMax } from '../../game/state/runProgression'
 import styles from './PortraitPanel.module.css'
 
 const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
@@ -17,8 +18,20 @@ const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
   thr: '#3d75dd',
 }
 
-/** Until character state exposes per-vital **max** + **current**, treat the bar as full (implicit max = current). Order: row1 HP|STA, row2 HUN|THR. */
+/** Matches feed clamp in `interactions.ts`. */
+const HUNGER_THIRST_CAP = 100
+
+/** Order: row1 HP|STA, row2 HUN|THR. HP/STA use run-level maxima from `runProgression`. */
 const PORTRAIT_VITAL_CELL_KEYS = ['hp', 'sta', 'hun', 'thr'] as const
+
+function vitalFillRatio(key: (typeof PORTRAIT_VITAL_CELL_KEYS)[number], c: GameState['party']['chars'][number], state: GameState): number {
+  const hm = Math.max(1, hpMax(state))
+  const sm = Math.max(1, staminaMax(state))
+  if (key === 'hp') return Math.max(0, Math.min(1, Math.min(c.hp, hm) / hm))
+  if (key === 'sta') return Math.max(0, Math.min(1, Math.min(c.stamina, sm) / sm))
+  if (key === 'hun') return Math.max(0, Math.min(1, c.hunger / HUNGER_THIRST_CAP))
+  return Math.max(0, Math.min(1, c.thirst / HUNGER_THIRST_CAP))
+}
 
 type PortraitSprites =
   | { kind: 'simple'; baseSrc: string; eyesSrc: string; eyesInspectSrc?: string; mouthSrc: string; mouthClosedSrc?: string; idleSrc?: string }
@@ -596,7 +609,13 @@ hoveringMouth=${String(__debug.hoveringMouth)}`}
             {PORTRAIT_VITAL_CELL_KEYS.map((key) => (
               <div key={key} className={styles.statCell}>
                 <div className={styles.statBarTrack}>
-                  <div className={styles.statBarFill} style={{ backgroundColor: VITAL_BAR_FILL[key] }} />
+                  <div
+                    className={styles.statBarFill}
+                    style={{
+                      backgroundColor: VITAL_BAR_FILL[key],
+                      width: `${Math.round(vitalFillRatio(key, c, state) * 10_000) / 100}%`,
+                    }}
+                  />
                 </div>
               </div>
             ))}

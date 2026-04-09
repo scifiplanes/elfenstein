@@ -7,7 +7,12 @@ import { ContentDB } from '../game/content/contentDb'
 import { FeedbackLayer } from '../ui/feedback/FeedbackLayer'
 import { SpatialAudioLayer } from '../ui/audio/SpatialAudioLayer'
 import { MusicLayer } from '../ui/audio/MusicLayer'
-import { loadDebugSettingsFromLocal, loadDebugSettingsFromProject, saveDebugSettingsToLocal } from './debugSettingsPersistence'
+import {
+  buildDebugUiPersist,
+  loadDebugSettingsFromLocal,
+  loadDebugSettingsFromProject,
+  saveDebugSettingsToLocal,
+} from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
 
@@ -26,12 +31,18 @@ export function GameApp() {
       if (data?.hubHotspots) {
         dispatch({ type: 'debug/loadHubHotspots', patch: data.hubHotspots })
       }
+      if (data?.debugUi) {
+        dispatch({ type: 'debug/loadPersistedUi', patch: data.debugUi })
+      }
       const local = loadDebugSettingsFromLocal()
       if (local?.render || local?.audio) {
         dispatch({ type: 'debug/loadTuning', render: local.render, audio: local.audio })
       }
       if (local?.hubHotspots) {
         dispatch({ type: 'debug/loadHubHotspots', patch: local.hubHotspots })
+      }
+      if (local?.debugUi) {
+        dispatch({ type: 'debug/loadPersistedUi', patch: local.debugUi })
       }
       setDebugTuningHydrated(true)
     })
@@ -43,10 +54,26 @@ export function GameApp() {
   useEffect(() => {
     if (!debugTuningHydrated) return
     const t = window.setTimeout(() => {
-      saveDebugSettingsToLocal(state.render, state.audio, state.hubHotspots)
+      saveDebugSettingsToLocal(
+        state.render,
+        state.audio,
+        state.hubHotspots,
+        buildDebugUiPersist(state.ui),
+      )
     }, 450)
     return () => window.clearTimeout(t)
-  }, [debugTuningHydrated, state.render, state.audio, state.hubHotspots])
+  }, [
+    debugTuningHydrated,
+    state.render,
+    state.audio,
+    state.hubHotspots,
+    state.ui.debugBgTrack,
+    state.ui.procgenDebugOverlay,
+    state.ui.roomTelegraphMode,
+    state.ui.roomTelegraphStrength,
+    state.ui.debugShowNpcDialogPopup,
+    state.ui.debugShowDeathPopup,
+  ])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

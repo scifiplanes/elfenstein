@@ -3,6 +3,7 @@ import { generateDungeon } from '../../procgen/generateDungeon'
 import type { FloorType } from '../../procgen/types'
 import { normalizeFloorGenDifficulty } from '../../procgen/types'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { pickPlayerSpawnCell } from './playerFloorCell'
 import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 import { pushActivityLog } from './activityLog'
@@ -33,7 +34,7 @@ export function descendToNextFloor(state: GameState): GameState {
     difficulty: nextDifficulty,
   })
 
-  const playerPos = { ...gen.entrance }
+  const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
   const playerDir = 0 as const
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
 

@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import { toGibberish } from '../../game/npc/gibberish'
+import { npcQuestEnglishLine } from '../../game/npc/npcQuestSpeech'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
@@ -103,9 +104,8 @@ export function NpcDialogModal(props: {
   const npc = state.floor.npcs.find((n) => n.id === npcId)
   if (!npc) return null
 
-  const wants = npc.quest?.wants ? content.item(npc.quest.wants).name : null
-  const english = wants ? `…bring me ${wants}.` : `…`
-  const gib = toGibberish(npc.language, english, Math.floor(state.floor.seed) ^ 0xabc)
+  const english = npcQuestEnglishLine(npc, (id) => content.item(id).name) ?? `…`
+  const gib = toGibberish(npc.language, english, Math.floor(state.floor.seed) ^ 0xabc, npc.id)
 
   const panelChrome = `${popup.panel} ${popup.panelWidthMd}`
   const topPanelClass =
