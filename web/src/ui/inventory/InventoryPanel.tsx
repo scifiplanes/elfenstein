@@ -54,7 +54,6 @@ export function InventoryPanel(props: {
                   }}
                   onPointerMove={(e) => {
                     cursor.onPointerMove(e)
-                    e.stopPropagation()
                   }}
                   onPointerCancel={cursor.cancelDrag}
                   onPointerUp={(e) => {

@@ -4162,3 +4162,47 @@ Body-portaled invisible hit layers were unreliable for clicks; mounting in the s
 ### Consequences
 - **`DeathModal.tsx`**, **`TitleScreen.tsx`**, **`PaperdollModal.tsx`**, **`HudLayout.tsx`**, **`HudLayout.module.css`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`npcCaptureInteractiveRect.ts`** comment, **`GamePopup.module.css`** comment, **`DESIGN.md`**.
 - **Partially supersedes** the **interactive** body-portal story in **ADR-0205** for title / death / paperdoll; **NPC dialog** unchanged.
+
+---
+
+## ADR-0266 — Player spawn: BFS to plain floor + hub enter resnap
+Date: 2026-04-10
+
+### Decision
+- **`pickPlayerSpawnCell`** (**`web/src/game/state/playerFloorCell.ts`**) uses **BFS** from **`gen.entrance`**: traverse only **orthogonal** steps through tiles that are **`floor` or any door**, skipping **POI-occupied** cells (same occupancy rule as **`player/step`**); the **first** dequeued cell with **`tile === 'floor'`** (and thus not POI, since POI cells are never enqueued) is the spawn. Fast-path if **`entrance`** is already plain **`floor`** without a POI. If **`entrance`** is POI-blocked, seed the queue from **orthogonal neighbors** when the entrance itself cannot be enqueued. If BFS finds nothing, fall back to **`nearestFloorCellWithoutPoi`**.
+- **`hub/enterDungeon`** applies **`snapViewToGrid`** for the current **`floor.playerPos` / `playerDir`** and **`render.camEyeHeight`** so the camera is aligned when switching from the **hub** to the **game** screen (clears any **`view.anim`** via **`snapViewToGrid`**).
+
+### Rationale
+**`gen.entrance`** can be a **door** tile (**`isGoodSpawn`** uses **`isWalkable`**, which includes doors). Spawning on a **door** left the **3D** camera inside the **door billboard** (“stuck in geometry”), especially noticeable when first entering the dungeon from the **village hub**. Spawning on the **nearest reachable plain floor** matches **`attemptMoveTo`** stand tiles and avoids the mesh overlap.
+
+### Consequences
+- **`playerFloorCell.ts`**, **`reducer.ts`** (**`hub/enterDungeon`**), **`playerFloorCell.test.ts`**; **`DESIGN.md`** §6.4 / §8.2 / §8.3 **First load**; **ADR-0230** spawn bullet is **superseded** for **regen / descend / initial gen** (checkpoint reload unchanged).
+
+---
+
+## ADR-0267 — Spawn fallback must not return door; relaxed BFS + hub geom refresh
+Date: 2026-04-10
+
+### Decision
+- When **strict** **`pickPlayerSpawnCell`** BFS finds no plain **`floor`**, run a **relaxed** BFS that may **enqueue POI-occupied** tiles (still only **returns** **`floor` && !POI**), then require **`nearestFloorCellWithoutPoi`** to be plain **`floor`** before using it, else **row-major scan** for any plain **`floor`**. This removes the previous fallback that returned **`gen.entrance`** unchanged when it was a **door** and had no POI (which reproduced **door** spawns and **“solid stone”** bumps).
+- **`hub/enterDungeon`** also increments **`floor.floorGeomRevision`** so **`WorldRenderer`** rebuilds dungeon meshes after the **hub** 3D pass used a different **viewport** size for the same floor state.
+
+### Rationale
+A **door** entrance with **all** strict neighbors **POI**-blocked left **no** strict BFS target; **`nearestFloorCellWithoutPoi`** then returned the **door** because the blocked set only keyed **POIs**, not **non-floor** tiles. **Relaxed** search finds interior **`floor`** without changing in-run walking rules. Refreshing geometry addresses residual **camera / mesh** mismatch reports when switching **hub → game**.
+
+### Consequences
+- **`playerFloorCell.ts`**, **`playerFloorCell.test.ts`**, **`reducer.ts`**, **`DESIGN.md`** §6.4.
+
+---
+
+## ADR-0268 — Smash opened barrel/crate to clear blocking tile
+Date: 2026-04-10
+
+### Decision
+- A **second** interaction (**click** or **item dragged onto** the POI) on an **already opened** **Barrel** or **Crate** **removes** that POI from the floor, **increments** **`floorGeomRevision`**, and plays feedback (**shake**, **`pickup`** SFX, activity log). **Chest** unchanged (still only reports empty when opened).
+
+### Rationale
+**Open** barrels and crates still **occupy** their grid cell (**`poiOccupiesCell`** ignores **`opened`**), which blocked **walking** through that tile; letting the player **clear** the wreckage matches the visual of a broken container and restores **pathing** without new art (billboard simply disappears).
+
+### Consequences
+- **`web/src/game/state/poi.ts`** (`applyPoiUse`), **`web/src/game/state/poi.test.ts`**, **`DESIGN.md`** §9 (Barrel / Crate bullets).

@@ -407,6 +407,7 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'hub/enterDungeon': {
       if (state.ui.screen !== 'hub') return state
+      const f = state.floor
       return {
         ...state,
         ui: {
@@ -415,6 +416,9 @@ export function reduce(state: GameState, action: Action): GameState {
           hubScene: undefined,
           tradeSession: undefined,
         },
+        view: snapViewToGrid(f.w, f.h, state.render.camEyeHeight, f.playerPos, f.playerDir),
+        // Rebuild 3D mesh after hub used a different viewport rect for the same floor (avoids stale/off-by-one feel).
+        floor: { ...f, floorGeomRevision: f.floorGeomRevision + 1 },
       }
     }
     case 'hub/openTavernTrade': {

@@ -13,17 +13,22 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
   if (!poi) return state
 
   if (poi.kind === 'Barrel' || poi.kind === 'Crate') {
-    const label = poi.kind === 'Barrel' ? 'barrel' : 'crate'
     if (poi.opened) {
+      const pois = state.floor.pois.filter((p) => p.id !== poiId)
+      const q = state.ui.sfxQueue ?? []
+      const sfxQueue = q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'pickup' as const }])
+      const msg = poi.kind === 'Barrel' ? 'The barrel splinters apart.' : 'The crate breaks to splinters.'
       return pushActivityLog(
         {
           ...state,
+          floor: { ...state.floor, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
           ui: {
             ...state.ui,
-            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 105, magnitude: 0.14 },
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.3 },
+            sfxQueue,
           },
         },
-        `The ${label} is empty.`,
+        msg,
       )
     }
 

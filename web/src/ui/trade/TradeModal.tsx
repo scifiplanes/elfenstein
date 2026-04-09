@@ -146,14 +146,7 @@ export function TradeModal(props: {
                         }
                       : undefined
                   }
-                  onPointerMove={
-                    variant === 'interactive'
-                      ? (e) => {
-                          cursor.onPointerMove(e)
-                          e.stopPropagation()
-                        }
-                      : undefined
-                  }
+                  onPointerMove={variant === 'interactive' ? cursor.onPointerMove : undefined}
                   onPointerCancel={variant === 'interactive' ? cursor.cancelDrag : undefined}
                   onPointerUp={
                     variant === 'interactive'
@@ -213,14 +206,7 @@ export function TradeModal(props: {
                             }
                           : undefined
                       }
-                      onPointerMove={
-                        variant === 'interactive'
-                          ? (e) => {
-                              cursor.onPointerMove(e)
-                              e.stopPropagation()
-                            }
-                          : undefined
-                      }
+                      onPointerMove={variant === 'interactive' ? cursor.onPointerMove : undefined}
                       onPointerCancel={variant === 'interactive' ? cursor.cancelDrag : undefined}
                     >
                       {offerDef.icon.kind === 'emoji' ? offerDef.icon.value : '□'}
