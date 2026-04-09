@@ -96,6 +96,9 @@ export type Character = {
 
 export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
 
+/** F2 room-property telegraph override (compositor tint). */
+export type RoomTelegraphMode = 'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'
+
 export type UiScreen = 'title' | 'hub' | 'game'
 
 /** Normalized rect (0–1) for hub click regions inside the game viewport. */
@@ -119,6 +122,10 @@ export type UiState = {
   debugBgTrack?: string
   /** F2-only: trigger a one-shot bg sfx play; seq increments on each trigger. */
   debugBgSfxTrigger?: { index: number; seq: number }
+  /** F2 room telegraph: `auto` uses `roomProperties` under the player. */
+  roomTelegraphMode: RoomTelegraphMode
+  /** F2 room telegraph blend strength when a hazard tint is active (0–1). */
+  roomTelegraphStrength: number
   /** Present when the entire party is dead; blocks gameplay until a new run starts. */
   death?: { atMs: number; runId: string; floorIndex: number; level: number }
   /** F2: show the death modal with current run stats without setting `death` (no gameplay lock). */
@@ -385,6 +392,11 @@ export type CombatState = {
   lastAction?: { actorKind: 'pc' | 'npc'; actorId: Id; action: 'attack' | 'defend' | 'flee'; atMs: number }
   /** Active until that PC's next turn begins (cleared in advanceTurnIndex). */
   pcDefense?: Partial<Record<CharacterId, { armorBonus: number; resistBonusPct: number }>>
+  /**
+   * Fireshield (and similar): extra Fire resist for a PC; `turnsRemaining` ticks down each time
+   * that character's initiative comes up (see advanceTurnIndex).
+   */
+  pcFireshield?: Partial<Record<CharacterId, { fireResistBonusPct: number; turnsRemaining: number }>>
 }
 
 export type GameState = {
@@ -457,6 +469,8 @@ export type GameState = {
       pos: Vec2
       status: 'hostile' | 'neutral' | 'friendly'
       hp: number
+      /** Max HP at spawn; used for encounter HUD. Older saves may omit (hydrate fills from kind). */
+      hpMax: number
       language: NpcLanguage
       quest?: { wants: ItemDefId; hated: ItemDefId[] }
       statuses: Array<{ id: StatusEffectId; untilMs?: number }>

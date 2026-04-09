@@ -87,7 +87,14 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     weapon: { baseDamage: 10, damageType: 'Fire', consumesOnUse: true, staminaCost: 5 },
     equipSlots: ['handLeft', 'handRight'],
   },
-  { id: 'Fireshield', name: 'Fireshield', icon: { kind: 'emoji', value: '🛡️' }, tags: ['tool', 'oneHand'], equipSlots: ['handLeft', 'handRight'] },
+  {
+    id: 'Fireshield',
+    name: 'Fireshield',
+    icon: { kind: 'emoji', value: '🛡️' },
+    tags: ['tool', 'oneHand'],
+    equipSlots: ['handLeft', 'handRight'],
+    combatShield: { fireResistBonusPct: 0.28, staminaCost: 4, shieldTurns: 3, consumesOnUse: true },
+  },
   {
     id: 'Sling',
     name: 'Sling',

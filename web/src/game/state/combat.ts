@@ -1,4 +1,5 @@
 import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId } from '../types'
+import { npcCombatTuningFromContent } from '../content/npcCombat'
 import { pushActivityLog } from './activityLog'
 import { addStatus, addStatusToNpc } from './status'
 import { roomForCell } from './roomGeometry'
@@ -31,26 +32,7 @@ export function npcCombatTuning(kind: GameState['floor']['npcs'][number]['kind']
   resistances: Resistances
   statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }>
 } {
-  switch (kind) {
-    case 'Swarm':
-      return {
-        speed: 8,
-        baseDamage: 4,
-        damageType: 'Pierce',
-        armor: 0,
-        resistances: {},
-        statusOnHit: [{ status: 'Poisoned', pct: 12, durationMs: 18_000 }],
-      }
-    case 'Skeleton':
-      return { speed: 5, baseDamage: 7, damageType: 'Cut', armor: 1, resistances: { Cut: 0.08, Pierce: 0.05 } }
-    case 'Catoctopus':
-      return { speed: 6, baseDamage: 6, damageType: 'Blunt', armor: 0, resistances: { Blunt: 0.06 } }
-    case 'Wurglepup':
-      return { speed: 7, baseDamage: 5, damageType: 'Cut', armor: 0, resistances: { Cut: 0.04 } }
-    case 'Bobr':
-    default:
-      return { speed: 4, baseDamage: 6, damageType: 'Blunt', armor: 1, resistances: { Blunt: 0.05 } }
-  }
+  return npcCombatTuningFromContent(kind)
 }
 
 export function makeCombatEncounterId(state: GameState, primaryNpcId: Id) {
@@ -188,6 +170,21 @@ function defenseForPc(state: GameState, pcId: CharacterId) {
   return { armor: Math.max(0, (c.armor ?? 0) + armorBonus), resistBonusPct: Math.max(0, resistBonusPct) }
 }
 
+export function applyCombatFireshield(
+  state: GameState,
+  pcId: CharacterId,
+  shield: { fireResistBonusPct: number; shieldTurns: number },
+): GameState {
+  const combat = state.combat
+  if (!combat) return state
+  const pcFireshield = { ...(combat.pcFireshield ?? {}) }
+  pcFireshield[pcId] = {
+    fireResistBonusPct: shield.fireResistBonusPct,
+    turnsRemaining: shield.shieldTurns,
+  }
+  return { ...state, combat: { ...combat, pcFireshield } }
+}
+
 export function defend(state: GameState, pcId: CharacterId): GameState {
   if (!state.combat) return state
   const combat = state.combat
@@ -313,6 +310,8 @@ export function resolvePcAttackRoll(args: { state: GameState; attacker: Characte
   return { hit, crit, d20, toHit, defense }
 }
 
+export type PcAttackRollSummary = { d20: number; toHit: number; defense: number; crit: boolean }
+
 export function computePcAttackDamage(args: {
   state: GameState
   attackerId: CharacterId
@@ -322,16 +321,18 @@ export function computePcAttackDamage(args: {
   damageStat?: 'strength' | 'agility'
   /** Encounter: roll vs NPC defense. Open world: auto-hit (still apply mitigation). */
   resolveAttackRoll: boolean
-}): { hit: boolean; crit: boolean; finalDmg: number } {
+}): { hit: boolean; crit: boolean; finalDmg: number; pcAttackRoll?: PcAttackRollSummary } {
   const { state, attackerId, defenderNpcId, weaponBaseDamage, weaponDamageType, damageStat, resolveAttackRoll } = args
   const attacker = state.party.chars.find((c) => c.id === attackerId)
   const npc = state.floor.npcs.find((n) => n.id === defenderNpcId)
   if (!attacker || !npc) return { hit: true, crit: false, finalDmg: Math.max(1, weaponBaseDamage) }
 
   let crit = false
+  let pcAttackRoll: PcAttackRollSummary | undefined
   if (resolveAttackRoll) {
     const roll = resolvePcAttackRoll({ state, attacker, defenderNpcId })
-    if (!roll.hit) return { hit: false, crit: roll.crit, finalDmg: 0 }
+    pcAttackRoll = { d20: roll.d20, toHit: roll.toHit, defense: roll.defense, crit: roll.crit }
+    if (!roll.hit) return { hit: false, crit: roll.crit, finalDmg: 0, pcAttackRoll }
     crit = roll.crit
   }
 
@@ -346,7 +347,7 @@ export function computePcAttackDamage(args: {
   const mitigated = isPhysical ? Math.max(0, afterRunPct - tuned.armor) : afterRunPct
   const resist = Math.max(0, Math.min(0.95, Number(tuned.resistances?.[weaponDamageType] ?? 0)))
   const finalDmg = Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1)))
-  return { hit: true, crit, finalDmg }
+  return { hit: true, crit, finalDmg, pcAttackRoll }
 }
 
 export function npcTakeTurn(state: GameState, npcId: Id): GameState {
@@ -356,22 +357,39 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   const living = state.party.chars.filter((c) => c.hp > 0)
   if (!living.length) return state
 
+  const combat = state.combat
+  const encId = combat?.encounterId ?? 'open'
+  const softness = (c: Character) => {
+    const defendBias = combat?.pcDefense?.[c.id] ? 8 : 0
+    return c.hp + defendBias + tieBreak01(state, encId, `npcTar:${npc.id}:${c.id}`) * 0.001
+  }
   let target = living[0]!
-  for (const c of living) {
-    if (c.hp < target.hp) target = c
-    else if (c.hp === target.hp && c.id < target.id) target = c
+  let bestS = softness(target)
+  for (let i = 1; i < living.length; i++) {
+    const c = living[i]!
+    const s = softness(c)
+    if (s < bestS || (s === bestS && c.id < target.id)) {
+      target = c
+      bestS = s
+    }
   }
 
-  const combat = state.combat
   const tuned = npcCombatTuning(npc.kind)
   const dmgType = tuned.damageType
   const def = defenseForPc(state, target.id as any)
   const armor = def?.armor ?? Math.max(0, target.armor ?? 0)
   const resistBonusPct = def?.resistBonusPct ?? 0
-  const resist = Math.max(0, Math.min(0.95, Number(target.resistances?.[dmgType] ?? 0) + resistBonusPct))
+  const shieldFire =
+    dmgType === 'Fire' && combat?.pcFireshield?.[target.id]?.fireResistBonusPct != null
+      ? combat.pcFireshield[target.id]!.fireResistBonusPct
+      : 0
+  const resist = Math.max(
+    0,
+    Math.min(0.95, Number(target.resistances?.[dmgType] ?? 0) + resistBonusPct + shieldFire),
+  )
   const isPhysical = dmgType === 'Blunt' || dmgType === 'Pierce' || dmgType === 'Cut'
   const mitigated = isPhysical ? Math.max(0, tuned.baseDamage - armor) : tuned.baseDamage
-  const d20 = combat ? rollD20(state, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
+  const d20 = combat != null ? rollD20(state, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
   const toHit = d20 + tuned.speed
   const defense = 10 + target.stats.speed
   const hit = toHit >= defense
@@ -384,12 +402,17 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   chars[idx] = { ...chars[idx], hp: Math.max(0, chars[idx].hp - final) }
 
   let next: GameState = { ...state, party: { ...state.party, chars } }
+  const npcAtk = `d20+Spd ${d20}+${tuned.speed}=${toHit}`
+  const pcAc = `10+Spd ${target.stats.speed}=${defense}`
   if (!hit) {
-    next = pushActivityLog(next, `${npc.name} misses ${target.name}.`)
+    next = pushActivityLog(next, `${npc.name} → ${target.name}: ${npcAtk} vs ${pcAc} — miss.`)
     next = pushSfx(next, 'reject')
     return next
   }
-  next = pushActivityLog(next, crit ? `${npc.name} crits ${target.name} for ${final}.` : `${npc.name} hits ${target.name} for ${final}.`)
+  next = pushActivityLog(
+    next,
+    `${npc.name} → ${target.name}: ${npcAtk} vs ${pcAc} — hit${crit ? ' (nat 20)' : ''}, ${final} dmg.`,
+  )
   next = pushSfx(next, 'hit')
   next = applyUiShake(next, crit ? 0.55 : 0.35, crit ? 180 : 140)
   if (tuned.statusOnHit?.length && state.combat) {
@@ -418,10 +441,25 @@ export function advanceTurnIndex(state: GameState): GameState {
     const { [nextActor.id]: _cleared, ...rest } = pcDefense
     pcDefense = Object.keys(rest).length ? rest : {}
   }
+  let pcFireshield: CombatState['pcFireshield'] = pruned.pcFireshield ? { ...pruned.pcFireshield } : undefined
+  if (pcFireshield && nextActor?.kind === 'pc') {
+    const id = nextActor.id
+    const cur = pcFireshield[id]
+    if (cur) {
+      const tr = cur.turnsRemaining - 1
+      if (tr <= 0) {
+        const { [id]: _drop, ...rest } = pcFireshield
+        pcFireshield = Object.keys(rest).length ? rest : undefined
+      } else {
+        pcFireshield = { ...pcFireshield, [id]: { ...cur, turnsRemaining: tr } }
+      }
+    }
+  }
   const nextCombat: CombatState = {
     ...pruned,
     turnIndex: nextIndex,
     pcDefense: pcDefense && Object.keys(pcDefense).length ? pcDefense : {},
+    pcFireshield: pcFireshield != null && Object.keys(pcFireshield).length > 0 ? pcFireshield : undefined,
   }
   return { ...state, combat: nextCombat }
 }

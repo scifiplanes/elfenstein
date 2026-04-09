@@ -9,7 +9,11 @@ import type {
   PoiKind,
   ProcgenDebugOverlayMode,
 } from '../../game/types'
-import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
+import {
+  buildDebugUiPersist,
+  clearLocalDebugSettings,
+  saveDebugSettingsToProject,
+} from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
 import { getThemeLightIntent } from '../../world/themeTuning'
@@ -55,8 +59,6 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
   const [perfOpen, setPerfOpen] = useState(false)
-  const [telegraphMode, setTelegraphMode] = useState<'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'>('auto')
-  const [telegraphStrength, setTelegraphStrength] = useState(0.22)
 
   const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
 
@@ -400,21 +402,44 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </button>
 
           {import.meta.env.DEV && (
-            <button
-              type="button"
-              className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
-              onClick={async () => {
-                try {
-                  await saveDebugSettingsToProject(state.render, state.audio, state.hubHotspots)
-                  dispatch({ type: 'ui/toast', text: 'Saved debug settings to project.', ms: 1400 })
-                } catch {
-                  dispatch({ type: 'ui/toast', text: 'Failed to save debug settings to project.', ms: 1600 })
-                }
-              }}
-              title="Writes web/public/debug-settings.json (dev server only)"
-            >
-              Save to project
-            </button>
+            <>
+              <button
+                type="button"
+                className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
+                onClick={async () => {
+                  const ok = await saveDebugSettingsToProject(
+                    state.render,
+                    state.audio,
+                    state.hubHotspots,
+                    buildDebugUiPersist(state.ui),
+                  )
+                  dispatch({
+                    type: 'ui/toast',
+                    text: ok ? 'Saved debug settings to project.' : 'Failed to save debug settings to project.',
+                    ms: ok ? 1400 : 1600,
+                  })
+                }}
+                title="Writes web/public/debug-settings.json (dev server only)"
+              >
+                Save to project
+              </button>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => {
+                  clearLocalDebugSettings()
+                  dispatch({
+                    type: 'ui/toast',
+                    text: 'Cleared local debug overrides. Reloading…',
+                    ms: 1200,
+                  })
+                  window.setTimeout(() => window.location.reload(), 350)
+                }}
+                title="Removes elfenstein.debugSettings from localStorage and reloads so project JSON applies cleanly"
+              >
+                Clear local overrides
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -691,17 +716,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             <div className={styles.value}>
               <select
                 className={styles.inlineInput}
-                value={telegraphMode}
+                value={state.ui.roomTelegraphMode}
                 onChange={(e) => {
-                  const v = e.target.value as typeof telegraphMode
-                  setTelegraphMode(v)
-                  const w = window as unknown as {
-                    __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
-                  }
-                  w.__elfensteinRoomTelegraph = {
-                    ...(w.__elfensteinRoomTelegraph ?? {}),
-                    mode: v,
-                  }
+                  const v = e.target.value as GameState['ui']['roomTelegraphMode']
+                  dispatch({ type: 'debug/setRoomTelegraphMode', mode: v })
                 }}
               >
                 <option value="auto">auto (from room tag)</option>
@@ -715,25 +733,17 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </div>
           <div className={styles.row}>
             <div className={styles.label}>strength</div>
-            <div className={styles.value}>{telegraphStrength.toFixed(2)}</div>
+            <div className={styles.value}>{state.ui.roomTelegraphStrength.toFixed(2)}</div>
             <input
               className={styles.slider}
               type="range"
               min={0}
               max={1}
               step={0.01}
-              value={telegraphStrength}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                setTelegraphStrength(v)
-                const w = window as unknown as {
-                  __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
-                }
-                w.__elfensteinRoomTelegraph = {
-                  ...(w.__elfensteinRoomTelegraph ?? {}),
-                  strength: v,
-                }
-              }}
+              value={state.ui.roomTelegraphStrength}
+              onChange={(e) =>
+                dispatch({ type: 'debug/setRoomTelegraphStrength', strength: Number(e.target.value) })
+              }
             />
           </div>
         </div>

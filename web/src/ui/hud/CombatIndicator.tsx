@@ -32,13 +32,36 @@ export function CombatIndicator(props: {
     .map((id) => state.floor.npcs.find((n) => n.id === id))
     .filter(Boolean) as Array<GameState['floor']['npcs'][number]>
 
-  const enemyLabel = npcs.length ? npcs.map((n) => n.name).join(', ') : 'Unknown'
   const canDefend = turn?.kind === 'pc'
 
   return (
     <div className={styles.wrap} aria-label="Combat status">
       <div className={styles.title}>ENCOUNTER</div>
-      <div className={styles.enemies}>{enemyLabel}</div>
+      <div className={styles.enemyList} aria-label="Encounter enemies">
+        {npcs.length ? (
+          npcs.map((n) => {
+            const max = Math.max(1, n.hpMax ?? n.hp)
+            const pct = Math.round((100 * Math.max(0, n.hp)) / max)
+            return (
+              <div key={n.id} className={styles.enemyRow}>
+                <span className={styles.enemyName}>{n.name}</span>
+                <div
+                  className={styles.hpTrack}
+                  role="progressbar"
+                  aria-valuenow={n.hp}
+                  aria-valuemin={0}
+                  aria-valuemax={max}
+                  aria-label={`${n.name} health`}
+                >
+                  <div className={styles.hpFill} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            )
+          })
+        ) : (
+          <div className={styles.enemies}>Unknown</div>
+        )}
+      </div>
       <div className={styles.turn}>{turnText}</div>
       {interactive ? (
         <div className={styles.actions} role="group" aria-label="Combat actions">

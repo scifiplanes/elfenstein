@@ -1,7 +1,14 @@
+import { cellKey } from '../game/state/playerFloorCell'
 import type { ItemDefId, Tile, Vec2 } from '../game/types'
 import type { FloorGenDifficulty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
 import { findNearestUnusedFloor } from './layoutPasses'
-import { allReachable, bfsDistances, isWalkable, shortestPathLatticeStats } from './validate'
+import {
+  allReachable,
+  bfsDistances,
+  exitNeighborReachableWithPoiBlocking,
+  isWalkable,
+  shortestPathLatticeStats,
+} from './validate'
 
 /** Keys placed by `placeLocksOnPath` (for content coverage audits). */
 export const PROCgen_LOCK_KEY_ITEM_DEF_IDS: ItemDefId[] = ['IronKey', 'BrassKey']
@@ -259,6 +266,11 @@ export function tilesWithFirstKLocksOpen(gen: FloorGenOutput, w: number, _h: num
 export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean {
   if (w <= 0 || h <= 0) return true
   if (gen.tiles.length !== w * h) return false
+
+  if (gen.pois.length) {
+    const poiKeys = new Set(gen.pois.map((p) => cellKey(p.pos.x, p.pos.y)))
+    if (!exitNeighborReachableWithPoiBlocking(gen.tiles, w, h, gen.entrance, gen.exit, poiKeys)) return false
+  }
 
   const locked = gen.doors.filter((d) => d.locked && d.lockId).sort((a, b) => (a.orderOnPath ?? 0) - (b.orderOnPath ?? 0))
   const keys = gen.floorItems.filter((it) => it.forLockId)

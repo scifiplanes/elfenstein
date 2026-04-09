@@ -1,4 +1,5 @@
 import { ContentDB } from './content/contentDb'
+import type { DebugUiPersist } from '../app/debugSettingsPersistence'
 import type {
   CharacterId,
   DragPayload,
@@ -11,6 +12,7 @@ import type {
   PoiKind,
   ProcgenDebugOverlayMode,
   RenderTuning,
+  RoomTelegraphMode,
 } from './types'
 import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
 import { makeInitialState } from './state/initialState'
@@ -32,15 +34,19 @@ import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
-import { npcsWithDefaultStatuses } from './state/npcHydrate'
+import { npcKindHpMax } from './content/npcCombat'
+import { hydrateFloorNpcs, npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
+import { pickNpcLootDefId } from './content/npcLoot'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
 import { descendToNextFloor } from './state/floorProgression'
+import { nearestFloorCellWithoutPoi, pickPlayerSpawnCell, poiOccupiesCell } from './state/playerFloorCell'
 import { applyXp } from './state/runProgression'
 import {
   advanceTurnIndex,
+  applyCombatFireshield,
   applyWeaponStatusOnHitFromPc,
   attemptFlee,
   collectEncounterNpcIds,
@@ -49,6 +55,7 @@ import {
   defend,
   endCombat,
   enterCombat,
+  npcCombatTuning,
   npcTakeTurn,
   pruneCombatTurnQueue,
 } from './state/combat'
@@ -82,6 +89,24 @@ function rejectNotWhileInCombat(state: GameState): GameState {
     ...withLog,
     ui: { ...withLog.ui, sfxQueue: q.concat([{ id: `s_${withLog.nowMs}_${q.length}`, kind: 'reject' }]) },
   }
+}
+
+function mergePersistedDebugUi(state: GameState, patch: DebugUiPersist | undefined): GameState {
+  if (!patch) return state
+  const ui = { ...state.ui }
+  if ('debugBgTrack' in patch) ui.debugBgTrack = patch.debugBgTrack ?? undefined
+  if ('procgenDebugOverlay' in patch) ui.procgenDebugOverlay = patch.procgenDebugOverlay ?? undefined
+  if ('roomTelegraphMode' in patch && patch.roomTelegraphMode !== undefined) ui.roomTelegraphMode = patch.roomTelegraphMode
+  if ('roomTelegraphStrength' in patch && patch.roomTelegraphStrength !== undefined) {
+    ui.roomTelegraphStrength = Math.max(0, Math.min(1, patch.roomTelegraphStrength))
+  }
+  if ('debugShowNpcDialogPopup' in patch && patch.debugShowNpcDialogPopup !== undefined) {
+    ui.debugShowNpcDialogPopup = patch.debugShowNpcDialogPopup
+  }
+  if ('debugShowDeathPopup' in patch && patch.debugShowDeathPopup !== undefined) {
+    ui.debugShowDeathPopup = patch.debugShowDeathPopup
+  }
+  return { ...state, ui }
 }
 
 export type Action =
@@ -128,6 +153,9 @@ export type Action =
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
+  | { type: 'debug/loadPersistedUi'; patch?: DebugUiPersist }
+  | { type: 'debug/setRoomTelegraphMode'; mode: RoomTelegraphMode }
+  | { type: 'debug/setRoomTelegraphStrength'; strength: number }
   | {
       type: 'hubHotspot/setAxis'
       spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.exit'
@@ -175,6 +203,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
@@ -199,6 +230,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
@@ -228,6 +262,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
@@ -278,15 +315,26 @@ export function reduce(state: GameState, action: Action): GameState {
       const cp = state.run.checkpoint
       if (!cp) return reduce(pushActivityLog(state, 'No checkpoint.'), { type: 'ui/sfx', kind: 'reject' })
       const snap = cp.snapshot
+      const f0 = snap.floor
+      const nudgedPos = nearestFloorCellWithoutPoi(f0.tiles, f0.w, f0.h, f0.playerPos, f0.pois)
+      const floorBody =
+        nudgedPos.x === f0.playerPos.x && nudgedPos.y === f0.playerPos.y
+          ? f0
+          : { ...f0, playerPos: nudgedPos }
+      const floor = { ...floorBody, npcs: hydrateFloorNpcs(floorBody.npcs as GameState['floor']['npcs']) }
+      const view =
+        floorBody === f0
+          ? snap.view
+          : snapViewToGrid(floor.w, floor.h, state.render.camEyeHeight, nudgedPos, floor.playerDir)
       const next: GameState = {
         ...state,
         // Preserve tuning across restore (same as `run/new`).
         render: state.render,
         audio: state.audio,
         run: { ...(snap.run as any), checkpoint: cp },
-        floor: snap.floor,
+        floor,
         party: snap.party,
-        view: snap.view,
+        view,
         ui: {
           ...state.ui,
           screen: snap.ui.screen,
@@ -350,6 +398,15 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'debug/loadHubHotspots': {
       return { ...state, hubHotspots: mergeHubHotspotConfig(state.hubHotspots, action.patch) }
     }
+    case 'debug/loadPersistedUi':
+      return mergePersistedDebugUi(state, action.patch)
+    case 'debug/setRoomTelegraphMode':
+      return { ...state, ui: { ...state.ui, roomTelegraphMode: action.mode } }
+    case 'debug/setRoomTelegraphStrength':
+      return {
+        ...state,
+        ui: { ...state.ui, roomTelegraphStrength: Math.max(0, Math.min(1, action.strength)) },
+      }
     case 'hubHotspot/setAxis': {
       const { spot, key, value } = action
       const h = state.hubHotspots
@@ -540,13 +597,15 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'debug/spawnNpc': {
       const dv = dirVec(state.floor.playerDir)
       const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const hpMax = npcKindHpMax(action.kind)
       const npc = {
         id: `debug_npc_${state.nowMs}`,
         kind: action.kind,
         name: action.kind,
         pos,
         status: 'neutral' as const,
-        hp: 10,
+        hp: hpMax,
+        hpMax,
         language: 'DeepGnome' as const,
         statuses: [] as GameState['floor']['npcs'][number]['statuses'],
       }
@@ -637,7 +696,7 @@ export function reduce(state: GameState, action: Action): GameState {
         floorProperties: state.floor.floorProperties,
         difficulty: normalizeFloorGenDifficulty(state.floor.difficulty),
       })
-      const playerPos = { ...gen.entrance }
+      const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
       const playerDir = 0 as const
       const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
       const next: GameState = {
@@ -801,13 +860,15 @@ export function reduce(state: GameState, action: Action): GameState {
           // Otherwise: spawn a Swarm NPC at the drop cell.
           const swarmId = `npc_swarm_${st.floor.seed}_${(seed >>> 0).toString(16)}`
           const status: 'hostile' | 'neutral' = partyHasItemDef(st, 'SwarmQueen') ? 'neutral' : 'hostile'
+          const smax = npcKindHpMax('Swarm')
           const swarm = {
             id: swarmId,
             kind: 'Swarm' as const,
             name: 'Swarm',
             pos,
             status,
-            hp: 9,
+            hp: smax,
+            hpMax: smax,
             language: 'Zalgo' as const,
             statuses: [] as GameState['floor']['npcs'][number]['statuses'],
           }
@@ -843,6 +904,31 @@ export function reduce(state: GameState, action: Action): GameState {
           return next
         }
         if (target.target === 'hands') {
+          const itemHands = stateAtAction.party.items[itemId]
+          const shieldDef = itemHands ? CONTENT.item(itemHands.defId).combatShield : undefined
+          if (shieldDef && stateAtAction.combat) {
+            const turn = currentTurn(stateAtAction)
+            if (!turn || turn.kind !== 'pc' || turn.id !== target.characterId) {
+              return reduce(pushActivityLog(stateAtAction, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+            }
+            const pc = stateAtAction.party.chars.find((c) => c.id === target.characterId)
+            if (!pc || pc.stamina < shieldDef.staminaCost) {
+              return reduce(pushActivityLog(stateAtAction, 'Too exhausted.'), { type: 'ui/sfx', kind: 'reject' })
+            }
+            const idx = stateAtAction.party.chars.findIndex((c) => c.id === target.characterId)
+            const chars = stateAtAction.party.chars.slice()
+            chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - shieldDef.staminaCost) }
+            let next: GameState = { ...stateAtAction, party: { ...stateAtAction.party, chars } }
+            next = applyCombatFireshield(next, target.characterId as CharacterId, {
+              fireResistBonusPct: shieldDef.fireResistBonusPct,
+              shieldTurns: shieldDef.shieldTurns,
+            })
+            const name = next.party.chars.find((c) => c.id === target.characterId)?.name ?? 'PC'
+            next = pushActivityLog(next, `${name} raises a fire ward (${shieldDef.shieldTurns} turns).`)
+            next = consumeItem(next, itemId)
+            next = reduce(next, { type: 'ui/sfx', kind: 'ui' })
+            return reduce(next, { type: 'combat/advanceTurn' })
+          }
           const before = stateAtAction
           const next = equipHandsFromPortrait(before, CONTENT, target.characterId, itemId)
           if (next === before) {
@@ -1041,19 +1127,33 @@ export function reduce(state: GameState, action: Action): GameState {
               resolveAttackRoll: Boolean(state.combat),
             })
           : { hit: true, crit: false, finalDmg: weapon.baseDamage }
-      if (state.combat && !out.hit) {
-        const withMsg = pushActivityLog(state, 'Miss.')
-        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
-        return reduce(withSfx, { type: 'combat/advanceTurn' })
-      }
       if (state.combat) {
-        const cost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        const atkCost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
         const idx = state.party.chars.findIndex((c) => c.id === actorId)
-        if (idx >= 0 && cost > 0) {
+        if (idx >= 0 && atkCost > 0) {
           const chars = state.party.chars.slice()
-          chars[idx] = { ...chars[idx], stamina: Math.max(0, chars[idx].stamina - cost) }
+          chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - atkCost) }
           state = { ...state, party: { ...state.party, chars } }
         }
+      }
+      if (state.combat && !out.hit) {
+        const attacker = actorId != null ? state.party.chars.find((c) => c.id === actorId) : undefined
+        const r = out.pcAttackRoll
+        let withMsg = state
+        if (attacker && r) {
+          const p = attacker.stats.perception
+          const ag = attacker.stats.agility
+          const spd = npcCombatTuning(npc.kind).speed
+          const acStr = `10+Spd ${spd}=${r.defense}`
+          withMsg = pushActivityLog(
+            state,
+            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — miss.`,
+          )
+        } else {
+          withMsg = pushActivityLog(state, 'Miss.')
+        }
+        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+        return reduce(withSfx, { type: 'combat/advanceTurn' })
       }
       const finalDmg = out.finalDmg
       const hp = Math.max(0, npc.hp - finalDmg)
@@ -1069,7 +1169,7 @@ export function reduce(state: GameState, action: Action): GameState {
 
       // On death, sometimes drop loot to the floor.
       if (died) {
-        const lootDef = pickNpcLootDefId(nextState, npc.id)
+        const lootDef = pickNpcLootDefId(nextState, npc.kind, npc.id)
         if (lootDef) {
           const lootId = `i_${lootDef}_${nextState.floor.seed}_${npc.id}`
           const jitter = makeDropJitter({
@@ -1092,7 +1192,25 @@ export function reduce(state: GameState, action: Action): GameState {
       if (!died && actorId && weapon.statusOnHit?.length) {
         nextState = applyWeaponStatusOnHitFromPc(nextState, npc.id, weapon, actorId as CharacterId)
       }
-      const withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+      let withMsg: GameState
+      if (state.combat && actorId != null && out.pcAttackRoll) {
+        const attacker = nextState.party.chars.find((c) => c.id === actorId)
+        const r = out.pcAttackRoll
+        if (attacker) {
+          const p = attacker.stats.perception
+          const ag = attacker.stats.agility
+          const spd = npcCombatTuning(npc.kind).speed
+          const acStr = `10+Spd ${spd}=${r.defense}`
+          const line =
+            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — hit${out.crit ? ' (nat 20)' : ''}, ${finalDmg} dmg.` +
+            (died ? ` ${npc.name} dies.` : '')
+          withMsg = pushActivityLog(nextState, line)
+        } else {
+          withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+        }
+      } else {
+        withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+      }
       const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
       const withShake = reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
       return state.combat ? reduce(withShake, { type: 'combat/advanceTurn' }) : withShake
@@ -1143,15 +1261,6 @@ export function reduce(state: GameState, action: Action): GameState {
     default:
       return state
   }
-}
-
-function pickNpcLootDefId(state: GameState, npcId: string): null | string {
-  // MVP deterministic “sometimes” drop.
-  const seed = (Math.floor(state.nowMs) ^ hashStr(npcId) ^ (state.floor.seed * 131)) >>> 0
-  const dropRoll = (seed % 100) + 1
-  if (dropRoll > 45) return null
-  const table = ['Stone', 'Stick', 'Mushrooms', 'Foodroot', 'Ash', 'Sulfur'] as const
-  return table[(seed >>> 8) % table.length]
 }
 
 function partyHasItemDef(state: GameState, defId: string) {
@@ -1517,6 +1626,10 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
     return reduce(state, { type: 'combat/enter', npcId: npc.id })
   }
 
+  if (poiOccupiesCell(state.floor.pois, nx, ny)) {
+    return bump(state, 'Something is in the way.')
+  }
+
   const startedAtMs = state.nowMs
   const endsAtMs = startedAtMs + 140
   const toPos = { x: nx - state.floor.w / 2, y: state.render.camEyeHeight, z: ny - state.floor.h / 2 }
@@ -1541,8 +1654,8 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
 }
 
-function bump(state: GameState): GameState {
-  const withMsg = pushActivityLog(state, 'Solid stone.')
+function bump(state: GameState, message = 'Solid stone.'): GameState {
+  const withMsg = pushActivityLog(state, message)
   const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'bump' })
   return reduce(withSfx, { type: 'ui/shake', magnitude: 0.25, ms: 90 })
 }

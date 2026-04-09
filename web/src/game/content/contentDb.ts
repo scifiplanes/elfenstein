@@ -21,6 +21,13 @@ export type ItemDef = {
   equipSlots?: EquipmentSlot[]
   feed?: { hunger: number; thirst?: number; stamina?: number; hp?: number; statusChances?: Array<{ status: StatusEffectId; pct: number; onlySpecies?: Species }> }
   useOnPoi?: Partial<Record<PoiKind, { transformTo?: ItemDefId; toast?: string }>>
+  /** Combat-only: drag onto acting PC portrait hands during encounter to apply Fire resist for `shieldTurns` of that PC’s turns. */
+  combatShield?: {
+    fireResistBonusPct: number
+    staminaCost: number
+    shieldTurns: number
+    consumesOnUse: true
+  }
 }
 
 export type StatusEffectDef = {

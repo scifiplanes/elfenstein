@@ -1,9 +1,11 @@
+import { npcKindHpMax } from '../game/content/npcCombat'
+import { cellKey } from '../game/state/playerFloorCell'
 import type { FloorPoi, ItemDefId, NpcLanguage, Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import type { FloorProperty, FloorType, GenNpc, GenRoom } from './types'
 import { pickFloorItemDefFromTable, pickNpcKindFromTable } from './spawnTables'
 import { shortestPathIndices } from './locks'
-import { bfsDistances, floorCellTouchesOrthogonalWall } from './validate'
+import { bfsDistances, exitNeighborReachableWithPoiBlocking, floorCellTouchesOrthogonalWall } from './validate'
 import { findNearestFloor, pickClosestDistanceCell, pickFarthestUnusedFloor } from './layoutPasses'
 import { buildRoomAdjacency } from './districtsTags'
 
@@ -31,22 +33,86 @@ export function placePois(args: {
   const floorProperties = args.floorProperties ?? []
 
   const used = new Set<string>()
-  const markUsed = (p: Vec2) => used.add(`${p.x},${p.y}`)
-  const ok = (p: Vec2) => p.x >= 0 && p.y >= 0 && p.x < w && p.y < h && tiles[p.x + p.y * w] === 'floor' && !used.has(`${p.x},${p.y}`)
+  const markUsed = (p: Vec2) => used.add(cellKey(p.x, p.y))
+  const ok = (p: Vec2) =>
+    p.x >= 0 && p.y >= 0 && p.x < w && p.y < h && tiles[p.x + p.y * w] === 'floor' && !used.has(cellKey(p.x, p.y))
+
+  const poiKeysBlockingProgress = (extra: Vec2 | null): Set<string> => {
+    const s = new Set(used)
+    if (extra) s.add(cellKey(extra.x, extra.y))
+    return s
+  }
+
+  const progressionOkWithPoiAt = (extra: Vec2 | null) =>
+    exitNeighborReachableWithPoiBlocking(tiles, w, h, entrance, exit, poiKeysBlockingProgress(extra))
 
   const wellPos = ok(entrance) ? entrance : (findNearestFloor(tiles, w, h, entrance) ?? entrance)
   markUsed(wellPos)
 
   const dist = bfsDistances(tiles, w, h, entrance)
 
-  const pickStorageLikePos = (fallback: Vec2) => {
-    const storageRooms = rooms
-      .filter((r) => r.tags?.roomFunction === 'Storage')
-      .sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
-    for (const r of storageRooms) {
-      if (ok(r.center)) return r.center
+  const pickFarthestUnusedFloorProgressionOk = (): Vec2 | null => {
+    let bestIdx = -1
+    let bestD = -1
+    for (let i = 0; i < dist.length; i++) {
+      const d = dist[i]
+      if (d <= bestD) continue
+      if (tiles[i] !== 'floor') continue
+      const x = i % w
+      const y = (i / w) | 0
+      if (used.has(cellKey(x, y))) continue
+      const p = { x, y }
+      if (!progressionOkWithPoiAt(p)) continue
+      bestD = d
+      bestIdx = i
     }
-    return pickFarthestUnusedFloor(dist, tiles, w, used) ?? fallback
+    if (bestIdx < 0) return null
+    return { x: bestIdx % w, y: (bestIdx / w) | 0 }
+  }
+
+  const pickClosestDistanceCellProgressionOk = (targetD: number): Vec2 | null => {
+    let bestIdx = -1
+    let bestErr = 1e9
+    for (let i = 0; i < dist.length; i++) {
+      const d = dist[i]
+      if (d < 0) continue
+      if (tiles[i] !== 'floor') continue
+      const x = i % w
+      const y = (i / w) | 0
+      if (used.has(cellKey(x, y))) continue
+      const p = { x, y }
+      if (!progressionOkWithPoiAt(p)) continue
+      const err = Math.abs(d - targetD)
+      if (err < bestErr) {
+        bestErr = err
+        bestIdx = i
+      }
+    }
+    if (bestIdx < 0) return null
+    return { x: bestIdx % w, y: (bestIdx / w) | 0 }
+  }
+
+  const firstUnusedFloorProgressionOkScan = (): Vec2 | null => {
+    for (let i = 0; i < tiles.length; i++) {
+      if (tiles[i] !== 'floor') continue
+      const x = i % w
+      const y = (i / w) | 0
+      if (used.has(cellKey(x, y))) continue
+      const p = { x, y }
+      if (progressionOkWithPoiAt(p)) return p
+    }
+    return null
+  }
+
+  const storageRoomsSorted = rooms
+    .filter((r) => r.tags?.roomFunction === 'Storage')
+    .sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
+
+  const pickStorageLikePos = (fallback: Vec2) => {
+    for (const r of storageRoomsSorted) {
+      if (ok(r.center) && progressionOkWithPoiAt(r.center)) return r.center
+    }
+    return pickFarthestUnusedFloorProgressionOk() ?? pickFarthestUnusedFloor(dist, tiles, w, used) ?? fallback
   }
   const exitIdx = exit.x + exit.y * w
   const maxD = exitIdx >= 0 && exitIdx < dist.length ? dist[exitIdx] : -1
@@ -58,39 +124,40 @@ export function placePois(args: {
     if (r.id.startsWith('r_junc_')) return false
     return (f === 'Habitat' || f === 'Communal') && p !== 'Burning' && p !== 'Infected'
   }
-  const bedCandidateRooms = rooms
+  const bedRoomScored = rooms
     .filter((r) => isBedRoomOk(r) && ok(r.center))
-    .map((r) => r.center)
-  let bedPos: Vec2 | null = null
-  if (bedCandidateRooms.length) {
-    let best: Vec2 | null = null
-    let bestErr = 1e9
-    for (const p of bedCandidateRooms) {
+    .map((r) => {
+      const p = r.center
       const i = p.x + p.y * w
       const d = i >= 0 && i < dist.length ? dist[i] : -1
-      if (d < 0) continue
-      const err = Math.abs(d - targetD)
-      if (err < bestErr) {
-        bestErr = err
-        best = p
-      }
+      return { p, d, err: d >= 0 ? Math.abs(d - targetD) : 1e9 }
+    })
+    .filter((x) => x.d >= 0)
+    .sort((a, b) => (a.err !== b.err ? a.err - b.err : a.p.x !== b.p.x ? a.p.x - b.p.x : a.p.y - b.p.y))
+
+  let bedPos: Vec2 | null = null
+  for (const x of bedRoomScored) {
+    if (progressionOkWithPoiAt(x.p)) {
+      bedPos = x.p
+      break
     }
-    bedPos = best
   }
-  bedPos = bedPos ?? pickClosestDistanceCell(dist, tiles, w, targetD, used) ?? wellPos
+  bedPos =
+    bedPos ??
+    pickClosestDistanceCellProgressionOk(targetD) ??
+    firstUnusedFloorProgressionOkScan() ??
+    pickClosestDistanceCell(dist, tiles, w, targetD, used) ??
+    wellPos
   markUsed(bedPos)
 
   const pathCells = shortestPathCellSet(tiles, w, h, entrance, exit)
 
-  const storageRooms = rooms
-    .filter((r) => r.tags?.roomFunction === 'Storage')
-    .sort((a, b) => a.rect.w * a.rect.h - (b.rect.w * b.rect.h))
   let chestPos: Vec2 | null = null
-  for (const r of storageRooms) {
+  for (const r of storageRoomsSorted) {
     if (r.id.startsWith('r_junc_')) continue
-    if (ok(r.center)) {
+    if (ok(r.center) && progressionOkWithPoiAt(r.center)) {
       // Prefer off-path storage so chest feels like a side objective.
-      if (!pathCells.has(`${r.center.x},${r.center.y}`)) {
+      if (!pathCells.has(cellKey(r.center.x, r.center.y))) {
         chestPos = r.center
         break
       }
@@ -98,7 +165,7 @@ export function placePois(args: {
     }
   }
   if (!chestPos) {
-    chestPos = pickFarthestUnusedFloor(dist, tiles, w, used) ?? bedPos
+    chestPos = pickFarthestUnusedFloorProgressionOk() ?? pickFarthestUnusedFloor(dist, tiles, w, used) ?? bedPos
   }
   markUsed(chestPos)
 
@@ -114,7 +181,7 @@ export function placePois(args: {
   // For optional POIs we try to keep them off the main path when possible.
   const pickTaggedRoomCenter = (predicate: (r: GenRoom) => boolean): Vec2 | null => {
     const candidates = rooms
-      .filter((r) => !isJunc(r) && predicate(r) && ok(r.center))
+      .filter((r) => !isJunc(r) && predicate(r) && ok(r.center) && progressionOkWithPoiAt(r.center))
       .map((r) => {
         const i = r.center.x + r.center.y * w
         const d = i >= 0 && i < dist.length ? dist[i] : -1
@@ -138,6 +205,7 @@ export function placePois(args: {
         const p = { x: xx, y: yy }
         if (!ok(p)) continue
         if (!floorCellTouchesOrthogonalWall(tiles, w, h, p)) continue
+        if (!progressionOkWithPoiAt(p)) continue
         // Prefer off-path placements when possible.
         if (pathCells.has(keyOf(p))) continue
         return p
@@ -149,6 +217,7 @@ export function placePois(args: {
         const p = { x: xx, y: yy }
         if (!ok(p)) continue
         if (!floorCellTouchesOrthogonalWall(tiles, w, h, p)) continue
+        if (!progressionOkWithPoiAt(p)) continue
         return p
       }
     }
@@ -281,7 +350,8 @@ export function spawnNpcsAndItems(args: {
     const status: GenNpc['status'] = kind === 'Skeleton' ? 'hostile' : isNear ? 'neutral' : rng.next() < 0.25 ? 'hostile' : 'neutral'
     const language = langList[(idx * 17 + (kind.charCodeAt(0) % 7)) % langList.length]
     const name = kind
-    const hp = kind === 'Skeleton' ? 18 : kind === 'Bobr' ? 24 : kind === 'Catoctopus' ? 22 : 20
+    const hpMax = npcKindHpMax(kind)
+    const hp = hpMax
     return {
       id: `g_npc_${kind}_${idx}_${pos.x}_${pos.y}`,
       kind,
@@ -289,6 +359,7 @@ export function spawnNpcsAndItems(args: {
       pos,
       status,
       hp,
+      hpMax,
       language,
       quest: status === 'hostile' ? undefined : pickQuest(idx),
       statuses: [],
