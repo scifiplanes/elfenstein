@@ -166,6 +166,33 @@ export function equipHatFromPortrait(state: GameState, content: ContentDB, chara
   return equipItem(state, characterId, 'head', itemId, content)
 }
 
+/** HUD strip slots only: whether `itemId` may use `slot` for this character (`hat` / `oneHand` / `twoHand` + optional `equipSlots`). */
+export function itemFitsCharacterEquipmentSlot(
+  state: GameState,
+  content: ContentDB,
+  characterId: CharacterId,
+  slot: 'head' | 'handLeft' | 'handRight',
+  itemId: ItemId,
+): boolean {
+  const c = state.party.chars.find((x) => x.id === characterId)
+  if (!c) return false
+  const item = state.party.items[itemId]
+  if (!item) return false
+  const def = content.item(item.defId)
+  const slotOk = !def.equipSlots?.length || def.equipSlots.includes(slot)
+
+  if (slot === 'head') {
+    return def.tags.includes('hat') && slotOk
+  }
+  if (def.tags.includes('twoHand')) {
+    return slotOk
+  }
+  if (def.tags.includes('oneHand')) {
+    return slotOk
+  }
+  return false
+}
+
 /** True if an item that is not in the grid can be placed into `dst` (possibly displacing an occupant). */
 function canPlaceNonGridItemAtInventorySlot(state: GameState, itemId: ItemId, dst: number): boolean {
   const inv = state.party.inventory

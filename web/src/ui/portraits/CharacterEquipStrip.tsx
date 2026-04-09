@@ -1,6 +1,7 @@
-import type { Dispatch, PointerEvent } from 'react'
+import { useMemo, type Dispatch, type PointerEvent } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
+import { itemFitsCharacterEquipmentSlot } from '../../game/state/equipment'
 import type { EquipmentSlot, GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import { EquipIcon } from './EquipIcon'
@@ -55,6 +56,18 @@ export function CharacterEquipStrip(props: {
     if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
   }
 
+  const draggingItemId = cursor.state.dragging?.started ? cursor.state.dragging.payload.itemId : null
+  const afford = useMemo(() => {
+    if (!draggingItemId) {
+      return { head: false, handLeft: false, handRight: false }
+    }
+    return {
+      head: itemFitsCharacterEquipmentSlot(state, content, characterId, 'head', draggingItemId),
+      handLeft: itemFitsCharacterEquipmentSlot(state, content, characterId, 'handLeft', draggingItemId),
+      handRight: itemFitsCharacterEquipmentSlot(state, content, characterId, 'handRight', draggingItemId),
+    }
+  }, [draggingItemId, state, content, characterId])
+
   const tx = equipTranslateXPx ?? 0
   const up = equipNudgeUpPx ?? 0
   const transformParts: string[] = []
@@ -71,7 +84,7 @@ export function CharacterEquipStrip(props: {
       onPointerUp={onPointerUpStrip}
     >
       <div
-        className={`${styles.slot} ${styles.slotHead}`}
+        className={`${styles.slot} ${styles.slotHead}${afford.head ? ` ${styles.slotAffordEquip}` : ''}`}
         data-drop-kind="equipmentSlot"
         data-drop-character-id={characterId}
         data-drop-equip-slot="head"
@@ -91,7 +104,7 @@ export function CharacterEquipStrip(props: {
       </div>
 
       <div
-        className={`${styles.slot} ${styles.slotHandLeft}`}
+        className={`${styles.slot} ${styles.slotHandLeft}${afford.handLeft ? ` ${styles.slotAffordEquip}` : ''}`}
         data-drop-kind="equipmentSlot"
         data-drop-character-id={characterId}
         data-drop-equip-slot="handLeft"
@@ -111,7 +124,7 @@ export function CharacterEquipStrip(props: {
       </div>
 
       <div
-        className={`${styles.slot} ${styles.slotHandRight}`}
+        className={`${styles.slot} ${styles.slotHandRight}${afford.handRight ? ` ${styles.slotAffordEquip}` : ''}`}
         data-drop-kind="equipmentSlot"
         data-drop-character-id={characterId}
         data-drop-equip-slot="handRight"

@@ -3152,7 +3152,6 @@ Slightly reduces slot size so the block reads lighter on the bar while keeping h
 
 ---
 
-<<<<<<< HEAD
 ## ADR-0211 — Character equipment strip beside portraits
 Date: 2026-04-09
 
@@ -3299,7 +3298,10 @@ Left equipment **20px** further **right**; right equipment **mirrored** toward t
 
 ### Update
 **`EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** tuned to **48** (was **40**), then **55**.
-=======
+
+
+*Merged history note: the following entries reuse ADR numbers **0211–0229** from another branch; titles disambiguate them from the equipment-strip **ADR-0211–ADR-0220** block above.*
+
 ## ADR-0211 — Fix 3D drag/drop hover and cursor-aimed floor drops
 Date: 2026-04-09
 
@@ -3714,4 +3716,19 @@ PoI tiles **block occupancy**; a single PoI on a **1-wide articulation** between
 
 ### Consequences
 - Fewer container PoIs on unavoidable choke tiles; optional PoIs may be omitted slightly more often. **`DESIGN.md`** §8.2 / §8.3 / §9 updated.
->>>>>>> origin/main
+
+---
+
+## ADR-0236 — Equipment strip drag affordance borders
+Date: 2026-04-09
+
+### Decision
+- Add **`--hud-inventory-slot-border`** and **`--hud-stamina-vital-fill`** on **`:root`** (`index.css`); use them for inventory slot borders, portrait vital cell borders, stamina bar fill, and **`CharacterEquipStrip`** slot frames.
+- **`itemFitsCharacterEquipmentSlot`** in **`equipment.ts`** encodes strip-only fit (**`hat`** / **`oneHand`** / **`twoHand`** + **`equipSlots`**).
+- **`CharacterEquipStrip`** applies **`slotAffordEquip`** while **`cursor.state.dragging?.started`** when the dragged item fits that slot’s role, switching the **`::after`** border to the stamina token; otherwise the inventory token.
+
+### Rationale
+Clear default chrome aligned with inventory; during drag, valid equip targets read as the same accent as the stamina vital.
+
+### Consequences
+- **`PortraitPanel.tsx`** stamina fill uses **`var(--hud-stamina-vital-fill)`**; **`DESIGN.md`** §6.2 / §6.4 / equipment strip spec updated.

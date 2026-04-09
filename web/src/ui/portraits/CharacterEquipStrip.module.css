@@ -26,6 +26,20 @@
   /* Frame bands — tune vs art if frames shift */
 }
 
+.slot::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  box-sizing: border-box;
+  border: 2px solid var(--hud-inventory-slot-border);
+  pointer-events: none;
+  z-index: 10;
+}
+
+.slot.slotAffordEquip::after {
+  border-color: var(--hud-stamina-vital-fill);
+}
+
 .slotHead {
   top: 3%;
   height: 29%;

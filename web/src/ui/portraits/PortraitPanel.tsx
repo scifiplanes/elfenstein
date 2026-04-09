@@ -12,7 +12,7 @@ import styles from './PortraitPanel.module.css'
 
 const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
   hp: '#ff2400',
-  sta: '#d6bdb5',
+  sta: 'var(--hud-stamina-vital-fill)',
   hun: '#547d39',
   thr: '#3d75dd',
 }

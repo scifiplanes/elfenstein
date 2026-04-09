@@ -184,7 +184,7 @@
   border-radius: 0;
   background: #000;
   /* Same edge as inventory slots (`InventoryPanel.module.css` `.slot`) */
-  border: 2px solid rgba(171, 136, 107, 0.75);
+  border: 2px solid var(--hud-inventory-slot-border);
 }
 
 .statBarTrack {
