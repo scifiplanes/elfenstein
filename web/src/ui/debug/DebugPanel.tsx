@@ -1255,6 +1255,9 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'hit' })}>
             Play hit
           </button>
+          <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'swing' })}>
+            Play swing
+          </button>
           <button type="button" className={styles.audioBtn} onClick={() => dispatch({ type: 'ui/sfx', kind: 'step' })}>
             Play step
           </button>

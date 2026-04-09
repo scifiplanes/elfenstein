@@ -15,17 +15,17 @@ export type NpcCombatRow = {
 export const NPC_COMBAT_BY_KIND: Record<NpcKind, NpcCombatRow> = {
   Swarm: {
     speed: 8,
-    baseDamage: 4,
+    baseDamage: 5,
     damageType: 'Pierce',
     armor: 0,
     resistances: {},
     statusOnHit: [{ status: 'Poisoned', pct: 12, durationMs: 18_000 }],
-    hpMax: 9,
+    hpMax: 10,
   },
   Skeleton: {
     speed: 5,
     baseDamage: 7,
-    damageType: 'Cut',
+    damageType: 'Fire',
     armor: 1,
     resistances: { Cut: 0.08, Pierce: 0.05 },
     hpMax: 18,

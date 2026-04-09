@@ -8,52 +8,107 @@ const COMBINING = [
   '\u0342', '\u0343', '\u0344',
 ]
 
-export function toGibberish(lang: NpcLanguage, english: string, seed: number) {
-  if (lang === 'Mojibake') return mojibake(english)
-  if (lang === 'Zalgo') return zalgo(english, seed)
-  return deepGnome(english, seed)
+/** Safe variants of “gnome” (diacritics on vowels, optional ñ). Exported for tests. */
+export const GNOME_FORMS = [
+  'gnome',
+  'gn\u00f2me',
+  'gn\u00f4me',
+  'gnom\u00e9',
+  'g\u00f1ome',
+  'gn\u014dme',
+  'gnom\u00e8',
+  'gn\u00f3me',
+  'gn\u00f6me',
+  'gnom\u00eb',
+  'gn\u00f5me',
+  'gn\u00f4m\u00e8',
+  'g\u00f1\u00f2me',
+  'gn\u00f3m\u00eb',
+  'gn\u014dm\u00e9',
+  'gn\u00f2m\u00e9',
+  'gn\u00f4m\u00e9',
+  'g\u00f1om\u00eb',
+  'gn\u00e8me',
+  'gn\u00e9m\u00e8',
+]
+
+/**
+ * Renders NPC dialog speech flavor. Does not encode English; quest meaning stays in mechanics.
+ * @param _english Reserved for future phrasebook hooks; currently unused.
+ * @param salt e.g. npc id so two NPCs on the same floor are not identical.
+ */
+export function toGibberish(lang: NpcLanguage, _english: string, seed: number, salt = ''): string {
+  const base = mixSeed(seed >>> 0, salt)
+  if (lang === 'Mojibake') return mojibakePhrase(mixSeed(base, '|mjb|'))
+  if (lang === 'Zalgo') return zalgoPhrase(mixSeed(base, '|zlg|'))
+  return deepGnomePhrase(mixSeed(base, '|dgn|'))
 }
 
-function mojibake(s: string) {
-  // Deterministic “broken encoding”-like look.
-  return s
-    .replaceAll('a', 'Ã¤')
-    .replaceAll('e', 'Ã«')
-    .replaceAll('i', 'Ã¯')
-    .replaceAll('o', 'Ã¶')
-    .replaceAll('u', 'Ã¼')
-    .replaceAll('A', 'Ã„')
-    .replaceAll('E', 'Ã‹')
-    .replaceAll('I', 'Ã�')
-    .replaceAll('O', 'Ã–')
-    .replaceAll('U', 'Ãœ')
+function deepGnomePhrase(subseed: number): string {
+  const rnd = mul(subseed)
+  const n = 4 + Math.floor(rnd() * 5)
+  const tokens: string[] = []
+  for (let i = 0; i < n; i++) {
+    tokens.push(GNOME_FORMS[Math.floor(rnd() * GNOME_FORMS.length)]!)
+  }
+  return tokens.join(' ')
 }
 
-function zalgo(s: string, seed: number) {
-  const rnd = mul(seed)
+/** Longer fake words: UTF-8 bytes misread as single-byte Latin (mojibake look). */
+function mojibakePhrase(subseed: number): string {
+  const rnd = mul(subseed)
+  const nWords = 2 + Math.floor(rnd() * 3)
+  const parts: string[] = []
+  const multibytePool = ['\u304b', '\u30af', '\u5b57', '\u03a9', '\u00ea', '\u00f1', '\u00df', '\u00b1', '\u00a7']
+  for (let w = 0; w < nWords; w++) {
+    const byteTarget = 12 + Math.floor(rnd() * 9)
+    let s = ''
+    while (new TextEncoder().encode(s).length < byteTarget) {
+      if (rnd() < 0.4) s += multibytePool[Math.floor(rnd() * multibytePool.length)]!
+      else s += String.fromCharCode(97 + Math.floor(rnd() * 26))
+    }
+    parts.push(utf8BytesAsLatin1String(new TextEncoder().encode(s)))
+  }
+  return parts.join(' ')
+}
+
+function utf8BytesAsLatin1String(bytes: Uint8Array): string {
+  let out = ''
+  for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]!)
+  return out
+}
+
+/** Shorter fake Latin words, then combining-mark clutter (zalgo look). */
+function zalgoPhrase(subseed: number): string {
+  const rnd = mul(subseed)
+  const nWords = 2 + Math.floor(rnd() * 4)
+  const words: string[] = []
+  for (let i = 0; i < nWords; i++) {
+    const len = 3 + Math.floor(rnd() * 5)
+    let w = ''
+    for (let j = 0; j < len; j++) w += String.fromCharCode(97 + Math.floor(rnd() * 26))
+    words.push(zalgoLatinWord(w, rnd))
+  }
+  return words.join(' ')
+}
+
+function zalgoLatinWord(s: string, rnd: () => number): string {
   let out = ''
   for (const ch of s) {
     out += ch
     if (ch.trim().length === 0) continue
     const n = 1 + Math.floor(rnd() * 3)
-    for (let i = 0; i < n; i++) out += COMBINING[Math.floor(rnd() * COMBINING.length)]
+    for (let i = 0; i < n; i++) out += COMBINING[Math.floor(rnd() * COMBINING.length)]!
   }
   return out
 }
 
-function deepGnome(s: string, seed: number) {
-  const rnd = mul(seed)
-  const syl = ['gr', 'gn', 'br', 'kr', 'zh', 'uk', 'ak', 'th', 'sk', 'dr', 'um', 'ig']
-  const words = s.split(/\s+/).filter(Boolean)
-  return words
-    .map((w) => {
-      const core = w.replace(/[^a-z]/gi, '').toLowerCase()
-      const n = Math.max(2, Math.min(5, Math.round(core.length / 2)))
-      let o = ''
-      for (let i = 0; i < n; i++) o += syl[Math.floor(rnd() * syl.length)]
-      return o
-    })
-    .join(' ')
+function mixSeed(seed: number, salt: string): number {
+  let h = seed >>> 0
+  for (let i = 0; i < salt.length; i++) {
+    h = Math.imul(h ^ salt.charCodeAt(i)!, 0x9e3779b1) >>> 0
+  }
+  return h >>> 0
 }
 
 function mul(seed: number) {
@@ -65,4 +120,3 @@ function mul(seed: number) {
     return ((x ^ (x >>> 14)) >>> 0) / 4294967296
   }
 }
-

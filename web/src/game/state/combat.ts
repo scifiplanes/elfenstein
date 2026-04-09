@@ -1,8 +1,25 @@
 import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId } from '../types'
+import { ContentDB } from '../content/contentDb'
 import { npcCombatTuningFromContent } from '../content/npcCombat'
+import { npcQuestEnglishLine } from '../npc/npcQuestSpeech'
 import { pushActivityLog } from './activityLog'
 import { addStatus, addStatusToNpc } from './status'
 import { roomForCell } from './roomGeometry'
+
+const COMBAT_CONTENT = ContentDB.createDefault()
+
+/** Chance per NPC turn (deterministic roll) to echo quest text in the activity log. */
+export const QUEST_SHOUT_CHANCE_PCT = 20
+
+/** For tests: same roll as `npcTakeTurn` quest shout. */
+export function questShoutRollMod100(
+  floorSeed: number,
+  encounterId: string,
+  npcId: string,
+  turnIndex: number,
+): number {
+  return hashStr(`${floorSeed}:${encounterId}:questShout:${npcId}:${turnIndex}`) % 100
+}
 
 function hashStr(s: string) {
   let h = 2166136261 >>> 0
@@ -374,9 +391,17 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
     }
   }
 
+  let st = state
+  if (combat) {
+    const english = npcQuestEnglishLine(npc, (id) => COMBAT_CONTENT.item(id).name)
+    if (english != null && questShoutRollMod100(st.floor.seed, combat.encounterId, npc.id, combat.turnIndex) < QUEST_SHOUT_CHANCE_PCT) {
+      st = pushActivityLog(st, `${npc.name}: "${english}"`)
+    }
+  }
+
   const tuned = npcCombatTuning(npc.kind)
   const dmgType = tuned.damageType
-  const def = defenseForPc(state, target.id as any)
+  const def = defenseForPc(st, target.id as any)
   const armor = def?.armor ?? Math.max(0, target.armor ?? 0)
   const resistBonusPct = def?.resistBonusPct ?? 0
   const shieldFire =
@@ -389,24 +414,24 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   )
   const isPhysical = dmgType === 'Blunt' || dmgType === 'Pierce' || dmgType === 'Cut'
   const mitigated = isPhysical ? Math.max(0, tuned.baseDamage - armor) : tuned.baseDamage
-  const d20 = combat != null ? rollD20(state, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
+  const d20 = combat != null ? rollD20(st, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
   const toHit = d20 + tuned.speed
   const defense = 10 + target.stats.speed
   const hit = toHit >= defense
   const crit = d20 === 20
   const final = hit ? Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1))) : 0
 
-  const chars = state.party.chars.slice()
+  const chars = st.party.chars.slice()
   const idx = chars.findIndex((c) => c.id === target.id)
-  if (idx < 0) return state
+  if (idx < 0) return st
   chars[idx] = { ...chars[idx], hp: Math.max(0, chars[idx].hp - final) }
 
-  let next: GameState = { ...state, party: { ...state.party, chars } }
+  let next: GameState = { ...st, party: { ...st.party, chars } }
   const npcAtk = `d20+Spd ${d20}+${tuned.speed}=${toHit}`
   const pcAc = `10+Spd ${target.stats.speed}=${defense}`
   if (!hit) {
     next = pushActivityLog(next, `${npc.name} → ${target.name}: ${npcAtk} vs ${pcAc} — miss.`)
-    next = pushSfx(next, 'reject')
+    next = pushSfx(next, 'swing')
     return next
   }
   next = pushActivityLog(
@@ -415,12 +440,12 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   )
   next = pushSfx(next, 'hit')
   next = applyUiShake(next, crit ? 0.55 : 0.35, crit ? 180 : 140)
-  if (tuned.statusOnHit?.length && state.combat) {
+  if (tuned.statusOnHit?.length && st.combat) {
     for (const sh of tuned.statusOnHit) {
-      const seed = hashStr(`${state.floor.seed}:${state.combat.encounterId}:${npc.id}:${target.id}:${sh.status}:${state.combat.turnIndex}`)
+      const seed = hashStr(`${st.floor.seed}:${st.combat!.encounterId}:${npc.id}:${target.id}:${sh.status}:${st.combat!.turnIndex}`)
       const roll = (seed % 100) + 1
       if (roll <= sh.pct) {
-        const untilMs = sh.durationMs != null ? state.nowMs + Math.max(0, Math.round(sh.durationMs)) : undefined
+        const untilMs = sh.durationMs != null ? st.nowMs + Math.max(0, Math.round(sh.durationMs)) : undefined
         next = addStatus(next, target.id, sh.status, untilMs)
         next = pushActivityLog(next, `${target.name} is ${sh.status}.`)
       }

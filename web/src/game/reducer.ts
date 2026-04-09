@@ -121,7 +121,7 @@ export type Action =
   | { type: 'ui/closeNpcDialog' }
   | { type: 'ui/toast'; text: string; ms?: number }
   | { type: 'ui/shake'; magnitude: number; ms?: number }
-  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }
+  | { type: 'ui/sfx'; kind: 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }
   | { type: 'audio/set'; key: keyof GameState['audio']; value: number }
   | { type: 'time/tick'; nowMs: number }
   | { type: 'player/turn'; dir: -1 | 1 }
@@ -1152,7 +1152,7 @@ export function reduce(state: GameState, action: Action): GameState {
         } else {
           withMsg = pushActivityLog(state, 'Miss.')
         }
-        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'swing' })
         return reduce(withSfx, { type: 'combat/advanceTurn' })
       }
       const finalDmg = out.finalDmg
