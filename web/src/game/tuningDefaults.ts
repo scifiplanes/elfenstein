@@ -98,6 +98,7 @@ export const DEFAULT_RENDER: RenderTuning = {
   npcSizeRand_Skeleton: 0.0,
   npcSize_Catoctopus: 0.65,
   npcSizeRand_Catoctopus: 0.0,
+  hubInnkeeperSpriteScale: 1,
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {

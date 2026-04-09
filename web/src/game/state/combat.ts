@@ -1,6 +1,6 @@
-import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, StatusEffectId } from '../types'
+import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId } from '../types'
 import { pushActivityLog } from './activityLog'
-import { addStatus } from './status'
+import { addStatus, addStatusToNpc } from './status'
 import { roomForCell } from './roomGeometry'
 
 function hashStr(s: string) {
@@ -22,21 +22,34 @@ function rollD20(state: GameState, encounterId: Id, key: string): number {
   return (h % 20) + 1
 }
 
-export function npcCombatTuning(
-  kind: GameState['floor']['npcs'][number]['kind'],
-): { speed: number; baseDamage: number; damageType: DamageType; statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }> } {
+export function npcCombatTuning(kind: GameState['floor']['npcs'][number]['kind']): {
+  speed: number
+  baseDamage: number
+  damageType: DamageType
+  /** Flat subtraction after base damage, for Blunt/Pierce/Cut hits from PCs only. */
+  armor: number
+  resistances: Resistances
+  statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }>
+} {
   switch (kind) {
     case 'Swarm':
-      return { speed: 8, baseDamage: 4, damageType: 'Pierce', statusOnHit: [{ status: 'Poisoned', pct: 12, durationMs: 18_000 }] }
+      return {
+        speed: 8,
+        baseDamage: 4,
+        damageType: 'Pierce',
+        armor: 0,
+        resistances: {},
+        statusOnHit: [{ status: 'Poisoned', pct: 12, durationMs: 18_000 }],
+      }
     case 'Skeleton':
-      return { speed: 5, baseDamage: 7, damageType: 'Cut' }
+      return { speed: 5, baseDamage: 7, damageType: 'Cut', armor: 1, resistances: { Cut: 0.08, Pierce: 0.05 } }
     case 'Catoctopus':
-      return { speed: 6, baseDamage: 6, damageType: 'Blunt' }
+      return { speed: 6, baseDamage: 6, damageType: 'Blunt', armor: 0, resistances: { Blunt: 0.06 } }
     case 'Wurglepup':
-      return { speed: 7, baseDamage: 5, damageType: 'Cut' }
+      return { speed: 7, baseDamage: 5, damageType: 'Cut', armor: 0, resistances: { Cut: 0.04 } }
     case 'Bobr':
     default:
-      return { speed: 4, baseDamage: 6, damageType: 'Blunt' }
+      return { speed: 4, baseDamage: 6, damageType: 'Blunt', armor: 1, resistances: { Blunt: 0.05 } }
   }
 }
 
@@ -198,9 +211,11 @@ export function defend(state: GameState, pcId: CharacterId): GameState {
   return pushActivityLog({ ...state, combat: nextCombat }, `${state.party.chars.find((c) => c.id === pcId)?.name ?? 'PC'} defends.`)
 }
 
-export function attemptFlee(state: GameState): GameState {
+export type AttemptFleeResult = { state: GameState; /** Paid stamina and failed roll: caller should advance initiative. */ advanceTurn: boolean }
+
+export function attemptFlee(state: GameState): AttemptFleeResult {
   const combat = state.combat
-  if (!combat) return state
+  if (!combat) return { state, advanceTurn: false }
 
   const turn = currentTurn(state)
   const livingPcs = state.party.chars.filter((c) => c.hp > 0)
@@ -216,14 +231,14 @@ export function attemptFlee(state: GameState): GameState {
     turn?.kind === 'npc' ? state.floor.npcs.find((n) => n.id === turn.id && n.hp > 0) ?? null
     : livingNpcs.sort((a, b) => npcCombatTuning(b.kind).speed - npcCombatTuning(a.kind).speed || a.id.localeCompare(b.id))[0] ?? null
 
-  if (!pc || !npc) return state
+  if (!pc || !npc) return { state, advanceTurn: false }
 
   // Stamina cost (MVP): fleeing is costly; if too exhausted, reject but do not consume a turn.
   const fleeCost = 8
   if (pc.stamina < fleeCost) {
     let next = pushActivityLog(state, 'Too exhausted to flee.')
     next = pushSfx(next, 'reject')
-    return next
+    return { state: next, advanceTurn: false }
   }
   {
     const chars = state.party.chars.slice()
@@ -243,7 +258,7 @@ export function attemptFlee(state: GameState): GameState {
   if (success) {
     const ended = endCombat(state)
     const withMsg = pushActivityLog(ended, 'You flee.')
-    return pushSfx(withMsg, 'ui')
+    return { state: pushSfx(withMsg, 'ui'), advanceTurn: false }
   }
 
   let next = pushActivityLog(state, 'You fail to flee!')
@@ -253,6 +268,33 @@ export function attemptFlee(state: GameState): GameState {
   const c = next.combat
   if (c) {
     next = { ...next, combat: { ...c, lastAction: { actorKind: 'pc', actorId: pc.id, action: 'flee', atMs: next.nowMs } } }
+  }
+  return { state: next, advanceTurn: true }
+}
+
+/** Deterministic weapon proc rolls vs NPCs (combat or open world). */
+export function applyWeaponStatusOnHitFromPc(
+  state: GameState,
+  defenderNpcId: Id,
+  weapon: { statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }> },
+  attackerId: CharacterId,
+): GameState {
+  const list = weapon.statusOnHit
+  if (!list?.length) return state
+  const combat = state.combat
+  const npc = state.floor.npcs.find((n) => n.id === defenderNpcId)
+  if (!npc || npc.hp <= 0) return state
+  let next = state
+  const turnPart = combat != null ? String(combat.turnIndex) : `oc_${Math.floor(state.nowMs)}`
+  for (const sh of list) {
+    const seed = hashStr(`${state.floor.seed}:${combat?.encounterId ?? 'open'}:${attackerId}:${defenderNpcId}:${sh.status}:${turnPart}`)
+    const roll = (seed % 100) + 1
+    if (roll <= sh.pct) {
+      const untilMs = sh.durationMs != null ? state.nowMs + Math.max(0, Math.round(sh.durationMs)) : undefined
+      next = addStatusToNpc(next, defenderNpcId, sh.status, untilMs)
+      const name = next.floor.npcs.find((n) => n.id === defenderNpcId)?.name ?? 'Foe'
+      next = pushActivityLog(next, `${name} is ${sh.status}.`)
+    }
   }
   return next
 }
@@ -271,16 +313,40 @@ export function resolvePcAttackRoll(args: { state: GameState; attacker: Characte
   return { hit, crit, d20, toHit, defense }
 }
 
-export function computePcAttackDamage(args: { state: GameState; attackerId: CharacterId; defenderNpcId: Id; weaponBaseDamage: number }): { hit: boolean; crit: boolean; finalDmg: number } {
-  const { state, attackerId, defenderNpcId, weaponBaseDamage } = args
+export function computePcAttackDamage(args: {
+  state: GameState
+  attackerId: CharacterId
+  defenderNpcId: Id
+  weaponBaseDamage: number
+  weaponDamageType: DamageType
+  damageStat?: 'strength' | 'agility'
+  /** Encounter: roll vs NPC defense. Open world: auto-hit (still apply mitigation). */
+  resolveAttackRoll: boolean
+}): { hit: boolean; crit: boolean; finalDmg: number } {
+  const { state, attackerId, defenderNpcId, weaponBaseDamage, weaponDamageType, damageStat, resolveAttackRoll } = args
   const attacker = state.party.chars.find((c) => c.id === attackerId)
-  if (!attacker) return { hit: true, crit: false, finalDmg: weaponBaseDamage }
-  const roll = resolvePcAttackRoll({ state, attacker, defenderNpcId })
-  if (!roll.hit) return { hit: false, crit: roll.crit, finalDmg: 0 }
+  const npc = state.floor.npcs.find((n) => n.id === defenderNpcId)
+  if (!attacker || !npc) return { hit: true, crit: false, finalDmg: Math.max(1, weaponBaseDamage) }
+
+  let crit = false
+  if (resolveAttackRoll) {
+    const roll = resolvePcAttackRoll({ state, attacker, defenderNpcId })
+    if (!roll.hit) return { hit: false, crit: roll.crit, finalDmg: 0 }
+    crit = roll.crit
+  }
+
+  const statPts = damageStat === 'strength' ? attacker.stats.strength : damageStat === 'agility' ? attacker.stats.agility : 0
+  const statBonus = damageStat ? Math.floor(statPts * 0.25) : 0
+  const rawWeapon = weaponBaseDamage + statBonus
   const dmgBonus = Math.max(0, Number(state.run?.bonuses.damageBonusPct ?? 0))
-  const base = Math.max(1, Math.round(weaponBaseDamage * (1 + dmgBonus)))
-  const finalDmg = Math.max(1, Math.round(base * (roll.crit ? 1.5 : 1)))
-  return { hit: true, crit: roll.crit, finalDmg }
+  const afterRunPct = Math.max(1, Math.round(rawWeapon * (1 + dmgBonus)))
+
+  const tuned = npcCombatTuning(npc.kind)
+  const isPhysical = weaponDamageType === 'Blunt' || weaponDamageType === 'Pierce' || weaponDamageType === 'Cut'
+  const mitigated = isPhysical ? Math.max(0, afterRunPct - tuned.armor) : afterRunPct
+  const resist = Math.max(0, Math.min(0.95, Number(tuned.resistances?.[weaponDamageType] ?? 0)))
+  const finalDmg = Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1)))
+  return { hit: true, crit, finalDmg }
 }
 
 export function npcTakeTurn(state: GameState, npcId: Id): GameState {

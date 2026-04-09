@@ -1,5 +1,6 @@
 import { ContentDB } from './content/contentDb'
 import type {
+  CharacterId,
   DragPayload,
   DragTarget,
   EquipmentSlot,
@@ -11,6 +12,7 @@ import type {
   ProcgenDebugOverlayMode,
   RenderTuning,
 } from './types'
+import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
@@ -30,6 +32,7 @@ import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
+import { npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
@@ -38,6 +41,7 @@ import { descendToNextFloor } from './state/floorProgression'
 import { applyXp } from './state/runProgression'
 import {
   advanceTurnIndex,
+  applyWeaponStatusOnHitFromPc,
   attemptFlee,
   collectEncounterNpcIds,
   computePcAttackDamage,
@@ -113,6 +117,18 @@ export type Action =
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
+  | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
+  | {
+      type: 'hubHotspot/setAxis'
+      spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.exit'
+      key: 'x' | 'y' | 'w' | 'h'
+      value: number
+    }
+  | { type: 'hub/goTavern' }
+  | { type: 'hub/goVillage' }
+  | { type: 'hub/enterDungeon' }
+  | { type: 'hub/openTavernTrade' }
+  | { type: 'hub/closeTavernTrade' }
   /** F2: preview the NPC dialog modal (first NPC on the floor) without affecting real dialog state. */
   | { type: 'debug/setShowNpcDialogPopupPreview'; show: boolean }
   /** F2: preview the death modal without killing the party. */
@@ -147,9 +163,39 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
+      case 'hubHotspot/setAxis':
+        break
+      default:
+        return state
+    }
+  }
+
+  // Hub (2D village/tavern): no dungeon gameplay until Cave.
+  if (state.ui.screen === 'hub' && !state.ui.death) {
+    switch (action.type) {
+      case 'run/new':
+      case 'run/reloadCheckpoint':
+      case 'ui/goTitle':
+      case 'time/tick':
+      case 'ui/toggleDebug':
+      case 'ui/setProcgenDebugOverlay':
+      case 'ui/setDebugBgTrack':
+      case 'render/set':
+      case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
+      case 'debug/setShowNpcDialogPopupPreview':
+      case 'debug/setShowDeathPopupPreview':
+      case 'audio/set':
+      case 'hubHotspot/setAxis':
+      case 'hub/goTavern':
+      case 'hub/goVillage':
+      case 'hub/enterDungeon':
+      case 'hub/openTavernTrade':
+      case 'hub/closeTavernTrade':
         break
       default:
         return state
@@ -168,9 +214,11 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
+      case 'hubHotspot/setAxis':
         break
       default:
         return state
@@ -184,6 +232,8 @@ export function reduce(state: GameState, action: Action): GameState {
         ui: {
           ...state.ui,
           screen: 'title',
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
           paperdollFor: undefined,
           npcDialogFor: undefined,
           debugShowNpcDialogPopup: false,
@@ -198,9 +248,12 @@ export function reduce(state: GameState, action: Action): GameState {
         ...fresh,
         render: state.render,
         audio: state.audio,
+        hubHotspots: state.hubHotspots,
         ui: {
           ...fresh.ui,
-          screen: 'game',
+          screen: 'hub',
+          hubScene: 'village',
+          tavernTradeOpen: undefined,
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
@@ -242,9 +295,62 @@ export function reduce(state: GameState, action: Action): GameState {
           sfxQueue: [],
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
+    }
+    case 'hub/goTavern': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'village') return state
+      return {
+        ...state,
+        ui: { ...state.ui, hubScene: 'tavern', tavernTradeOpen: undefined },
+      }
+    }
+    case 'hub/goVillage': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
+      return {
+        ...state,
+        ui: { ...state.ui, hubScene: 'village', tavernTradeOpen: undefined },
+      }
+    }
+    case 'hub/enterDungeon': {
+      if (state.ui.screen !== 'hub') return state
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          screen: 'game',
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
+        },
+      }
+    }
+    case 'hub/openTavernTrade': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
+      return { ...state, ui: { ...state.ui, tavernTradeOpen: true } }
+    }
+    case 'hub/closeTavernTrade': {
+      return { ...state, ui: { ...state.ui, tavernTradeOpen: false } }
+    }
+    case 'debug/loadHubHotspots': {
+      return { ...state, hubHotspots: mergeHubHotspotConfig(state.hubHotspots, action.patch) }
+    }
+    case 'hubHotspot/setAxis': {
+      const { spot, key, value } = action
+      const h = state.hubHotspots
+      let next: typeof h
+      if (spot === 'village.tavern') {
+        next = { ...h, village: { ...h.village, tavern: { ...h.village.tavern, [key]: value } } }
+      } else if (spot === 'village.cave') {
+        next = { ...h, village: { ...h.village, cave: { ...h.village.cave, [key]: value } } }
+      } else if (spot === 'tavern.innkeeper') {
+        next = { ...h, tavern: { ...h.tavern, innkeeper: { ...h.tavern.innkeeper, [key]: value } } }
+      } else {
+        next = { ...h, tavern: { ...h.tavern, exit: { ...h.tavern.exit, [key]: value } } }
+      }
+      return { ...state, hubHotspots: next }
     }
     case 'ui/toggleDebug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
@@ -421,6 +527,7 @@ export function reduce(state: GameState, action: Action): GameState {
         status: 'neutral' as const,
         hp: 10,
         language: 'DeepGnome' as const,
+        statuses: [] as GameState['floor']['npcs'][number]['statuses'],
       }
       return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
@@ -522,7 +629,7 @@ export function reduce(state: GameState, action: Action): GameState {
           gen,
           itemsOnFloor: spawnedOnFloor,
           floorGeomRevision: state.floor.floorGeomRevision + 1,
-          npcs: gen.npcs,
+          npcs: npcsWithDefaultStatuses(gen.npcs),
           playerPos,
           playerDir,
         },
@@ -645,6 +752,9 @@ export function reduce(state: GameState, action: Action): GameState {
         }
 
         const item = st.party.items[itemId]
+        if (item?.defId === 'Hive' && st.combat) {
+          return reduce(pushActivityLog(st, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+        }
         if (item?.defId === 'Hive') {
           const seed = hashStr(`${st.floor.seed}:hive:${itemId}:${st.nowMs >> 9}`)
           const queenRoll = (seed % 100) + 1
@@ -667,7 +777,16 @@ export function reduce(state: GameState, action: Action): GameState {
           // Otherwise: spawn a Swarm NPC at the drop cell.
           const swarmId = `npc_swarm_${st.floor.seed}_${(seed >>> 0).toString(16)}`
           const status: 'hostile' | 'neutral' = partyHasItemDef(st, 'SwarmQueen') ? 'neutral' : 'hostile'
-          const swarm = { id: swarmId, kind: 'Swarm' as const, name: 'Swarm', pos, status, hp: 9, language: 'Zalgo' as const }
+          const swarm = {
+            id: swarmId,
+            kind: 'Swarm' as const,
+            name: 'Swarm',
+            pos,
+            status,
+            hp: 9,
+            language: 'Zalgo' as const,
+            statuses: [] as GameState['floor']['npcs'][number]['statuses'],
+          }
 
           let next = breaks ? consumeItem(st, itemId) : dropItemToFloor(st, itemId, pos)
           next = {
@@ -725,6 +844,9 @@ export function reduce(state: GameState, action: Action): GameState {
 
         // Special-case: Swarm Basket captures a Swarm.
         if (item.defId === 'SwarmBasket' && npc.kind === 'Swarm') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
           let next = consumeItem(stateAtAction, itemId)
           next = {
             ...next,
@@ -739,6 +861,9 @@ export function reduce(state: GameState, action: Action): GameState {
         // If the party holds a Swarm Queen, treat Swarms as non-hostile to interaction attempts.
         if (npc.kind === 'Swarm' && partyHasItemDef(stateAtAction, 'SwarmQueen')) {
           if (npc.status !== 'neutral' && npc.status !== 'friendly') {
+            if (stateAtAction.combat) {
+              return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+            }
             const npcs = stateAtAction.floor.npcs.slice()
             npcs[npcIdx] = { ...npc, status: 'neutral' }
             return pushActivityLog(
@@ -750,6 +875,9 @@ export function reduce(state: GameState, action: Action): GameState {
 
         // Special-case: Captured Swarm released onto an enemy for heavy damage.
         if (item.defId === 'CapturedSwarm' && npc.kind !== 'Swarm') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
           const seed = hashStr(`${stateAtAction.floor.seed}:releaseSwarm:${npc.id}:${itemId}`)
           const dmg = 18 + ((seed >>> 8) % 8) // 18..25
           const hp = Math.max(0, npc.hp - dmg)
@@ -805,8 +933,12 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'combat/fleeAttempt': {
       if (!state.combat) return state
-      const withAttempt = attemptFlee(state)
-      return ensureDeath(withAttempt)
+      const { state: afterFlee, advanceTurn } = attemptFlee(state)
+      let next = ensureDeath(afterFlee)
+      if (advanceTurn && next.combat) {
+        next = reduce(next, { type: 'combat/advanceTurn' })
+      }
+      return next
     }
     case 'combat/defend': {
       if (!state.combat) return state
@@ -871,7 +1003,18 @@ export function reduce(state: GameState, action: Action): GameState {
         }
       }
       const actorId = state.combat ? ((currentTurn(state)?.kind === 'pc' ? currentTurn(state)!.id : action.actorId) as any) : (action.actorId as any)
-      const out = state.combat && actorId ? computePcAttackDamage({ state, attackerId: actorId, defenderNpcId: npc.id, weaponBaseDamage: weapon.baseDamage }) : { hit: true, crit: false, finalDmg: weapon.baseDamage }
+      const out =
+        actorId != null
+          ? computePcAttackDamage({
+              state,
+              attackerId: actorId as CharacterId,
+              defenderNpcId: npc.id,
+              weaponBaseDamage: weapon.baseDamage,
+              weaponDamageType: weapon.damageType,
+              damageStat: weapon.damageStat,
+              resolveAttackRoll: Boolean(state.combat),
+            })
+          : { hit: true, crit: false, finalDmg: weapon.baseDamage }
       if (state.combat && !out.hit) {
         const withMsg = pushActivityLog(state, 'Miss.')
         const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
@@ -919,6 +1062,9 @@ export function reduce(state: GameState, action: Action): GameState {
             },
           }
         }
+      }
+      if (!died && actorId && weapon.statusOnHit?.length) {
+        nextState = applyWeaponStatusOnHitFromPc(nextState, npc.id, weapon, actorId as CharacterId)
       }
       const withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
       const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
@@ -1100,6 +1246,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcSizeRand_Skeleton = clampNpcRand(r.npcSizeRand_Skeleton ?? 0)
   const npcSize_Catoctopus = clampNpcSize(r.npcSize_Catoctopus ?? 0.65)
   const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
+  const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(r.hubInnkeeperSpriteScale ?? 1)))
   return {
     ...r,
     globalIntensity,
@@ -1167,6 +1314,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcSizeRand_Skeleton,
     npcSize_Catoctopus,
     npcSizeRand_Catoctopus,
+    hubInnkeeperSpriteScale,
   }
 }
 

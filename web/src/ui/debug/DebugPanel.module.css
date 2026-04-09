@@ -88,6 +88,13 @@
   margin: 0 0 8px;
 }
 
+.subSectionTitle {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.62);
+  margin: 10px 0 4px;
+}
+
 .row {
   display: grid;
   grid-template-columns: 1fr 120px;

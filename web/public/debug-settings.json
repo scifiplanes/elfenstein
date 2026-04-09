@@ -109,5 +109,15 @@
     "munchThumpHz": 48,
     "munchTremDepth": 0.89,
     "munchTremHz": 13
+  },
+  "hubHotspots": {
+    "village": {
+      "tavern": { "x": 0.12, "y": 0.55, "w": 0.22, "h": 0.18 },
+      "cave": { "x": 0.68, "y": 0.52, "w": 0.2, "h": 0.2 }
+    },
+    "tavern": {
+      "innkeeper": { "x": 0.38, "y": 0.35, "w": 0.24, "h": 0.28 },
+      "exit": { "x": 0.08, "y": 0.72, "w": 0.16, "h": 0.14 }
+    }
   }
 }

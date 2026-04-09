@@ -1,7 +1,14 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
 import { DEFAULT_ITEMS } from '../../game/content/items'
-import type { GameState, ItemDefId, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
+import type {
+  GameState,
+  HubNormRect,
+  ItemDefId,
+  NpcKind,
+  PoiKind,
+  ProcgenDebugOverlayMode,
+} from '../../game/types'
 import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
@@ -264,6 +271,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
+      {
+        key: 'hubInnkeeperSpriteScale',
+        label: 'Hub innkeeper sprite scale',
+        min: 0.25,
+        max: 3,
+        step: 0.05,
+        format: (v) => v.toFixed(2),
+      },
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiFootLift', label: 'POI above ground', min: -0.2, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
@@ -390,7 +405,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
               className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
               onClick={async () => {
                 try {
-                  await saveDebugSettingsToProject(state.render, state.audio)
+                  await saveDebugSettingsToProject(state.render, state.audio, state.hubHotspots)
                   dispatch({ type: 'ui/toast', text: 'Saved debug settings to project.', ms: 1400 })
                 } catch {
                   dispatch({ type: 'ui/toast', text: 'Failed to save debug settings to project.', ms: 1600 })
@@ -970,6 +985,65 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             <div className={styles.value}>{deg(yawThree).toFixed(1)}°</div>
             <div />
           </div>
+        </div>
+      )}
+
+      {(!q || 'hub hotspot village tavern 2d scene rect'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Hub hotspots (normalized 0–1 in game viewport)</div>
+          {(
+            [
+              { label: 'Village · Tavern', spot: 'village.tavern' as const },
+              { label: 'Village · Cave', spot: 'village.cave' as const },
+              { label: 'Tavern · Innkeeper', spot: 'tavern.innkeeper' as const },
+              { label: 'Tavern · Exit', spot: 'tavern.exit' as const },
+            ] as const
+          ).map(({ label, spot }) => {
+            const rect: HubNormRect =
+              spot === 'village.tavern'
+                ? state.hubHotspots.village.tavern
+                : spot === 'village.cave'
+                  ? state.hubHotspots.village.cave
+                  : spot === 'tavern.innkeeper'
+                    ? state.hubHotspots.tavern.innkeeper
+                    : state.hubHotspots.tavern.exit
+            const axes = [
+              { key: 'x' as const, label: 'x' },
+              { key: 'y' as const, label: 'y' },
+              { key: 'w' as const, label: 'w' },
+              { key: 'h' as const, label: 'h' },
+            ]
+            return (
+              <div key={spot}>
+                <div className={styles.subSectionTitle}>{label}</div>
+                {axes.map(({ key, label: axisLabel }) => {
+                  const v = rect[key]
+                  return (
+                    <div key={key} className={styles.row}>
+                      <div className={styles.label}>{axisLabel}</div>
+                      <div className={styles.value}>{v.toFixed(3)}</div>
+                      <input
+                        className={styles.slider}
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.005}
+                        value={v}
+                        onChange={(e) =>
+                          dispatch({
+                            type: 'hubHotspot/setAxis',
+                            spot,
+                            key,
+                            value: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       )}
 

@@ -30,7 +30,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Stone',
     icon: { kind: 'emoji', value: '🪨' },
     tags: ['material', 'weapon', 'oneHand'],
-    weapon: { baseDamage: 5, damageType: 'Blunt', staminaCost: 3 },
+    weapon: { baseDamage: 5, damageType: 'Blunt', damageStat: 'strength', staminaCost: 3 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {
@@ -38,7 +38,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Stick',
     icon: { kind: 'emoji', value: '🪵' },
     tags: ['material', 'weapon', 'oneHand'],
-    weapon: { baseDamage: 4, damageType: 'Blunt', staminaCost: 2 },
+    weapon: { baseDamage: 4, damageType: 'Blunt', damageStat: 'agility', staminaCost: 2 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {
@@ -46,7 +46,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Club',
     icon: { kind: 'emoji', value: '🏏' },
     tags: ['weapon', 'oneHand'],
-    weapon: { baseDamage: 7, damageType: 'Blunt', staminaCost: 4 },
+    weapon: { baseDamage: 7, damageType: 'Blunt', damageStat: 'strength', staminaCost: 4 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {
@@ -54,7 +54,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Spear',
     icon: { kind: 'emoji', value: '🗡️' },
     tags: ['weapon', 'twoHand'],
-    weapon: { baseDamage: 8, damageType: 'Pierce', staminaCost: 6 },
+    weapon: { baseDamage: 8, damageType: 'Pierce', damageStat: 'strength', staminaCost: 6 },
     equipSlots: ['handLeft', 'handRight'],
   },
   { id: 'IronKey', name: 'Iron key', icon: { kind: 'emoji', value: '🗝️' }, tags: ['quest'] },
@@ -74,7 +74,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Stone shard',
     icon: { kind: 'emoji', value: '🪨' },
     tags: ['tool', 'weapon', 'oneHand'],
-    weapon: { baseDamage: 5, damageType: 'Cut', staminaCost: 3, statusOnHit: [{ status: 'Bleeding', pct: 15, durationMs: 20_000 }] },
+    weapon: { baseDamage: 5, damageType: 'Cut', damageStat: 'agility', staminaCost: 3, statusOnHit: [{ status: 'Bleeding', pct: 15, durationMs: 20_000 }] },
     equipSlots: ['handLeft', 'handRight'],
   },
   { id: 'Ash', name: 'Ash', icon: { kind: 'emoji', value: '⚫️' }, tags: ['material'] },
@@ -93,7 +93,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Sling',
     icon: { kind: 'emoji', value: '🪃' },
     tags: ['weapon', 'tool', 'oneHand'],
-    weapon: { baseDamage: 5, damageType: 'Blunt', staminaCost: 4 },
+    weapon: { baseDamage: 5, damageType: 'Blunt', damageStat: 'agility', staminaCost: 4 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {
@@ -101,7 +101,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Bolas',
     icon: { kind: 'emoji', value: '🪢' },
     tags: ['weapon', 'tool', 'oneHand'],
-    weapon: { baseDamage: 5, damageType: 'Blunt', staminaCost: 4 },
+    weapon: { baseDamage: 5, damageType: 'Blunt', damageStat: 'agility', staminaCost: 4 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {
@@ -109,7 +109,7 @@ export const DEFAULT_ITEMS: ItemDef[] = [
     name: 'Bow',
     icon: { kind: 'emoji', value: '🏹' },
     tags: ['weapon', 'tool', 'twoHand'],
-    weapon: { baseDamage: 6, damageType: 'Pierce', staminaCost: 6 },
+    weapon: { baseDamage: 6, damageType: 'Pierce', damageStat: 'agility', staminaCost: 6 },
     equipSlots: ['handLeft', 'handRight'],
   },
   {

@@ -12,6 +12,8 @@ export type ItemDef = {
   weapon?: {
     baseDamage: number
     damageType: DamageType
+    /** Optional additive scaling: `floor(stat * 0.25)` merged before % run bonus. */
+    damageStat?: 'strength' | 'agility'
     consumesOnUse?: boolean
     staminaCost?: number
     statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }>

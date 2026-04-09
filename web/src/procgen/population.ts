@@ -291,6 +291,7 @@ export function spawnNpcsAndItems(args: {
       hp,
       language,
       quest: status === 'hostile' ? undefined : pickQuest(idx),
+      statuses: [],
     }
   }
 

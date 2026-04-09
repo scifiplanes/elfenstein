@@ -1,8 +1,10 @@
 import type { ContentDB } from '../content/contentDb'
 import type { GameState, InventoryGrid, ItemId } from '../types'
+import { DEFAULT_HUB_HOTSPOTS } from '../hubHotspotDefaults'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { generateDungeon } from '../../procgen/generateDungeon'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 
 function mkInventory(cols: number, rows: number): InventoryGrid {
@@ -71,9 +73,26 @@ export function makeInitialState(_content: ContentDB): GameState {
 
   return {
     nowMs,
-    ui: { screen: 'game', debugOpen: false, sfxQueue: [], procgenDebugOverlay: undefined, activityLog: [], death: undefined },
+    ui: {
+      screen: 'game',
+      debugOpen: false,
+      sfxQueue: [],
+      procgenDebugOverlay: undefined,
+      activityLog: [],
+      death: undefined,
+    },
     render: { ...DEFAULT_RENDER },
     audio: { ...DEFAULT_AUDIO },
+    hubHotspots: {
+      village: {
+        tavern: { ...DEFAULT_HUB_HOTSPOTS.village.tavern },
+        cave: { ...DEFAULT_HUB_HOTSPOTS.village.cave },
+      },
+      tavern: {
+        innkeeper: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeper },
+        exit: { ...DEFAULT_HUB_HOTSPOTS.tavern.exit },
+      },
+    },
     run: {
       runId: `run_${floorSeed}`,
       startedAtMs: nowMs,
@@ -99,7 +118,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       pois: gen.pois,
       itemsOnFloor: spawnedOnFloor,
       floorGeomRevision: 1,
-      npcs: gen.npcs,
+      npcs: npcsWithDefaultStatuses(gen.npcs),
     },
     party: {
       chars: [

@@ -3319,3 +3319,72 @@ Neutral NPCs in doorways or narrow corridors should not hard-block navigation; h
 ### Consequences
 - `web/src/game/reducer.ts`: `attemptMoveTo` only short-circuits for **`npc.status === 'hostile'`**.
 - `DESIGN.md` §7.5 / §7.7 updated for interaction and combat trigger wording.
+
+---
+
+## ADR-0221 — Combat parity: NPC debuffs, mitigation, stat scaling, flee turn, combat item blocks
+Date: 2026-04-09
+
+### Decision
+- **NPC statuses**: floor NPCs carry a **`statuses`** array (same shape as PCs); **`applyStatusDecay`** prunes **`untilMs`** for NPCs too. **`weapon.statusOnHit`** rolls on successful PC weapon hits and applies timed effects via **`addStatusToNpc`** (deterministic seeds).
+- **NPC mitigation vs PC hits**: per-**`NpcKind`** **`armor`** (subtract after damage % bonus, for Blunt/Pierce/Cut only) and **`resistances`** by **`DamageType`** (capped at **0.95**, same style as NPC→PC). To-hit defense stays **10 + NPC Speed** (armor does not add to AC).
+- **Weapon stat scaling**: optional **`ItemDef.weapon.damageStat`** (**`strength`** | **`agility`**) adds **`floor(stat × 0.25)`** to base weapon damage before run **damageBonusPct**.
+- **Flee failure**: after stamina is spent and the flee check fails (free enemy hit), **`combat/advanceTurn`** runs so the same initiative slot cannot spam flee attempts.
+- **Combat item blocks**: during **`state.combat`**, **Hive** world drop, **Swarm Basket** capture, **Captured Swarm** release, and **Swarm Queen** calm-on-touch are rejected with a short log line.
+
+### Rationale
+Content already exposed **`statusOnHit`** and per-weapon fantasy (Str vs Agi) while code only modeled NPC→PC procs and flat PC damage. Flee-spam and “spawn/capture mid-fight” bypassed encounter pacing; aligning implementation with **`DESIGN.md` §7.7** reduces exploits and dead data.
+
+### Consequences
+- `web/src/game/types.ts`, `web/src/procgen/types.ts`, `web/src/procgen/population.ts`, `web/src/game/state/npcHydrate.ts`, `web/src/game/state/initialState.ts`, `web/src/game/state/floorProgression.ts`, `web/src/game/reducer.ts`: NPC **`statuses`** + hydration from procgen.
+- `web/src/game/state/status.ts`: NPC decay + **`addStatusToNpc`**.
+- `web/src/game/state/combat.ts`: **`npcCombatTuning`** armor/resist; **`computePcAttackDamage`** pipeline; **`applyWeaponStatusOnHitFromPc`**; **`attemptFlee`** returns **`{ state, advanceTurn }`**.
+- `web/src/game/content/contentDb.ts`, `web/src/game/content/items.ts`: **`damageStat`** on weapons.
+- `DESIGN.md` §7.7–§7.8 updated; this ADR.
+
+---
+
+## ADR-0222 — Pre-dungeon 2D hub (village / tavern) + tunable hotspots
+Date: 2026-04-09
+
+### Decision
+- **`ui.screen`** gains **`hub`**: **New run** from the title screen starts in **`hub`** with **`hubScene: village`** (2D art in the **game** HUD cell, click regions as red-outlined placeholders). **Tavern** / **Cave** / **Exit** / **Innkeeper** actions are driven by **`hub/*`** reducer actions; **Cave** sets **`screen: 'game'`** to show the existing 3D dungeon. **Checkpoint reload** skips the hub.
+- **Innkeeper** opens **`TavernTradeModal`**: stub copy **“Welcome, travellers…”** and **Close** only (real trade UI later).
+- **Hotspot geometry** lives in **`GameState.hubHotspots`** (normalized **0–1** rects). F2 **Hub hotspots** sliders and **`hubHotspots`** in **`debug-settings.json`** (plus localStorage) mirror the render/audio persistence pattern.
+- **Compositor**: **`HubViewport`** is mounted in the **capture** HUD for the hub (not an empty shell) so the final frame shows 2D art over the scene rect.
+
+### Rationale
+Bespoke starting locations need layout iteration without rebuilding art; normalized rects and shared debug persistence keep tuning workflow consistent with F2. Masking via the captured HUD matches the existing scene/UI composite contract.
+
+### Consequences
+- New modules: `web/src/ui/hub/HubViewport.tsx`, `TavernTradeModal.tsx`, `web/src/game/hubHotspotDefaults.ts`; `HudLayout` / `NavigationPanel` / `DitheredFrameRoot` / `reducer` / `types` / `debugSettingsPersistence` / `GameApp` / `DebugPanel` updated; `web/public/debug-settings.json` includes default **`hubHotspots`**.
+
+---
+
+## ADR-0223 — Tavern trade modal: capture overlay + cursor forwarding; tavern bartender art
+Date: 2026-04-09
+
+### Decision
+- **`TavernTradeModal`**: add **`variant="capture"`** for **`captureFullHudOverlay`** (same dual-DOM pattern as **`TitleScreen`**) so the stub trade panel appears in the dithered frame; interactive portaled tree keeps **`modalPortalHitRoot`** opacity-0 for hits.
+- Wrap portaled content in a full-screen **`hitShell`** that forwards **`cursor.onPointerMove`** / **`cancelDrag`** (same approach as **`DeathModal`**) so the custom cursor tracks the pointer while the modal sits above **`FixedStageViewport`**.
+- **Tavern hub**: render **`bartender_base` / `bartender_idle` / `bartender_blink`** inside the innkeeper rect, plus **`tavern_foreground.png`** under hotspot z-order so clicks still reach exit/innkeeper.
+
+### Rationale
+Without capture overlay, the trade UI was invisible in the composite; without pointer forwarding, **`HudLayout`** no longer received moves when the pointer was over the body portaled layer, so cursor position stalled.
+
+### Consequences
+- `TavernTradeModal.tsx`, `TavernTradeModal.module.css`, `HubViewport.tsx`, `HubViewport.module.css`, `DitheredFrameRoot.tsx`, `DESIGN.md` §5.1.
+
+---
+
+## ADR-0224 — Debug: hub innkeeper sprite scale (visual-only)
+Date: 2026-04-09
+
+### Decision
+Add **`hubInnkeeperSpriteScale`** to **`RenderTuning`** (default **1**, clamped **0.25–3**), exposed in F2 under the NPC/POI render sliders. The tavern **bartender** `<img>` uses **`transform: scale(...)`** with **`transformOrigin: bottom center`**. The **innkeeper hotspot** remains **`hubHotspots.tavern.innkeeper`** only.
+
+### Rationale
+Artists can tune sprite prominence independently of hit targets; coupling scale to the hotspot would force simultaneous retuning of trade click areas.
+
+### Consequences
+- `web/src/game/types.ts`, `tuningDefaults.ts`, `reducer.ts` (`clampRenderTuning`), `HubViewport.tsx`, `DebugPanel.tsx`; `DESIGN.md` F2 + §5.1.

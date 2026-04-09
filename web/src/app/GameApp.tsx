@@ -23,9 +23,15 @@ export function GameApp() {
       if (data?.render || data?.audio) {
         dispatch({ type: 'debug/loadTuning', render: data.render, audio: data.audio })
       }
+      if (data?.hubHotspots) {
+        dispatch({ type: 'debug/loadHubHotspots', patch: data.hubHotspots })
+      }
       const local = loadDebugSettingsFromLocal()
       if (local?.render || local?.audio) {
         dispatch({ type: 'debug/loadTuning', render: local.render, audio: local.audio })
+      }
+      if (local?.hubHotspots) {
+        dispatch({ type: 'debug/loadHubHotspots', patch: local.hubHotspots })
       }
       setDebugTuningHydrated(true)
     })
@@ -37,10 +43,10 @@ export function GameApp() {
   useEffect(() => {
     if (!debugTuningHydrated) return
     const t = window.setTimeout(() => {
-      saveDebugSettingsToLocal(state.render, state.audio)
+      saveDebugSettingsToLocal(state.render, state.audio, state.hubHotspots)
     }, 450)
     return () => window.clearTimeout(t)
-  }, [debugTuningHydrated, state.render, state.audio])
+  }, [debugTuningHydrated, state.render, state.audio, state.hubHotspots])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {

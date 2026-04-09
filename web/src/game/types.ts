@@ -96,10 +96,22 @@ export type Character = {
 
 export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
 
-export type UiScreen = 'title' | 'game'
+export type UiScreen = 'title' | 'hub' | 'game'
+
+/** Normalized rect (0–1) for hub click regions inside the game viewport. */
+export type HubNormRect = { x: number; y: number; w: number; h: number }
+
+export type HubHotspotConfig = {
+  village: { tavern: HubNormRect; cave: HubNormRect }
+  tavern: { innkeeper: HubNormRect; exit: HubNormRect }
+}
 
 export type UiState = {
   screen: UiScreen
+  /** When `screen === 'hub'`, which bespoke 2D scene is shown. */
+  hubScene?: 'village' | 'tavern'
+  /** Stub trade UI from tavern innkeeper hotspot. */
+  tavernTradeOpen?: boolean
   debugOpen: boolean
   /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
   procgenDebugOverlay?: ProcgenDebugOverlayMode
@@ -327,6 +339,8 @@ export type RenderTuning = {
   npcSizeRand_Skeleton: number
   npcSize_Catoctopus: number
   npcSizeRand_Catoctopus: number
+  /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not change the hotspot rect. */
+  hubInnkeeperSpriteScale: number
 }
 
 export type AudioTuning = {
@@ -376,6 +390,8 @@ export type GameState = {
   ui: UiState
   render: RenderTuning
   audio: AudioTuning
+  /** F2-tunable hit areas for hub 2D scenes (normalized to game viewport). */
+  hubHotspots: HubHotspotConfig
 
   /** Roguelite run-scoped progression (XP/level/perks). */
   run: {
@@ -441,6 +457,7 @@ export type GameState = {
       hp: number
       language: NpcLanguage
       quest?: { wants: ItemDefId; hated: ItemDefId[] }
+      statuses: Array<{ id: StatusEffectId; untilMs?: number }>
     }>
     playerPos: Vec2
     playerDir: 0 | 1 | 2 | 3

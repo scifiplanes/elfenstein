@@ -3,6 +3,7 @@ import type { ContentDB } from '../../game/content/contentDb'
 import type { GameState } from '../../game/types'
 import type { Action } from '../../game/reducer'
 import styles from './HudLayout.module.css'
+import { HubViewport } from '../hub/HubViewport'
 import { GameViewport } from '../viewport/GameViewport'
 import { InventoryPanel } from '../inventory/InventoryPanel'
 import { PortraitPanel } from '../portraits/PortraitPanel'
@@ -120,7 +121,7 @@ export function HudLayout(props: {
 
               // 3D viewport hover: inject a virtual hover target so the cursor can become active
               // over pickable scene objects even when pointer events are captured by another element.
-              if (world && gameViewportRef?.current) {
+              if (state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
                 const rect = gameViewportRef.current.getBoundingClientRect()
                 if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
                   const pick = world.pickObject(rect, e.clientX, e.clientY)
@@ -195,7 +196,7 @@ export function HudLayout(props: {
 
               // Cursor-aimed 3D floor drop: if the drop resolves to `floorDrop` and the pointer is
               // over the 3D viewport, compute a snapped grid cell near the ray hit.
-              if (result.target.kind === 'floorDrop' && world && gameViewportRef?.current) {
+              if (result.target.kind === 'floorDrop' && state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
                 const rect = gameViewportRef.current.getBoundingClientRect()
                 if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
                   const p = world.pickFloorPoint(rect, e.clientX, e.clientY)
@@ -233,7 +234,13 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.game} ${state.combat ? styles.gameCombat : ''}`}>
-        {captureForPostprocess ? (
+        {state.ui.screen === 'hub' ? (
+          captureForPostprocess ? (
+            <HubViewport state={state} dispatch={dispatch} viewportRef={gameViewportRef} variant="capture" />
+          ) : (
+            <HubViewport state={state} dispatch={dispatch} viewportRef={gameViewportRef} variant="interactive" />
+          )
+        ) : captureForPostprocess ? (
           // `GameViewport` is omitted in capture HUD (3D is not rasterized here). Keep a same-sized
           // shell so `gameViewportRef` (e.g. `captureGameViewportRef`) attaches and NPC dialog / layout
           // math match the interactive `GameViewport` box.

@@ -3,6 +3,7 @@ import { generateDungeon } from '../../procgen/generateDungeon'
 import type { FloorType } from '../../procgen/types'
 import { normalizeFloorGenDifficulty } from '../../procgen/types'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 import { pushActivityLog } from './activityLog'
 import { applyXp } from './runProgression'
@@ -48,7 +49,7 @@ export function descendToNextFloor(state: GameState): GameState {
       pois: gen.pois,
       gen,
       itemsOnFloor: spawnedOnFloor,
-      npcs: gen.npcs,
+      npcs: npcsWithDefaultStatuses(gen.npcs),
       playerPos,
       playerDir,
       floorGeomRevision: state.floor.floorGeomRevision + 1,
