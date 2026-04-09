@@ -2448,7 +2448,7 @@ The previous layout used a **percentage of the full modal backdrop**, which did 
 Date: 2026-04-08
 
 ### Decision
-**`NpcDialogModal`** vertical position subtracts **`viewportHeight * (100 / STAGE_CSS_HEIGHT)`** from the previous top anchor (plus small inset), so the shift matches **100 CSS px** when the game viewport height equals **1080**. The **fallback** (no measure) uses **`top: calc(18% - 9.259vh)`**. The main modal **panel** uses **`border-radius: 0`** (square corners); **Close** kept its own radius at the time (**Pet** was later removed—**ADR-0173**).
+**`NpcDialogModal`** vertical position subtracts **`viewportHeight * (100 / STAGE_CSS_HEIGHT)`** from the previous top anchor (plus small inset), so the shift matches **100 CSS px** when the game viewport height equals **1080**. The **fallback** (no measure) uses **`top: calc(18% - 9.259vh)`**. The main modal **panel** uses **`border-radius: 0`** (square corners); **Close** kept its own radius at the time (**Pet** was later removed—**ADR-0189**).
 
 ### Rationale
 Keeps the dialog **horizontally centered** on the game viewport while nudging it **up** in a resolution-aware way. Square outer chrome matches the requested look for the popup background.
@@ -2625,8 +2625,7 @@ Varying blend weight mixes more/less with the underlying scene, which shifts **p
 
 ---
 
-<<<<<<< HEAD
-## ADR-0165 — NPC dialog in HUD capture + invisible hit layer (dither parity)
+## ADR-0181 — NPC dialog in HUD capture + invisible hit layer (dither parity)
 Date: 2026-04-08
 
 ### Decision
@@ -2642,7 +2641,7 @@ DOM modals above the presenter stayed **undithered**; players saw a clean vector
 
 ---
 
-## ADR-0166 — NPC dialog: stage width + no full-screen dimmer
+## ADR-0182 — NPC dialog: stage width + no full-screen dimmer
 Date: 2026-04-08
 
 ### Decision
@@ -2657,7 +2656,7 @@ Measuring width from the game cell had shrunk the panel vs the long-standing sta
 
 ---
 
-## ADR-0167 — NPC dialog centered in game viewport
+## ADR-0183 — NPC dialog centered in game viewport
 Date: 2026-04-08
 
 ### Decision
@@ -2672,7 +2671,7 @@ The popup should read as **centered over the 3D view**, not hugging the top band
 
 ---
 
-## ADR-0168 — Capture HUD: game cell shell for `gameViewportRef`
+## ADR-0184 — Capture HUD: game cell shell for `gameViewportRef`
 Date: 2026-04-08
 
 ### Decision
@@ -2686,11 +2685,11 @@ Capture HUD intentionally omits **`GameViewport`**, so **`captureGameViewportRef
 
 ---
 
-## ADR-0169 — NPC dialog capture: mount inside game cell (flex center)
+## ADR-0185 — NPC dialog capture: mount inside game cell (flex center)
 Date: 2026-04-08
 
 ### Decision
-Render the capture (**`html2canvas`**) **`NpcDialogModal`** **inside** the capture **`HudLayout`** **game** panel via **`captureNpcOverlay`** and a **`npcCaptureLayer`** (**`position: absolute; inset: 0; display: flex`**, top + horizontal center — see **ADR-0170**). Remove capture-only **`getBoundingClientRect`** / **`captureHudRootRef`** positioning and the prior sibling-of-**`HudLayout`** mount.
+Render the capture (**`html2canvas`**) **`NpcDialogModal`** **inside** the capture **`HudLayout`** **game** panel via **`captureNpcOverlay`** and a **`npcCaptureLayer`** (**`position: absolute; inset: 0; display: flex`**, top + horizontal center — see **ADR-0186**). Remove capture-only **`getBoundingClientRect`** / **`captureHudRootRef`** positioning and the prior sibling-of-**`HudLayout`** mount.
 
 ### Rationale
 Offscreen capture coordinates and **`html2canvas`** cloning remained unreliable; **`viewportRect`** could stay empty or wrong so the panel rendered at **(0,0)** in the bitmap (top-left of the frame). Flex layout inside the **same DOM box** as the 3D viewport cell matches the intended **game-widget-aligned** layout without fragile global rect math.
@@ -2701,7 +2700,7 @@ Offscreen capture coordinates and **`html2canvas`** cloning remained unreliable;
 
 ---
 
-## ADR-0170 — NPC dialog: top of game viewport (horizontal center)
+## ADR-0186 — NPC dialog: top of game viewport (horizontal center)
 Date: 2026-04-08
 
 ### Decision
@@ -2711,11 +2710,11 @@ Place the NPC dialog at the **top** of the **3D game viewport** with **10 CSS px
 Vertical centering was correct mechanically but the panel reads better **anchored under the top** of the dungeon view while staying **horizontally centered**.
 
 ### Consequences
-- **`ADR-0167`** (full viewport center) is **superseded** for vertical placement; **`DESIGN.md`** is authoritative.
+- **`ADR-0183`** (full viewport center) is **superseded** for vertical placement; **`DESIGN.md`** is authoritative.
 
 ---
 
-## ADR-0171 — CursorLayer: no pointer capture on descendants
+## ADR-0187 — CursorLayer: no pointer capture on descendants
 Date: 2026-04-08
 
 ### Decision
@@ -2729,7 +2728,7 @@ The layer root already had **`pointer-events: none`**, but children defaulted to
 
 ---
 
-## ADR-0172 — NPC dialog hit layer above `CursorLayer`
+## ADR-0188 — NPC dialog hit layer above `CursorLayer`
 Date: 2026-04-08
 
 ### Decision
@@ -2743,7 +2742,7 @@ Raise **`NpcDialogModal`** **`.backdrop`** from **`z-index: 2200`** to **`10100`
 
 ---
 
-## ADR-0173 — Remove Pet control from NPC dialog
+## ADR-0189 — Remove Pet control from NPC dialog
 Date: 2026-04-08
 
 ### Decision
@@ -2758,7 +2757,7 @@ Scope reduction for the dialog chrome; petting is not required as a first-class 
 
 ---
 
-## ADR-0174 — NPC dialog: no title portrait sprite
+## ADR-0190 — NPC dialog: no title portrait sprite
 Date: 2026-04-08
 
 ### Decision
@@ -2770,8 +2769,10 @@ Simpler chrome; iconography is redundant with the **3D billboard** and busy at l
 ### Consequences
 - **`NpcDialogModal.tsx`**: no **`npcDefs`** sprite import for the modal.
 - **`NpcDialogModal.module.css`**: remove **`.portrait`**; **`DESIGN.md`** §7.5 updated.
-=======
-## ADR-0169 — Procgen content audit + allowlist for non-spawn items
+
+---
+
+## ADR-0191 — Procgen content audit + allowlist for non-spawn items
 Date: 2026-04-08
 
 ### Decision
@@ -2788,7 +2789,7 @@ Seeded content had drifted from what generation and POI loot actually used; with
 
 ---
 
-## ADR-0170 — 3D floor items use the same icons as HUD inventory
+## ADR-0192 — 3D floor items use the same icons as HUD inventory
 Date: 2026-04-08
 
 ### Decision
@@ -2800,13 +2801,10 @@ Players should recognize loot at a glance; the HUD already shows the authoritati
 ### Consequences
 - `DitheredFrameRoot` passes `latestContentRef.current` into `world.renderFrame`.
 - `DESIGN.md` §7.2 notes parity between HUD and world floor-item billboards.
-<<<<<<< HEAD
->>>>>>> origin/main
-=======
 
 ---
 
-## ADR-0171 — Portrait hat + hands equipment drop zones
+## ADR-0193 — Portrait hat + hands equipment drop zones
 Date: 2026-04-08
 
 ### Decision
@@ -2823,7 +2821,7 @@ Keeps equip discoverable on the portrait without enabling the full paperdoll mod
 
 ---
 
-## ADR-0172 — F2 debug: spawn floor item one cell ahead
+## ADR-0194 — F2 debug: spawn floor item one cell ahead
 Date: 2026-04-08
 
 ### Decision
@@ -2837,7 +2835,7 @@ Content authors need the same quick placement loop for items as for NPCs and POI
 
 ---
 
-## ADR-0173 — Portrait unequip via drag (inventory, floor, void)
+## ADR-0195 — Portrait unequip via drag (inventory, floor, void)
 Date: 2026-04-08
 
 ### Decision
@@ -2854,7 +2852,7 @@ Unequip should match the “drag out of the portrait” mental model; equipment 
 
 ---
 
-## ADR-0174 — Portrait equip drag hit: transparent button chrome
+## ADR-0196 — Portrait equip drag hit: transparent button chrome
 Date: 2026-04-08
 
 ### Decision
@@ -2943,4 +2941,17 @@ Center-pivot POIs with **`npcFootLift`** were hard to tune independently from NP
 
 ### Consequences
 **`debug-settings.json`** may persist **`poiFootLift`**; old saves without it get **`clampRenderTuning`** defaults. **`DESIGN.md`** §9 documents bottom pivot + **`poiFootLift`**.
->>>>>>> origin/main
+
+---
+
+## ADR-0197 — Shared modal chrome (`GamePopup.module.css`)
+Date: 2026-04-09
+
+### Decision
+Centralize **panel**, **typography**, **Close / footer action** button, optional **`backdropDim`**, and **`panelWidthMd`** in **`web/src/ui/shared/GamePopup.module.css`**, composed by **`NpcDialogModal`**, **`PaperdollModal`**, **`DeathModal`**, and **`TitleScreen`**. **`DeathModal`** / **`TitleScreen`** drop rounded, blurred “glass” panels in favor of the **inventory-aligned** **`2px`** warm border and **square** corners; **NPC** keeps capture/portal/hit-layer behavior local.
+
+### Rationale
+Modal styling had drifted (mono paperdoll title, thin white borders, rounded death/title panels); one module keeps HUD look consistent and matches **`DESIGN.md`** inventory slot border language.
+
+### Consequences
+New modal-like UI should prefer **`GamePopup`** classes; positioning, **z-index**, and NPC-only rules stay in feature CSS/TSX.

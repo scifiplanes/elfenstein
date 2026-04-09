@@ -1,0 +1,137 @@
+.panel {
+  box-sizing: border-box;
+  background: rgba(18, 20, 28, 0.92);
+  /* Match `InventoryPanel.module.css` `.slot` border. */
+  border: 2px solid rgba(171, 136, 107, 0.75);
+  border-radius: 0;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+  padding: 12px 12px 14px;
+}
+
+.panelWidthMd {
+  width: min(620px, calc(var(--stage-w, 1920px) - 24px));
+  max-width: 100%;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.titleRow {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+/* Same type stack as `.pet` (`--buttonTitle*`); keep each block’s original `font-size`. */
+.title {
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 37px;
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: 1.2;
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+  min-width: 0;
+}
+
+.close {
+  cursor: none;
+  box-sizing: border-box;
+  border: 2px solid var(--buttonTitleColor);
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 0;
+  padding: 10px 20px;
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 23px;
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: var(--buttonTitleLineHeight);
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+  flex: 0 0 auto;
+}
+
+.body {
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 23px;
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: 1.45;
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+  white-space: pre-wrap;
+}
+
+.hint {
+  margin-top: 10px;
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 21px;
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.6);
+  text-shadow: var(--buttonTitleTextShadow);
+}
+
+.sub {
+  font-family: var(--mono);
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.5;
+}
+
+.footer {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.actionBtn {
+  cursor: none;
+  box-sizing: border-box;
+  border: 2px solid var(--buttonTitleColor);
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 0;
+  padding: 10px 16px;
+  font-family: var(--buttonTitleFontFamily);
+  font-size: var(--buttonTitleFontSize);
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: var(--buttonTitleLineHeight);
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+}
+
+.actionBtn:hover {
+  filter: brightness(1.08);
+}
+
+.actionBtn:active {
+  transform: translateY(1px);
+}
+
+.actionBtnPrimary {
+  background: rgba(140, 36, 36, 0.55);
+  border-color: rgba(255, 200, 200, 0.22);
+}
+
+.actionBtnDisabled {
+  opacity: 0.55;
+  filter: saturate(0.6);
+  cursor: not-allowed;
+}
+
+.actionBtnDisabled:hover {
+  filter: none;
+}
+
+/* Full-bleed dim; no z-index — set stacking in the feature module if needed. */
+.backdropDim {
+  background: rgba(0, 0, 0, 0.55);
+}

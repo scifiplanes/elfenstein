@@ -4,6 +4,7 @@ import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { EquipmentSlot, GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
+import popup from '../shared/GamePopup.module.css'
 import styles from './PaperdollModal.module.css'
 
 const SLOT_ORDER: EquipmentSlot[] = ['head', 'handLeft', 'handRight', 'feet', 'clothing', 'accessory']
@@ -26,7 +27,7 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
 
   return (
     <div
-      className={styles.backdrop}
+      className={`${styles.backdrop} ${popup.backdropDim}`}
       onClick={(e) => {
         if (performance.now() < suppressBackdropCloseUntilRef.current) {
           e.preventDefault()
@@ -42,10 +43,12 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
         if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
       }}
     >
-      <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-        <div className={styles.header}>
-          <div className={styles.title}>Paperdoll · {c.name}</div>
-          <button className={styles.close} type="button" onClick={() => dispatch({ type: 'ui/closePaperdoll' })}>
+      <div className={`${popup.panel} ${styles.modal}`} onClick={(e) => e.stopPropagation()}>
+        <div className={popup.header}>
+          <div className={popup.titleRow}>
+            <div className={popup.title}>Paperdoll · {c.name}</div>
+          </div>
+          <button className={popup.close} type="button" onClick={() => dispatch({ type: 'ui/closePaperdoll' })}>
             Close
           </button>
         </div>

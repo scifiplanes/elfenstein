@@ -1,6 +1,7 @@
 import type { Dispatch } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
+import popup from '../shared/GamePopup.module.css'
 import styles from './DeathModal.module.css'
 
 function fmtMs(ms: number) {
@@ -23,10 +24,15 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
   const hasCheckpoint = !!state.run.checkpoint
 
   return (
-    <div className={styles.backdrop}>
-      <div className={styles.modal} role="dialog" aria-modal="true" aria-label="Death screen">
-        <div className={styles.title}>You died</div>
-        <div className={styles.sub}>This run is over.</div>
+    <div className={`${styles.backdrop} ${popup.backdropDim}`}>
+      <div
+        className={`${popup.panel} ${popup.panelWidthMd} ${styles.modal}`}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Death screen"
+      >
+        <div className={`${popup.title} ${styles.title}`}>You died</div>
+        <div className={`${popup.sub} ${styles.sub}`}>This run is over.</div>
 
         <div className={styles.stats}>
           <div className={styles.statLabel}>Run</div>
@@ -51,12 +57,12 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
           </div>
         ) : null}
 
-        <div className={styles.footer}>
-          <button className={styles.btn} type="button" onClick={() => dispatch({ type: 'ui/goTitle' })}>
+        <div className={popup.footer}>
+          <button className={popup.actionBtn} type="button" onClick={() => dispatch({ type: 'ui/goTitle' })}>
             Title
           </button>
           <button
-            className={`${styles.btn} ${!hasCheckpoint ? styles.btnDisabled : ''}`}
+            className={`${popup.actionBtn} ${!hasCheckpoint ? popup.actionBtnDisabled : ''}`}
             type="button"
             disabled={!hasCheckpoint}
             onClick={() => dispatch({ type: 'run/reloadCheckpoint' })}
@@ -64,7 +70,11 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
           >
             Reload checkpoint
           </button>
-          <button className={`${styles.btn} ${styles.btnPrimary}`} type="button" onClick={() => dispatch({ type: 'run/new' })}>
+          <button
+            className={`${popup.actionBtn} ${popup.actionBtnPrimary}`}
+            type="button"
+            onClick={() => dispatch({ type: 'run/new' })}
+          >
             New run
           </button>
         </div>

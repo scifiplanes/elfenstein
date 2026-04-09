@@ -6,6 +6,7 @@ import { toGibberish } from '../../game/npc/gibberish'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
+import popup from '../shared/GamePopup.module.css'
 import styles from './NpcDialogModal.module.css'
 
 type GameViewportRect = { left: number; top: number; width: number; height: number }
@@ -62,9 +63,12 @@ export function NpcDialogModal(props: {
   const english = wants ? `…bring me ${wants}.` : `…`
   const gib = toGibberish(npc.language, english, Math.floor(state.floor.seed) ^ 0xabc)
 
+  const panelChrome = `${popup.panel} ${popup.panelWidthMd}`
   const modalPanel = (
     <div
-      className={variant === 'capture' ? styles.modalCapture : styles.modal}
+      className={
+        variant === 'capture' ? `${panelChrome} ${styles.modalCapture}` : `${panelChrome} ${styles.modal}`
+      }
       style={
         variant === 'interactive' && viewportRect != null
           ? {
@@ -79,19 +83,19 @@ export function NpcDialogModal(props: {
       data-drop-npc-id={variant === 'interactive' ? npc.id : undefined}
       onClick={variant === 'interactive' ? (e) => e.stopPropagation() : undefined}
     >
-      <div className={styles.header}>
-        <div className={styles.titleRow}>
-          <div className={styles.title}>
+      <div className={popup.header}>
+        <div className={popup.titleRow}>
+          <div className={popup.title}>
             {npc.name} · {npc.status}
           </div>
         </div>
-        <button className={styles.close} type="button" onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}>
+        <button className={popup.close} type="button" onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}>
           Close
         </button>
       </div>
 
-      <div className={styles.body}>{gib}</div>
-      <div className={styles.hint}>Tip: drag an item from inventory onto them.</div>
+      <div className={popup.body}>{gib}</div>
+      <div className={popup.hint}>Tip: drag an item from inventory onto them.</div>
     </div>
   )
 
