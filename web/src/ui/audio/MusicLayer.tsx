@@ -57,7 +57,7 @@ export function MusicLayer(props: { state: GameState }) {
     void Promise.all([bgPlayer.preload(ALL_MUSIC_TRACKS), ...overlayPreloads]).then(() => {
       for (const [track, player] of overlayPlayers) {
         player.crossfadeTo(track, 0)
-        player.setVolume(0)
+        player.setVolumeImmediate(0)
       }
       const track = activeBgTrackRef.current
       if (track) bgPlayer.crossfadeTo(track, 0)

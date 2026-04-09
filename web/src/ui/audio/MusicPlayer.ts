@@ -135,6 +135,19 @@ export class MusicPlayer {
     this.outputGain.gain.setTargetAtTime(Math.max(0, volume), this.ctx.currentTime, tauSec)
   }
 
+  /**
+   * Sets output volume instantly with no ramp or smoothing.
+   * Use this to initialise a player to silence before it has ever been heard —
+   * `setTargetAtTime` starts from the node's current value (1.0) and takes a
+   * few tau-lengths to reach the target, which produces a brief transient when
+   * the AudioContext resumes from a suspended state.
+   */
+  setVolumeImmediate(volume: number) {
+    if (!this.outputGain || !this.ctx) return
+    this.outputGain.gain.cancelScheduledValues(this.ctx.currentTime)
+    this.outputGain.gain.setValueAtTime(Math.max(0, volume), this.ctx.currentTime)
+  }
+
   stop() {
     for (const url of [...this.activeTracks.keys()]) this.stopTrack(url)
     this.currentUrl = null
