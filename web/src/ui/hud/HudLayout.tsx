@@ -13,6 +13,9 @@ import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
 import { CombatIndicator } from './CombatIndicator'
 import { TradeModal } from '../trade/TradeModal'
+import { DeathModal } from '../death/DeathModal'
+import { TitleScreen } from '../title/TitleScreen'
+import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { useCursor } from '../cursor/useCursor'
 import { tradeWants } from '../../game/state/trade'
 import type { WorldRenderer } from '../../world/WorldRenderer'
@@ -71,6 +74,15 @@ export function HudLayout(props: {
     ((tsTrade.kind === 'hub_innkeeper' && state.ui.screen === 'hub') ||
       (tsTrade.kind === 'floor_npc' && state.ui.screen === 'game'))
   const tradeWantDefIds = state.ui.tradeSession ? tradeWants(state, state.ui.tradeSession) : undefined
+  const deathModalInteractiveOpen =
+    interactive &&
+    !captureForPostprocess &&
+    (Boolean(state.ui.death) ||
+      (state.ui.screen === 'game' && Boolean(state.ui.debugShowDeathPopup)))
+  const fullHudModalInteractiveOpen =
+    interactive &&
+    !captureForPostprocess &&
+    (state.ui.screen === 'title' || Boolean(state.ui.paperdollFor))
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
   const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
   const PORTRAIT_TAP_SLOP_PX = 28
@@ -296,6 +308,11 @@ export function HudLayout(props: {
         {captureForPostprocess && captureNpcOverlay ? (
           <div className={styles.npcCaptureLayer}>{captureNpcOverlay}</div>
         ) : null}
+        {deathModalInteractiveOpen ? (
+          <div className={styles.gameCellModalHitLayer}>
+            <DeathModal state={state} dispatch={dispatch} />
+          </div>
+        ) : null}
       </section>
 
       <section className={`${styles.panel} ${styles.char4}`}>
@@ -386,6 +403,13 @@ export function HudLayout(props: {
           />
         </section>
       </div>
+
+      {fullHudModalInteractiveOpen ? (
+        <div className={styles.fullHudInteractiveLayer}>
+          <TitleScreen state={state} dispatch={dispatch} />
+          <PaperdollModal state={state} dispatch={dispatch} content={content} />
+        </div>
+      ) : null}
 
       {captureForPostprocess && captureFullHudOverlay ? (
         <div className={styles.fullHudCaptureLayer}>{captureFullHudOverlay}</div>

@@ -6,6 +6,7 @@ import type { ContentDB } from '../../game/content/contentDb'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { findRecipe, recipeKey } from '../../game/content/recipes'
 import { currentTurn } from '../../game/state/combat'
+import { resolveWeaponItemIdForPcTurn } from '../../game/state/equipment'
 import { tradeStockRows } from '../../game/state/trade'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
@@ -44,7 +45,13 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   useEffect(() => {
     if (!api) return
     // Preload cursor sprites so state changes don’t hitch on image decode.
-    const srcs = ['/content/Hand_Point.png', '/content/Hand_Hold.png', '/content/Hand_Active.png']
+    const srcs = [
+      '/content/Hand_Point.png',
+      '/content/Hand_Hold.png',
+      '/content/Hand_Active.png',
+      '/content/hand_attack_01.png',
+      '/content/hand_attack_02.png',
+    ]
     const imgs = srcs.map((src) => {
       const img = new Image()
       img.decoding = 'async'
@@ -171,6 +178,21 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
         })()
       : null
 
+  const combatAttackHover =
+    props.state.combat &&
+    hoverTarget?.kind === 'npc' &&
+    (() => {
+      const turn = currentTurn(props.state)
+      if (!turn || turn.kind !== 'pc') return false
+      const npc = props.state.floor.npcs.find((n) => n.id === hoverTarget.npcId)
+      if (!npc || npc.hp <= 0) return false
+      if (!props.state.combat!.participants.npcs.includes(npc.id)) return false
+      return Boolean(resolveWeaponItemIdForPcTurn(props.state, turn.id, props.content))
+    })()
+
+  const useAttackHand =
+    contextualAffordance?.label === 'Attack' || Boolean(combatAttackHover && !dragging?.started)
+
   const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
   const ghostText = (() => {
     if (!ghost) return ''
@@ -219,8 +241,10 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   }, [api, props.state.nowMs, props.state.render])
 
   const craftFlickerIsHold = Boolean(craftReady) && (Math.floor(animNowMs / 400) % 2 === 0)
-  const handStateClass =
-    craftReady && isHold
+  const attackHandClass = Math.floor(animNowMs / 280) % 2 === 0 ? styles.attack1 : styles.attack2
+  const handStateClass = useAttackHand
+    ? attackHandClass
+    : craftReady && isHold
       ? craftFlickerIsHold ? styles.hold : styles.active
       : isHold ? styles.hold
       : isActive ? styles.active

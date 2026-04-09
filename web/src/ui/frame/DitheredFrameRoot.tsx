@@ -868,16 +868,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         />
       </div>
 
-      {state.ui.screen === 'title' ||
-      state.ui.paperdollFor ||
-      state.ui.npcDialogFor ||
-      state.ui.death ||
-      (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ||
-      (state.ui.screen === 'game' && state.ui.debugShowDeathPopup) ? (
+      {state.ui.npcDialogFor || (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
         <div className={styles.stageModalLayer}>
-          <TitleScreen state={state} dispatch={dispatch} />
-          <DeathModal state={state} dispatch={dispatch} gameViewportRef={gameViewportRef} />
-          <PaperdollModal state={state} dispatch={dispatch} content={content} />
           <NpcDialogModal state={state} dispatch={dispatch} content={content} gameViewportRef={gameViewportRef} />
         </div>
       ) : null}

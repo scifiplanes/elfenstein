@@ -1,3 +1,4 @@
+import { isAnyDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import type { FloorType, GenRoom } from './types'
@@ -12,11 +13,11 @@ function inBoundsInner(x: number, y: number, w: number, h: number): boolean {
 }
 
 function isDoorish(t: Tile): boolean {
-  return t === 'door' || t === 'lockedDoor'
+  return isAnyDoorTile(t)
 }
 
 function isFloorish(t: Tile): boolean {
-  return t === 'floor' || t === 'door' || t === 'lockedDoor'
+  return t === 'floor' || isAnyDoorTile(t)
 }
 
 function hasDoorishNeighbor(tiles: Tile[], w: number, x: number, y: number): boolean {

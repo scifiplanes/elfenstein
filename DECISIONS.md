@@ -4128,3 +4128,37 @@ Body-portaled trade hit layers fought **`opacity`**, **`pointer-events`**, and *
 
 ### Consequences
 - **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`HudLayout.tsx`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`DESIGN.md`** §5.1 / §11; supersedes interactive body-portal trade geometry described in **ADR-0250**–**ADR-0255** for the **interactive** path (capture + dual-DOM unchanged).
+
+---
+
+## ADR-0264 — Octopus door tiles, door-open VFX, combat attack cursor, well glow in `Content/`
+Date: 2026-04-10
+
+### Decision
+- Add **`doorOctopus`** / **`lockedDoorOctopus`** **`Tile`** values (mirroring **`door`** / **`lockedDoor`** for walkability, clicks, and key unlock). Helpers live in **`web/src/game/tiles.ts`**; procgen **`placeLocksOnPath`** writes **`lockedDoorOctopus`** on a deterministic RNG subset, with higher probability when **`floorProperties`** includes **`Infested`**.
+- **3D**: closed billboards use **`door_octopus_closed.png`** for octopus tiles; **`ui.doorOpenFx`** carries **`visual: 'wooden' | 'octopus'`** with **420 ms** vs **900 ms** duration; **`WorldRenderer.syncDoorFx`** cycles **`door_octopus_opening_01..03.png`** at **~280 ms** per frame for octopus.
+- **Cursor**: combat **attack** telegraph uses alternating **`hand_attack_01.png` / `hand_attack_02.png`** when hovering a valid in-encounter NPC with a resolved weapon (and when drag affordance is **Attack**).
+- Ship **`npc_well_glow.png`** under repo **`Content/`** (was only under **`web/public/content/`**) so **Vite** production **`dist/content`** matches **`POI_WELL_GLOW_SRC`**.
+
+### Rationale
+New art in **`Content/`** needed first-class types and rendering paths instead of overloading a single door texture; attack hands reinforce combat affordance; well glow must exist in the canonical content tree the build copies.
+
+### Consequences
+- **`types.ts`**, **`tiles.ts`**, **`reducer.ts`**, **`locks.ts`**, **`generateDungeon.ts`**, **`validate.ts`**, **`shapeRooms.ts`**, **`layoutPasses.ts`**, **`WorldRenderer.ts`**, **`GameViewport.tsx`**, **`CursorLayer`**, minimap **CSS**, **`Content/npc_well_glow.png`**, **`DESIGN.md`** §3 / §6 / doors; **`CharacterEquipStrip`** **`endPointerUp`** outcome updated to **`PointerUpOutcome.drop`** (type fix).
+
+---
+
+## ADR-0265 — Title / death / paperdoll interactive hits in `HudLayout` (not `document.body`)
+Date: 2026-04-10
+
+### Decision
+- **Interactive** **`TitleScreen`**, **`DeathModal`**, and **`PaperdollModal`** render **inside** **`HudLayout`**: **`fullHudInteractiveLayer`** (full-bleed over the HUD grid) for title and paperdoll; **`gameCellModalHitLayer`** in **`.panel.game`** for death (**same padding** as **`npcCaptureLayer`**, **`z-index: 7`** above interactive **trade**).
+- **Remove** **`createPortal(..., document.body)`** and **`modalPortalHitRoot`** from those three; **remove** **`DeathModal`** **`gameViewportRef`** / **`ResizeObserver`** / fixed shell.
+- **`DitheredFrameRoot`’s `stageModalLayer`** mounts **`NpcDialogModal`** only (still body-portaled). **Capture** paths unchanged (**`captureNpcOverlay`**, **`captureFullHudOverlay`**).
+
+### Rationale
+Body-portaled invisible hit layers were unreliable for clicks; mounting in the same scaled-stage subtree as **`TradeModal`** / inventory aligns hit geometry with **`html2canvas`** capture and matches the pattern that already worked for trade (**ADR-0263**).
+
+### Consequences
+- **`DeathModal.tsx`**, **`TitleScreen.tsx`**, **`PaperdollModal.tsx`**, **`HudLayout.tsx`**, **`HudLayout.module.css`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`npcCaptureInteractiveRect.ts`** comment, **`GamePopup.module.css`** comment, **`DESIGN.md`**.
+- **Partially supersedes** the **interactive** body-portal story in **ADR-0205** for title / death / paperdoll; **NPC dialog** unchanged.

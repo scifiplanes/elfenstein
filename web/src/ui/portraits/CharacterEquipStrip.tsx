@@ -48,7 +48,14 @@ export function CharacterEquipStrip(props: {
 
   const onPointerUpStrip = (e: PointerEvent) => {
     const result = cursor.endPointerUp(e)
-    if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+    if (result?.drop) {
+      dispatch({
+        type: 'drag/drop',
+        payload: result.drop.payload,
+        target: result.drop.target,
+        nowMs: performance.now(),
+      })
+    }
   }
 
   const draggingItemId = cursor.state.dragging?.started ? cursor.state.dragging.payload.itemId : null

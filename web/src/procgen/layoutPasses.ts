@@ -1,3 +1,4 @@
+import { isAnyDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import {
@@ -267,7 +268,7 @@ function corridorSampleStats(args: {
   const count = (x: number, y: number) => {
     total++
     const t = tiles[x + y * w]
-    if (t === 'floor' || t === 'door' || t === 'lockedDoor') alreadyFloor++
+    if (t === 'floor' || isAnyDoorTile(t)) alreadyFloor++
   }
   if (horizFirst) {
     const dx = Math.sign(bx - ax)
@@ -434,7 +435,7 @@ export function smoothWallsCarveOnly(tiles: Tile[], w: number, h: number, passes
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue
             const t = tiles[(x + dx) + (y + dy) * w]
-            if (t === 'floor' || t === 'door' || t === 'lockedDoor') floors++
+            if (t === 'floor' || isAnyDoorTile(t)) floors++
           }
         }
         if (floors >= 6) next[i] = 'floor'

@@ -1,15 +1,4 @@
-/* Interactive: fixed box aligned to the 3D viewport; capture: fills `npcCaptureLayer` on the game panel. */
-.gameViewportShell {
-  position: fixed;
-  box-sizing: border-box;
-  pointer-events: auto;
-}
-
-.gameViewportShellFallback {
-  inset: 0;
-  width: auto;
-  height: auto;
-}
+/* Interactive: inside `HudLayout` `.gameCellModalHitLayer` (same padded box as capture `npcCaptureLayer`). */
 
 .backdrop {
   position: absolute;

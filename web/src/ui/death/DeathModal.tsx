@@ -1,6 +1,5 @@
-import type { Dispatch, RefObject } from 'react'
-import { useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
+import type { Dispatch } from 'react'
+import { useRef } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import {
@@ -9,7 +8,6 @@ import {
   modalChromePointerUpActivate,
 } from '../cursor/modalChromeActivate'
 import { useCursor } from '../cursor/useCursor'
-import { npcCaptureInteractiveRectFromGameViewportEl } from '../hud/npcCaptureInteractiveRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './DeathModal.module.css'
 
@@ -20,19 +18,14 @@ function fmtMs(ms: number) {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
-type GameViewportRect = { left: number; top: number; width: number; height: number }
-
 export type DeathModalVariant = 'interactive' | 'capture'
 
 export function DeathModal(props: {
   state: GameState
   dispatch: Dispatch<Action>
   variant?: DeathModalVariant
-  /** Interactive: align dim + panel to the live 3D viewport rect (`FixedStageViewport` scale-safe). */
-  gameViewportRef?: RefObject<HTMLDivElement | null>
 }) {
-  const { state, dispatch, variant = 'interactive', gameViewportRef } = props
-  const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
+  const { state, dispatch, variant = 'interactive' } = props
   const cursor = useCursor()
   const suppressReloadClick = useRef(false)
   const suppressNewRunClick = useRef(false)
@@ -41,40 +34,6 @@ export function DeathModal(props: {
   const preview =
     !death && Boolean(state.ui.debugShowDeathPopup) && state.ui.screen === 'game'
   const visible = Boolean(death) || Boolean(preview)
-
-  useLayoutEffect(() => {
-    if (variant !== 'interactive' || !visible) {
-      setViewportRect(null)
-      return
-    }
-    const el = gameViewportRef?.current
-    if (!el) {
-      setViewportRect(null)
-      return
-    }
-    const sync = () => {
-      const r = npcCaptureInteractiveRectFromGameViewportEl(el)
-      if (!r) {
-        setViewportRect(null)
-        return
-      }
-      setViewportRect(r)
-    }
-    sync()
-    const ro = new ResizeObserver(sync)
-    ro.observe(el)
-    window.addEventListener('resize', sync)
-    window.visualViewport?.addEventListener('resize', sync)
-    window.visualViewport?.addEventListener('scroll', sync)
-    window.addEventListener('scroll', sync, true)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', sync)
-      window.visualViewport?.removeEventListener('resize', sync)
-      window.visualViewport?.removeEventListener('scroll', sync)
-      window.removeEventListener('scroll', sync, true)
-    }
-  }, [variant, gameViewportRef, visible])
 
   if (!visible) return null
 
@@ -190,31 +149,5 @@ export function DeathModal(props: {
     return inner
   }
 
-  const shell =
-    viewportRect != null ? (
-      <div
-        className={styles.gameViewportShell}
-        style={{
-          left: viewportRect.left,
-          top: viewportRect.top,
-          width: viewportRect.width,
-          height: viewportRect.height,
-        }}
-        {...pointerHandlers}
-      >
-        {inner}
-      </div>
-    ) : (
-      <div
-        className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`}
-        {...pointerHandlers}
-      >
-        {inner}
-      </div>
-    )
-
-  if (typeof document !== 'undefined' && document.body) {
-    return createPortal(<div className={popup.modalPortalHitRoot}>{shell}</div>, document.body)
-  }
-  return shell
+  return <div {...pointerHandlers}>{inner}</div>
 }

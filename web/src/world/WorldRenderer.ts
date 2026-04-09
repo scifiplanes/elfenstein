@@ -4,6 +4,7 @@ import type { ContentDB } from '../game/content/contentDb'
 import type { GameState, ItemId, NpcKind, PoiKind } from '../game/types'
 import type { DistrictTag, GenRoom } from '../procgen/types'
 import type { FloorType } from '../procgen/types'
+import { isAnyDoorTile, isOctopusDoorTile } from '../game/tiles'
 import { getDungeonEnvTextureSrcs } from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import {
@@ -26,6 +27,12 @@ const HAZARD_DECAL_FLOOR_Y = 0.08
 
 const DOOR_CLOSED_SRC = '/content/door_closed.png'
 const DOOR_OPEN_SRC = '/content/door_open.png'
+const DOOR_OCTOPUS_CLOSED_SRC = '/content/door_octopus_closed.png'
+const DOOR_OCTOPUS_OPEN_FRAMES = [
+  '/content/door_octopus_opening_01.png',
+  '/content/door_octopus_opening_02.png',
+  '/content/door_octopus_opening_03.png',
+] as const
 
 function wrapPi(a: number) {
   // Normalize into (-π, π] to keep Euler->quaternion conversions stable even if upstream yaw drifts.
@@ -128,7 +135,15 @@ export class WorldRenderer {
   private wellDecorSprites: Array<{ main: THREE.Sprite; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
 
   private doorClosedMat: THREE.SpriteMaterial | null = null
+  private doorOctopusClosedMat: THREE.SpriteMaterial | null = null
   private doorOpenMat: THREE.SpriteMaterial | null = null
+  private doorOpenOctopusTextures: THREE.Texture[] = []
+  private doorFxTracked: Array<{
+    id: string
+    sprite: THREE.Sprite
+    visual: 'wooden' | 'octopus'
+    startedAtMs: number
+  }> = []
 
   private readonly hazardDecalMats: Partial<Record<RoomHazardProperty, THREE.SpriteMaterial>> = {}
   private readonly hazardDecalAspects: Partial<Record<RoomHazardProperty, number>> = {}
@@ -206,11 +221,18 @@ export class WorldRenderer {
       this.doorClosedMat.dispose()
       this.doorClosedMat = null
     }
+    if (this.doorOctopusClosedMat) {
+      this.doorOctopusClosedMat.map?.dispose()
+      this.doorOctopusClosedMat.dispose()
+      this.doorOctopusClosedMat = null
+    }
     if (this.doorOpenMat) {
       this.doorOpenMat.map?.dispose()
       this.doorOpenMat.dispose()
       this.doorOpenMat = null
     }
+    for (const t of this.doorOpenOctopusTextures) t.dispose()
+    this.doorOpenOctopusTextures = []
     for (const prop of ['Burning', 'Flooded', 'Infected'] as const) {
       const m = this.hazardDecalMats[prop]
       if (!m) continue
@@ -236,8 +258,20 @@ export class WorldRenderer {
     this.rt?.dispose()
     this.rt = null
     this.lastSize = { w: 0, h: 0 }
-    if (this.doorFxGroup) this.scene.remove(this.doorFxGroup)
+    if (this.doorFxGroup) {
+      this.doorFxGroup.traverse((obj) => {
+        const spr = obj as THREE.Sprite
+        const mat = spr.material as THREE.SpriteMaterial | undefined
+        if (!mat) return
+        if (mat !== this.doorOpenMat) {
+          mat.map = null
+          mat.dispose()
+        }
+      })
+      this.scene.remove(this.doorFxGroup)
+    }
     this.doorFxGroup = null
+    this.doorFxTracked = []
     this.lastDoorFxKey = ''
     this.disposeProcgenDebugOverlay()
   }
@@ -475,22 +509,75 @@ export class WorldRenderer {
   private syncDoorFx(state: GameState) {
     const active = (state.ui.doorOpenFx ?? []).filter((fx) => fx.untilMs > state.nowMs)
     const key = active.map((fx) => fx.id).join('|')
-    if (key === this.lastDoorFxKey) return
-    this.lastDoorFxKey = key
 
-    if (this.doorFxGroup) this.scene.remove(this.doorFxGroup)
-    const g = new THREE.Group()
-    const w = state.floor.w
-    const h = state.floor.h
-    for (const fx of active) {
-      const x = fx.pos.x - w / 2
-      const z = fx.pos.y - h / 2
-      const s = new THREE.Sprite(this.getDoorOpenMat())
-      s.position.set(x, 0.55, z)
-      g.add(s)
+    if (key !== this.lastDoorFxKey) {
+      this.lastDoorFxKey = key
+      if (this.doorFxGroup) {
+        this.doorFxGroup.traverse((obj) => {
+          const spr = obj as THREE.Sprite
+          const mat = spr.material as THREE.SpriteMaterial | undefined
+          if (!mat) return
+          if (mat !== this.doorOpenMat) {
+            mat.map = null
+            mat.dispose()
+          }
+        })
+        this.scene.remove(this.doorFxGroup)
+      }
+      this.doorFxGroup = null
+      this.doorFxTracked = []
+
+      if (active.length > 0) {
+        const g = new THREE.Group()
+        const w = state.floor.w
+        const h = state.floor.h
+        const octoTex = this.ensureDoorOctopusOpenTextures()
+        for (const fx of active) {
+          const x = fx.pos.x - w / 2
+          const z = fx.pos.y - h / 2
+          const visual = fx.visual === 'octopus' ? 'octopus' : 'wooden'
+          let mat: THREE.SpriteMaterial
+          if (visual === 'octopus' && octoTex.length >= 3) {
+            mat = new THREE.SpriteMaterial({ map: octoTex[0]!, transparent: true, depthWrite: false })
+            mat.color.copy(this.themeSpriteColor)
+          } else {
+            mat = this.getDoorOpenMat()
+          }
+          const s = new THREE.Sprite(mat)
+          s.position.set(x, 0.55, z)
+          g.add(s)
+          this.doorFxTracked.push({ id: fx.id, sprite: s, visual, startedAtMs: fx.startedAtMs })
+        }
+        this.doorFxGroup = g
+        this.scene.add(g)
+      }
     }
-    this.doorFxGroup = g
-    this.scene.add(g)
+
+    const octoTex = this.doorOpenOctopusTextures
+    for (const entry of this.doorFxTracked) {
+      if (entry.visual !== 'octopus' || octoTex.length < 3) continue
+      const mat = entry.sprite.material as THREE.SpriteMaterial
+      const frame = Math.floor((state.nowMs - entry.startedAtMs) / 280) % 3
+      const tex = octoTex[frame]!
+      if (mat.map !== tex) {
+        mat.map = tex
+        mat.needsUpdate = true
+      }
+      mat.color.copy(this.themeSpriteColor)
+    }
+  }
+
+  private ensureDoorOctopusOpenTextures(): THREE.Texture[] {
+    if (this.doorOpenOctopusTextures.length >= 3) return this.doorOpenOctopusTextures
+    for (const src of DOOR_OCTOPUS_OPEN_FRAMES) {
+      const tex = this.textureLoader.load(src)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.minFilter = THREE.NearestFilter
+      tex.magFilter = THREE.NearestFilter
+      tex.generateMipmaps = false
+      this.doorOpenOctopusTextures.push(tex)
+    }
+    return this.doorOpenOctopusTextures
   }
 
   private getEnvTexturesForFloorType(floorType: FloorType): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
@@ -607,7 +694,7 @@ export class WorldRenderer {
             if (x < 0 || y < 0 || x >= w || y >= h) continue
             const i = x + y * w
             const t = tiles[i]
-            if (t === 'floor' || t === 'door' || t === 'lockedDoor') overgrownWalkable.add(i)
+            if (t === 'floor' || isAnyDoorTile(t)) overgrownWalkable.add(i)
           }
         }
       }
@@ -646,7 +733,7 @@ export class WorldRenderer {
           c.position.set(wx, 1.25, wz)
           c.receiveShadow = true
           g.add(c)
-        } else if (t === 'door' || t === 'lockedDoor') {
+        } else if (isAnyDoorTile(t)) {
           const isOvergrown = overgrownWalkable.has(idx)
           // Door occupies a floor tile position.
           const m = new THREE.Mesh(floorGeo, isOvergrown ? this.overgrownFloorMat : this.floorMat)
@@ -659,7 +746,8 @@ export class WorldRenderer {
           c.receiveShadow = true
           g.add(c)
 
-          const d = new THREE.Sprite(this.getDoorClosedMat())
+          const doorMat = isOctopusDoorTile(t) ? this.getDoorOctopusClosedMat() : this.getDoorClosedMat()
+          const d = new THREE.Sprite(doorMat)
           d.position.set(wx, 0.55, wz)
           d.userData = { kind: 'door', id: `${x},${y}` }
           g.add(d)
@@ -923,6 +1011,7 @@ export class WorldRenderer {
     }
     if (this.wellDrainedMat) this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
     if (this.doorClosedMat) this.doorClosedMat.color.copy(this.themeSpriteColor)
+    if (this.doorOctopusClosedMat) this.doorOctopusClosedMat.color.copy(this.themeSpriteColor)
     if (this.doorOpenMat) this.doorOpenMat.color.copy(this.themeSpriteColor)
   }
 
@@ -1142,6 +1231,18 @@ export class WorldRenderer {
     return this.doorClosedMat
   }
 
+  private getDoorOctopusClosedMat(): THREE.SpriteMaterial {
+    if (this.doorOctopusClosedMat) return this.doorOctopusClosedMat
+    const tex = this.textureLoader.load(DOOR_OCTOPUS_CLOSED_SRC)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.doorOctopusClosedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.doorOctopusClosedMat.color.copy(this.themeSpriteColor)
+    return this.doorOctopusClosedMat
+  }
+
   private getDoorOpenMat(): THREE.SpriteMaterial {
     if (this.doorOpenMat) return this.doorOpenMat
     const tex = this.textureLoader.load(DOOR_OPEN_SRC)
@@ -1337,7 +1438,7 @@ export class WorldRenderer {
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const t = tiles[x + y * w]
-          if (t !== 'floor' && t !== 'door' && t !== 'lockedDoor') continue
+          if (t !== 'floor' && !isAnyDoorTile(t)) continue
           const room = findRoomAt(x, y)
           const tag = room?.district ?? 'Core'
           const hex = colors[tag] ?? '#6688aa'
@@ -1365,7 +1466,7 @@ export class WorldRenderer {
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const t = tiles[x + y * w]
-          if (t !== 'floor' && t !== 'door' && t !== 'lockedDoor') continue
+          if (t !== 'floor' && !isAnyDoorTile(t)) continue
           const room = findRoomAt(x, y)
           const rf = room?.tags?.roomFunction
           const hex = (rf && funcColors[rf]) || '#445566'

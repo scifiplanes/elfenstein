@@ -37,7 +37,7 @@ export type EquipmentSlot =
 
 export type PortraitDropTarget = 'eyes' | 'mouth' | 'hat' | 'hands'
 
-export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor'
+export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor' | 'doorOctopus' | 'lockedDoorOctopus'
 
 export type PoiKind = 'Well' | 'Chest' | 'Barrel' | 'Crate' | 'Bed' | 'Shrine' | 'CrackedWall' | 'Exit'
 
@@ -159,7 +159,14 @@ export type UiState = {
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
   sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }>
   /** Short-lived sprite FX when opening a door (rendered in 3D viewport). */
-  doorOpenFx?: Array<{ id: Id; pos: Vec2; startedAtMs: number; untilMs: number }>
+  doorOpenFx?: Array<{
+    id: Id
+    pos: Vec2
+    startedAtMs: number
+    untilMs: number
+    /** Octopus doors use a 3-frame opening strip; wooden uses `door_open.png`. */
+    visual?: 'wooden' | 'octopus'
+  }>
   /** Short-lived portrait “mouth visible” interaction cue. */
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
   /** Short-lived portrait frame shake (inspect/feed resolution). */

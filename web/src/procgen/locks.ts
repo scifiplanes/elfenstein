@@ -1,6 +1,6 @@
 import { cellKey } from '../game/state/playerFloorCell'
 import type { ItemDefId, Tile, Vec2 } from '../game/types'
-import type { FloorGenDifficulty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
+import type { FloorGenDifficulty, FloorProperty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
 import { findNearestUnusedFloor } from './layoutPasses'
 import {
   allReachable,
@@ -128,6 +128,13 @@ function lockThresholds(difficulty: FloorGenDifficulty): {
   return { minPathAnyLock: 6, minPathTwoLock: 14, allowTwoLock: true }
 }
 
+/** Deterministic roll: some procgen locks render as octopus doors (see `lockedDoorOctopus`). */
+function pickLockedDoorTile(rng: { next(): number }, floorProperties: FloorProperty[] | undefined): Tile {
+  const infested = floorProperties?.includes('Infested') ?? false
+  const p = Math.min(0.82, 0.12 + (infested ? 0.38 : 0))
+  return rng.next() < p ? 'lockedDoorOctopus' : 'lockedDoor'
+}
+
 /**
  * Place up to two ordered locks on the entrance→exit shortest path with matching keys.
  * Returns doors + key floor items; mutates `tiles` in place (lockedDoor cells).
@@ -141,8 +148,10 @@ export function placeLocksOnPath(args: {
   rng: { next(): number }
   occupied: Set<string>
   difficulty?: FloorGenDifficulty
+  floorProperties?: FloorProperty[]
 }): { doors: GenDoor[]; floorItems: GenFloorItem[] } {
   const { tiles, w, h, entrance, exit, rng, occupied } = args
+  const floorProperties = args.floorProperties
   const difficulty = args.difficulty ?? 1
   const { minPathAnyLock, minPathTwoLock, allowTwoLock } = lockThresholds(difficulty)
 
@@ -198,8 +207,8 @@ export function placeLocksOnPath(args: {
           if (alt) key2Pos = alt
         }
 
-        tiles[c1] = 'lockedDoor'
-        tiles[c2] = 'lockedDoor'
+        tiles[c1] = pickLockedDoorTile(rng, floorProperties)
+        tiles[c2] = pickLockedDoorTile(rng, floorProperties)
 
         return {
           doors: [
@@ -228,7 +237,7 @@ export function placeLocksOnPath(args: {
 
     if (!separatesExit(tiles, w, h, entrance, exit, lockCell)) continue
 
-    tiles[lockCell] = 'lockedDoor'
+    tiles[lockCell] = pickLockedDoorTile(rng, floorProperties)
     const lockPos = { x: lx, y: ly }
 
     const keyIdxOnPath = clampInt(Math.floor(lockIdxOnPath * 0.45 + (rng.next() - 0.5) * 2), 1, lockIdxOnPath - 1)
@@ -258,7 +267,10 @@ export function tilesWithFirstKLocksOpen(gen: FloorGenOutput, w: number, _h: num
     const d = locked[i]
     const idx = d.pos.x + d.pos.y * w
     if (i < openCount) t[idx] = 'floor'
-    else t[idx] = 'lockedDoor'
+    else {
+      const cur = gen.tiles[idx]
+      t[idx] = cur === 'lockedDoorOctopus' || cur === 'lockedDoor' ? cur : 'lockedDoor'
+    }
   }
   return t
 }

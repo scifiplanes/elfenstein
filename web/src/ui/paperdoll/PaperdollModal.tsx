@@ -1,6 +1,5 @@
 import type { Dispatch } from 'react'
 import { useLayoutEffect, useRef } from 'react'
-import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { EquipmentSlot, GameState } from '../../game/types'
@@ -156,8 +155,5 @@ export function PaperdollModal(props: {
     return tree
   }
 
-  if (typeof document !== 'undefined' && document.body) {
-    return createPortal(<div className={popup.modalPortalHitRoot}>{tree}</div>, document.body)
-  }
   return tree
 }

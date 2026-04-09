@@ -13,6 +13,7 @@ import type {
   ProcgenDebugOverlayMode,
   RenderTuning,
   RoomTelegraphMode,
+  Tile,
 } from './types'
 import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
 import { makeInitialState } from './state/initialState'
@@ -38,6 +39,7 @@ import { npcKindHpMax } from './content/npcCombat'
 import { hydrateFloorNpcs, npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { pickNpcLootDefId } from './content/npcLoot'
+import { doorFxVisualForTile, isAnyDoorTile, isOpenDoorTile } from './tiles'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
@@ -1724,7 +1726,7 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   const idx = nx + ny * w
   if (idx < 0 || idx >= tiles.length) return bump(state)
   const tile = tiles[idx]
-  if (tile === 'door' || tile === 'lockedDoor') {
+  if (isAnyDoorTile(tile)) {
     return tryOpenDoor(state, idx, tile)
   }
   if (tile !== 'floor') return bump(state)
@@ -1784,8 +1786,11 @@ function tickViewAnimation(state: GameState): GameState {
   return { ...state, view: { ...state.view, camPos, camYaw } }
 }
 
-function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor'): GameState {
-  if (tile === 'door') {
+function tryOpenDoor(state: GameState, idx: number, tile: Tile): GameState {
+  const fxVisual = doorFxVisualForTile(tile)
+  const fxDurationMs = fxVisual === 'octopus' ? 900 : 420
+
+  if (isOpenDoorTile(tile)) {
     const tiles = state.floor.tiles.slice()
     tiles[idx] = 'floor'
     const w = state.floor.w
@@ -1793,7 +1798,13 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
     const doorY = (idx / w) | 0
     const keep = (state.ui.doorOpenFx ?? []).filter((x) => x.untilMs > state.nowMs)
     const doorOpenFx = keep.concat([
-      { id: `doorFx_${state.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: state.nowMs, untilMs: state.nowMs + 420 },
+      {
+        id: `doorFx_${state.nowMs}_${doorX},${doorY}`,
+        pos: { x: doorX, y: doorY },
+        startedAtMs: state.nowMs,
+        untilMs: state.nowMs + fxDurationMs,
+        visual: fxVisual,
+      },
     ])
     const next = {
       ...state,
@@ -1821,7 +1832,13 @@ function tryOpenDoor(state: GameState, idx: number, tile: 'door' | 'lockedDoor')
   tiles[idx] = 'floor'
   const keep = (consumed.ui.doorOpenFx ?? []).filter((x) => x.untilMs > consumed.nowMs)
   const doorOpenFx = keep.concat([
-    { id: `doorFx_${consumed.nowMs}_${doorX},${doorY}`, pos: { x: doorX, y: doorY }, startedAtMs: consumed.nowMs, untilMs: consumed.nowMs + 420 },
+    {
+      id: `doorFx_${consumed.nowMs}_${doorX},${doorY}`,
+      pos: { x: doorX, y: doorY },
+      startedAtMs: consumed.nowMs,
+      untilMs: consumed.nowMs + fxDurationMs,
+      visual: fxVisual,
+    },
   ])
   const opened = {
     ...consumed,

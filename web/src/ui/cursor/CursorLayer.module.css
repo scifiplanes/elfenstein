@@ -40,6 +40,14 @@
   background-image: url('/content/Hand_Active.png');
 }
 
+.attack1 {
+  background-image: url('/content/hand_attack_01.png');
+}
+
+.attack2 {
+  background-image: url('/content/hand_attack_02.png');
+}
+
 .ghost {
   position: absolute;
   transform: translate(14px, 18px);

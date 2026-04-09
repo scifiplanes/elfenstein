@@ -119,6 +119,30 @@
   pointer-events: none;
 }
 
+/*
+ * Interactive death modal hits: same padding/box as `.npcCaptureLayer` (keep in sync with
+ * `npcCaptureInteractiveRect.ts` `NPC_CAPTURE_LAYER_PADDING`). Above trade overlay (z-index 6).
+ */
+.gameCellModalHitLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 7;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 10px 6px 0;
+  pointer-events: auto;
+}
+
+/* Title / paperdoll (interactive): invisible hit tree over entire HUD grid; matches `fullHudCaptureLayer` footprint. */
+.fullHudInteractiveLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 11;
+  pointer-events: auto;
+}
+
 .root[data-capture='true'] .panel.game {
   background: transparent;
   border-color: transparent;

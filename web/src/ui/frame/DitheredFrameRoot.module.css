@@ -24,11 +24,10 @@
 }
 
 /*
- * Modals live above `.interactiveHud` (z-index 3) in the React tree; most **interactive** modals
- * `createPortal` to `document.body` (`modalPortalHitRoot`, z-index 10100) for real hits. **Trade**
- * (interactive) mounts inside `HudLayout` instead (**ADR-0258**). This wrapper stays empty of hit
- * targets; if it used `pointer-events: auto`, it would sit on top of `.interactiveHud` and swallow
- * moves (breaking `HudLayout`’s `cursor.onPointerMove`).
+ * **NpcDialogModal** (interactive) still `createPortal`s to `document.body` for fixed positioning vs
+ * `FixedStageViewport` scale; it mounts here so React state stays wired while the DOM lands on `body`.
+ * **Title / death / paperdoll** interactive hits live in `HudLayout` (**ADR-0265**). This wrapper stays
+ * `pointer-events: none` so it does not swallow moves on `.interactiveHud`.
  */
 .stageModalLayer {
   position: absolute;

@@ -148,8 +148,8 @@
 }
 
 /*
- * Invisible full-screen hit tree portaled to `document.body` (above CursorLayer).
- * The dithered pixels come from the offscreen html2canvas HUD capture.
+ * Optional invisible full-screen hit root when portaling to `document.body` (above CursorLayer).
+ * Title / death / paperdoll interactive hits use `HudLayout` instead (**ADR-0265**); NPC dialog uses its own backdrop.
  */
 .modalPortalHitRoot {
   position: fixed;

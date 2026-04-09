@@ -243,6 +243,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     rng: locksRng,
     occupied,
     difficulty,
+    floorProperties: floorProps,
   })
   for (const d of doors) occupied.add(`${d.pos.x},${d.pos.y}`)
   for (const it of lockItems) occupied.add(`${it.pos.x},${it.pos.y}`)

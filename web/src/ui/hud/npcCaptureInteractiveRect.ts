@@ -1,9 +1,10 @@
 /**
- * Interactive portaled modals (death, NPC dialog) must match the **capture** subtree laid out in
+ * Interactive **NPC dialog** (body-portaled) must match the **capture** subtree laid out in
  * `HudLayout`’s `.npcCaptureLayer` (see `captureNpcOverlay`). That layer uses padding; the raw
  * `GameViewport` ref fills the whole `.panel.game` cell, which is **larger** than the padded box.
+ * **Death** interactive uses `.gameCellModalHitLayer` with the same padding (no viewport rect math).
  *
- * Keep padding in sync with `HudLayout.module.css` `.npcCaptureLayer`.
+ * Keep padding in sync with `HudLayout.module.css` `.npcCaptureLayer` / `.gameCellModalHitLayer`.
  */
 export const NPC_CAPTURE_LAYER_PADDING = { top: 10, left: 6, right: 6, bottom: 0 } as const
 

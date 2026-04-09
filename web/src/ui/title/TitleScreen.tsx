@@ -1,5 +1,4 @@
 import type { Dispatch } from 'react'
-import { createPortal } from 'react-dom'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import popup from '../shared/GamePopup.module.css'
@@ -46,8 +45,5 @@ export function TitleScreen(props: {
     return tree
   }
 
-  if (typeof document !== 'undefined' && document.body) {
-    return createPortal(<div className={popup.modalPortalHitRoot}>{tree}</div>, document.body)
-  }
   return tree
 }
