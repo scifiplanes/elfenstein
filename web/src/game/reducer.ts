@@ -75,6 +75,15 @@ function nearestEquivalentAngle(from: number, to: number) {
   return to + k * TAU
 }
 
+function rejectNotWhileInCombat(state: GameState): GameState {
+  const withLog = pushActivityLog(state, 'Not while in combat.')
+  const q = withLog.ui.sfxQueue ?? []
+  return {
+    ...withLog,
+    ui: { ...withLog.ui, sfxQueue: q.concat([{ id: `s_${withLog.nowMs}_${q.length}`, kind: 'reject' }]) },
+  }
+}
+
 export type Action =
   | { type: 'ui/toggleDebug' }
   | { type: 'ui/goTitle' }
@@ -695,9 +704,11 @@ export function reduce(state: GameState, action: Action): GameState {
       return attemptMoveTo(s0, nx, ny)
     }
     case 'poi/use': {
+      if (state.combat) return rejectNotWhileInCombat(state)
       return applyPoiUse(state, CONTENT, action.poiId)
     }
     case 'floor/pickup':
+      if (state.combat) return rejectNotWhileInCombat(state)
       return pickupFloorItem(state, action.itemId)
     case 'drag/drop': {
       const stateAtAction = action.nowMs != null ? { ...state, nowMs: action.nowMs } : state
@@ -720,6 +731,7 @@ export function reduce(state: GameState, action: Action): GameState {
           if (srcItem && dstItem) {
             const recipe = findRecipe(srcItem.defId, dstItem.defId)
             if (recipe) {
+              if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
               const withStart = startCrafting(stateAtAction, srcItem.id, dstItem.id, recipe, { dstSlotIndex: dst })
               return reduce(reduce(withStart, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.2, ms: 90 })
             }
@@ -803,6 +815,7 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'floorItem') {
         // When dragging onto a floor item, interpret as pickup.
+        if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
         return pickupFloorItem(stateAtAction, target.itemId)
       }
 
@@ -829,6 +842,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'poi') {
+        if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
         return applyItemOnPoi(stateAtAction, CONTENT, itemId, target.poiId)
       }
 

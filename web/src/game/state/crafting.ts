@@ -42,6 +42,7 @@ export function startCrafting(
 export function maybeFinishCrafting(state: GameState): GameState {
   const c = state.ui.crafting
   if (!c) return state
+  if (state.combat) return state
   if (state.nowMs < c.endsAtMs) return state
 
   const src = state.party.items[c.srcItemId]

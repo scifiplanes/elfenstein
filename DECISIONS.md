@@ -3388,3 +3388,22 @@ Artists can tune sprite prominence independently of hit targets; coupling scale 
 
 ### Consequences
 - `web/src/game/types.ts`, `tuningDefaults.ts`, `reducer.ts` (`clampRenderTuning`), `HubViewport.tsx`, `DebugPanel.tsx`; `DESIGN.md` F2 + §5.1.
+
+---
+
+## ADR-0225 — Combat gating: block POI, pickup, and crafting only
+Date: 2026-04-09
+
+### Decision
+- While **`state.combat`** is set, reject **POI** use (`poi/use` and **`drag/drop`** onto **`poi`**), **floor pickup** (`floor/pickup` and **`drag/drop`** onto **`floorItem`**), **starting** a craft (inventory merge with a recipe), and **completing** crafting (`maybeFinishCrafting` no-ops until combat clears).
+- **Do not** gate **equip**, **unequip**, portrait interactions, or non-recipe inventory moves.
+- **Cursor**: when dragging a valid recipe pair over an inventory slot during combat, show a **Blocked** affordance instead of **Craft** (matches reducer rejection).
+
+### Rationale
+Encounter mode should stop **world** interactions and **free crafting** while movement is frozen, without disabling **party/loadout** UX (portraits, equipment) that players rely on mid-fight.
+
+### Consequences
+- `web/src/game/reducer.ts`: **`rejectNotWhileInCombat`** helper; guards on **`poi/use`**, **`floor/pickup`**, recipe **`startCrafting`**, **`floorItem`**, **`poi`** drag targets.
+- `web/src/game/state/crafting.ts`: **`maybeFinishCrafting`** returns early when **`state.combat`**.
+- `web/src/ui/cursor/CursorLayer.tsx`: combat + craft hover label.
+- `DESIGN.md` §7.7: **World & crafting during combat**, **NPC hit vs party**, and this ADR.
