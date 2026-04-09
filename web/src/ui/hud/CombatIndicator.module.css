@@ -60,6 +60,13 @@
   opacity: 0.95;
 }
 
+.nextTurn {
+  margin-top: 1px;
+  font-size: calc(var(--buttonTitleFontSize) - 8px);
+  line-height: 1.05;
+  opacity: 0.82;
+}
+
 .actions {
   display: flex;
   flex-wrap: wrap;

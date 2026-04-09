@@ -28,6 +28,15 @@ export function CombatIndicator(props: {
     : turn.kind === 'pc' ? `PC turn: ${pcName(state, turn.id)}`
     : `NPC turn: ${npcName(state, turn.id)}`
 
+  const q = state.combat.turnQueue
+  const nq = q.length
+  let nextLine: string | null = null
+  if (nq > 1) {
+    const cur = ((state.combat.turnIndex % nq) + nq) % nq
+    const nt = q[(cur + 1) % nq]!
+    nextLine = nt.kind === 'pc' ? `Next: ${pcName(state, nt.id)}` : `Next: ${npcName(state, nt.id)}`
+  }
+
   const npcs = state.combat.participants.npcs
     .map((id) => state.floor.npcs.find((n) => n.id === id))
     .filter(Boolean) as Array<GameState['floor']['npcs'][number]>
@@ -63,6 +72,7 @@ export function CombatIndicator(props: {
         )}
       </div>
       <div className={styles.turn}>{turnText}</div>
+      {nextLine ? <div className={styles.nextTurn}>{nextLine}</div> : null}
       {interactive ? (
         <div className={styles.actions} role="group" aria-label="Combat actions">
           <button

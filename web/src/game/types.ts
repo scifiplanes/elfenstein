@@ -137,7 +137,7 @@ export type UiState = {
   /** Persistent lines inside the game viewport activity log (newest last; capped). */
   activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
-  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }>
+  sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' }>
   /** Short-lived sprite FX when opening a door (rendered in 3D viewport). */
   doorOpenFx?: Array<{ id: Id; pos: Vec2; startedAtMs: number; untilMs: number }>
   /** Short-lived portrait “mouth visible” interaction cue. */

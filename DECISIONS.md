@@ -3566,3 +3566,88 @@ PoI tiles **block occupancy**; a single PoI on a **1-wide articulation** between
 
 ### Consequences
 - Fewer container PoIs on unavoidable choke tiles; optional PoIs may be omitted slightly more often. **`DESIGN.md`** §8.2 / §8.3 / §9 updated.
+
+---
+
+## ADR-0236 — In-combat portrait feed is intentional triage (policy A)
+Date: 2026-04-09
+
+### Decision
+**Keep** portrait **feed** (food, remedies, and other **feed**-path uses) **available during encounters** with **no initiative cost**. Document this as **deliberate party triage**, not an oversight.
+
+### Rationale
+Matches the **cursor-first** model and **party-as-one-organism** pillar (§4): players manage vitals and statuses without burning the acting PC’s turn. Alternatives—blocking feed in combat or making feed consume a turn—add friction or duplicate “item use” UX without clear payoff at this stage.
+
+### Consequences
+- Stronger **in-combat recovery**; balance via **item scarcity**, **stamina** on weapon swings, **flee/defend** costs, and **enemy pressure**. **`DESIGN.md`** §7.7 updated explicitly.
+
+---
+
+## ADR-0237 — Fire-damage Skeleton + minor NPC combat tuning
+Date: 2026-04-09
+
+### Decision
+Set **Skeleton** **`damageType`** to **`Fire`** in **`NPC_COMBAT_BY_KIND`** so **`npcTakeTurn`** exercises **`pcFireshield`** Fire resist in normal play; lightly tune **Swarm** (**hpMax** 9→10, **baseDamage** 4→5) for clearer low-tier threat.
+
+### Rationale
+All other kinds were physical-only; **Fireshield** had no default roster counterexample. **Skeleton** as a cinder/ember striker is content-light (no new **`NpcKind`**). Small **Swarm** bump improves baseline encounter feel without overlapping the Skeleton role.
+
+### Consequences
+- **`web/src/game/content/npcCombat.ts`**; **`DESIGN.md`** §7.7 NPC resolution note if needed (implicit in kind table).
+
+---
+
+## ADR-0238 — Combat core unit tests
+Date: 2026-04-09
+
+### Decision
+Add **Vitest** unit tests for **`collectEncounterNpcIds`**, **`advanceTurnIndex`** (defend expiry + **Fireshield** turn tick), and **`attemptFlee`** failed-flee **`advanceTurn`** contract.
+
+### Rationale
+Combat logic is concentrated in **`combat.ts`** but wired through a large **`reducer.ts`**; pure-function tests catch regressions in roster rules and turn advancement without E2E.
+
+### Consequences
+- **`web/src/game/state/combat.test.ts`** (or adjacent); **`web/package.json`** test script if missing.
+
+---
+
+## ADR-0239 — Encounter turn preview + combat miss SFX
+Date: 2026-04-09
+
+### Decision
+- **`CombatIndicator`**: show **“Next:”** using the following **`turnQueue`** entry after the current turn.
+- **SFX**: extend **`ui/sfx`** with **`swing`** (PC encounter miss) and reuse or distinguish NPC miss; wire **`SfxEngine`** playback.
+
+### Rationale
+Diegetic readability for initiative order; **miss** feedback should not reuse the same cue as **reject** (UI denial).
+
+### Consequences
+- **`CombatIndicator`**, **`reducer.ts`** (PC miss branch), **`SfxEngine`**, **`GameApp`/`FeedbackLayer`** dispatch typing; **`DESIGN.md`** §7.7 / §10.
+
+---
+
+## ADR-0240 — Quest text occasionally in combat activity log
+Date: 2026-04-09
+
+### Decision
+On each **encounter** **`npcTakeTurn`**, if the NPC has **`quest.wants`**, roll a **deterministic** **`hashStr(floor.seed:encounterId:questShout:npcId:turnIndex) % 100 < 20`**; on success, **`pushActivityLog`** **`{name}: "…bring me {item}."`** in **plain English** (shared helper **`npcQuestEnglishLine`** with **`NpcDialogModal`**) **before** miss/hit lines. **`ContentDB.createDefault()`** in **`combat.ts`** resolves item display names (same data as the client **`CONTENT`**).
+
+### Rationale
+Gives a **diegetic hint** under pressure without opening dialog; stays **replayable/host-syncable** like other combat rolls. **English** in the log keeps the feed readable; the modal still uses **`toGibberish`** for speech flavor.
+
+### Consequences
+- **`web/src/game/npc/npcQuestSpeech.ts`**, **`web/src/game/state/combat.ts`** (**`QUEST_SHOUT_CHANCE_PCT`**, **`questShoutRollMod100`** for tests), **`NpcDialogModal`**, tests; **`DESIGN.md`** §7.7.
+
+---
+
+## ADR-0241 — NPC dialog gibberish: gnome tokens + procedural Mojibake/Zalgo
+Date: 2026-04-09
+
+### Decision
+Replace English-derived **`toGibberish`** behavior with three **procedural** presentation modes: **Deep Gnome** = **4–8** tokens from a fixed **safe** list of **“gnome”** spellings (diacritics / **ñ** only); **Mojibake** = **2–4** longer fake words via **UTF-8 bytes → Latin-1-style** display; **Zalgo** = **2–5** shorter **a–z** words plus **combining marks**, using a **separate RNG lane** from Mojibake. **`toGibberish(lang, _english, seed, salt)`** folds **`salt`** ( **`npc.id`** from **`NpcDialogModal`**) into the seed so NPCs on the same floor differ. The **`english`** argument is reserved, unused.
+
+### Rationale
+Matches the intended **visual** identity of each language without encoding item names in the speech strip; keeps **determinism** for replay/sync; **combat / hint / log** paths still carry readable English where needed (**ADR-0240**).
+
+### Consequences
+- **`web/src/game/npc/gibberish.ts`**, **`NpcDialogModal.tsx`**, **`web/src/game/npc/gibberish.test.ts`**; **`DESIGN.md`** §7.6 / §15.
