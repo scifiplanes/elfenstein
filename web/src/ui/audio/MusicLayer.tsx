@@ -36,10 +36,12 @@ export function MusicLayer(props: { state: GameState }) {
   }, [])
 
   /** Track URL that is currently playing (or being crossfaded to). */
-  const activeBgTrackRef = useRef<string | null>(null)
-  const sfxTimerRef      = useRef<number>(0)
+  const activeBgTrackRef  = useRef<string | null>(null)
+  const sfxTimerRef       = useRef<number>(0)
   /** Latest masterMusic value — read inside the sfx setTimeout callback. */
-  const masterMusicRef   = useRef(state.audio.masterMusic)
+  const masterMusicRef    = useRef(state.audio.masterMusic)
+  /** Last debugBgSfxTrigger seq we acted on — detects new triggers. */
+  const lastSfxSeqRef     = useRef(-1)
 
   // ── Mount / unmount ─────────────────────────────────────────────────────────
   useEffect(() => {
@@ -100,6 +102,15 @@ export function MusicLayer(props: { state: GameState }) {
       const isFirst = activeBgTrackRef.current === null
       activeBgTrackRef.current = desiredBgTrack
       bgPlayer.crossfadeTo(desiredBgTrack, isFirst ? 0 : BG_XFADE_SEC)
+    }
+  })
+
+  // ── Debug bg sfx trigger ─────────────────────────────────────────────────────
+  const debugTrigger = state.ui.debugBgSfxTrigger
+  useEffect(() => {
+    if (debugTrigger && debugTrigger.seq !== lastSfxSeqRef.current) {
+      lastSfxSeqRef.current = debugTrigger.seq
+      sfxPlayer.playAt(debugTrigger.index, masterMusicRef.current)
     }
   })
 

@@ -117,6 +117,8 @@ export type UiState = {
   procgenDebugOverlay?: ProcgenDebugOverlayMode
   /** F2-only: override which bg ambient track plays (URL string). */
   debugBgTrack?: string
+  /** F2-only: trigger a one-shot bg sfx play; seq increments on each trigger. */
+  debugBgSfxTrigger?: { index: number; seq: number }
   /** Present when the entire party is dead; blocks gameplay until a new run starts. */
   death?: { atMs: number; runId: string; floorIndex: number; level: number }
   /** F2: show the death modal with current run stats without setting `death` (no gameplay lock). */

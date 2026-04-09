@@ -124,6 +124,7 @@ export type Action =
   | { type: 'floor/debugToggleFloorProperty'; property: FloorProperty }
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
+  | { type: 'ui/triggerDebugBgSfx'; index: number }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
@@ -170,6 +171,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -193,6 +195,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -221,6 +224,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
       case 'render/set':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -367,6 +371,14 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/setDebugBgTrack':
       return { ...state, ui: { ...state.ui, debugBgTrack: action.track } }
+    case 'ui/triggerDebugBgSfx':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          debugBgSfxTrigger: { index: action.index, seq: (state.ui.debugBgSfxTrigger?.seq ?? 0) + 1 },
+        },
+      }
     case 'ui/openPaperdoll':
       // Paperdoll popup disabled (global).
       return state
