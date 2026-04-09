@@ -8,7 +8,6 @@ import { InventoryPanel } from '../inventory/InventoryPanel'
 import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
-import { StatuePanel } from '../statue/StatuePanel'
 import { ActivityLog } from './ActivityLog'
 import { useCursor } from '../cursor/useCursor'
 import type { WorldRenderer } from '../../world/WorldRenderer'
@@ -133,10 +132,6 @@ export function HudLayout(props: {
         />
       </section>
 
-      <section className={`${styles.panel} ${styles.statueL}`}>
-        <StatuePanel side="left" />
-      </section>
-
       <section className={`${styles.panel} ${styles.game}`}>
         {captureForPostprocess ? (
           // `GameViewport` is omitted in capture HUD (3D is not rasterized here). Keep a same-sized
@@ -150,10 +145,6 @@ export function HudLayout(props: {
         {captureForPostprocess && captureNpcOverlay ? (
           <div className={styles.npcCaptureLayer}>{captureNpcOverlay}</div>
         ) : null}
-      </section>
-
-      <section className={`${styles.panel} ${styles.statueR}`}>
-        <StatuePanel side="right" />
       </section>
 
       <section className={`${styles.panel} ${styles.char4}`}>

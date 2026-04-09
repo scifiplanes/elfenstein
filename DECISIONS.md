@@ -3025,3 +3025,31 @@ Players expect map control to exit contextual UI; leaving the dialog up while wa
 
 ### Consequences
 Pure reducer change in **`web/src/game/reducer.ts`**; **`DESIGN.md`** §7.5 notes the rule.
+
+---
+
+## ADR-0203 — Remove HUD statue rails; widen game column
+Date: 2026-04-09
+
+### Decision
+Drop the **`statueL`** / **`statueR`** grid tracks and **`StatuePanel`** from **`HudLayout`**. The root grid is **three** columns **`minmax(0, 1fr) minmax(0, 1.12fr) minmax(0, 1fr)`**; **`bottomRow`** uses **`0.75fr 1.62fr 0.75fr`** with **`map | inventory | navigation`**. Delete **`web/src/ui/statue/StatuePanel.tsx`**.
+
+### Rationale
+The **120px** statue columns were empty (**`StatuePanel`** returned **`null`**) but still reserved space, producing black side strips beside the 3D view. Removing them gives the **game** cell that width.
+
+### Consequences
+**`DESIGN.md`** §6.4 updated. **ADR-0110** (statue slot titles) applied only to removed UI; no statue placeholders remain in the shell.
+
+---
+
+## ADR-0204 — HUD: restore outer rail tracks; game spans center three columns
+Date: 2026-04-09
+
+### Decision
+Revert **`HudLayout`** root and **`bottomRow`** column templates to the **pre–ADR-0203** **`1fr 120px 1.12fr 120px 1fr`** and **`0.75fr 120px 1.62fr 120px 0.75fr`** definitions. Give the **game** `<section>` a **`grid-area`** that covers the **three** middle columns (same names in **`grid-template-areas`**) so the **3D view** fills the band formerly split between statue rails and the center track—**no** black strips, **no** separate statue UI.
+
+### Rationale
+A flat **three-column** root widened the **1fr** portrait and **0.75fr** map/nav tracks compared to the original five-column math. Restoring the **120px** tracks preserves prior rail sizes while merging them into the **game** panel keeps the wide viewport.
+
+### Consequences
+**`DESIGN.md`** §6.4 describes merged **game** span + original track list. **ADR-0203** column summary is superseded for layout structure; statue **components** remain removed.
