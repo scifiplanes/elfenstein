@@ -3011,3 +3011,17 @@ Keeps alignment tied to the **game rect** while satisfying a **%-based** stack; 
 
 ### Consequences
 **`captureRoot`** gets a **ref** + observer only for this metric; **`DESIGN.md`** §7.5 documents the formula.
+
+---
+
+## ADR-0202 — NPC dialog closes on player movement
+Date: 2026-04-09
+
+### Decision
+Before handling **`player/turn`**, **`player/step`**, or **`player/strafe`**, **`reduce`** clears **`ui.npcDialogFor`** and **`ui.debugShowNpcDialogPopup`** when either is set (`dismissNpcDialogOnMovement`), matching **`ui/closeNpcDialog`**, then proceeds with the move (so a forward step into a **non-hostile** NPC can reopen the dialog in the same dispatch chain).
+
+### Rationale
+Players expect map control to exit contextual UI; leaving the dialog up while walking felt sticky.
+
+### Consequences
+Pure reducer change in **`web/src/game/reducer.ts`**; **`DESIGN.md`** §7.5 notes the rule.
