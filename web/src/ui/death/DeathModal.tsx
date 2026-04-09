@@ -14,11 +14,17 @@ function fmtMs(ms: number) {
 export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action> }) {
   const { state, dispatch } = props
   const death = state.ui.death
-  if (!death) return null
+  const preview =
+    !death && Boolean(state.ui.debugShowDeathPopup) && state.ui.screen === 'game'
+  if (!death && !preview) return null
 
-  const elapsedMs = Math.max(0, death.atMs - state.run.startedAtMs)
-  const floorLabel = `F${death.floorIndex + 1}`
-  const levelLabel = `L${death.level}`
+  const deathData =
+    death ??
+    ({ atMs: state.nowMs, runId: state.run.runId, floorIndex: state.floor.floorIndex, level: state.run.level } as const)
+
+  const elapsedMs = Math.max(0, deathData.atMs - state.run.startedAtMs)
+  const floorLabel = `F${deathData.floorIndex + 1}`
+  const levelLabel = `L${deathData.level}`
   const log = state.ui.activityLog ?? []
   const recent = log.slice(Math.max(0, log.length - 6))
   const hasCheckpoint = !!state.run.checkpoint
@@ -36,7 +42,7 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
 
         <div className={styles.stats}>
           <div className={styles.statLabel}>Run</div>
-          <div className={styles.statValue}>{death.runId}</div>
+          <div className={styles.statValue}>{deathData.runId}</div>
           <div className={styles.statLabel}>Progress</div>
           <div className={styles.statValue}>
             {floorLabel} · {levelLabel}

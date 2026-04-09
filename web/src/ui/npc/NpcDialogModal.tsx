@@ -27,7 +27,10 @@ export function NpcDialogModal(props: {
   const { state, dispatch, content, variant = 'interactive', gameViewportRef } = props
   const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
   const cursor = useCursor()
-  const npcId = state.ui.npcDialogFor
+  const dialogNpcId = state.ui.npcDialogFor
+  const previewNpc =
+    Boolean(state.ui.debugShowNpcDialogPopup) && state.ui.screen === 'game' && !dialogNpcId
+  const npcId = dialogNpcId ?? (previewNpc ? state.floor.npcs[0]?.id : undefined)
 
   useLayoutEffect(() => {
     if (!npcId || variant === 'capture') {

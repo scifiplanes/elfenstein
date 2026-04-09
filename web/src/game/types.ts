@@ -88,8 +88,12 @@ export type UiState = {
   debugBgTrack?: string
   /** Present when the entire party is dead; blocks gameplay until a new run starts. */
   death?: { atMs: number; runId: string; floorIndex: number; level: number }
+  /** F2: show the death modal with current run stats without setting `death` (no gameplay lock). */
+  debugShowDeathPopup?: boolean
   paperdollFor?: CharacterId
   npcDialogFor?: Id
+  /** F2: show the NPC dialog using the first floor NPC when `npcDialogFor` is unset (UI tuning). */
+  debugShowNpcDialogPopup?: boolean
   /** Persistent lines inside the game viewport activity log (newest last; capped). */
   activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }

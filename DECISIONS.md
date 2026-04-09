@@ -2955,3 +2955,17 @@ Modal styling had drifted (mono paperdoll title, thin white borders, rounded dea
 
 ### Consequences
 New modal-like UI should prefer **`GamePopup`** classes; positioning, **z-index**, and NPC-only rules stay in feature CSS/TSX.
+
+---
+
+## ADR-0198 — F2 preview toggles for NPC dialog and death modals
+Date: 2026-04-09
+
+### Decision
+Add **`UiState.debugShowNpcDialogPopup`** and **`UiState.debugShowDeathPopup`**, driven from the **F2** **UI** section. **NPC**: when set (and no real `npcDialogFor`), show the dialog for the **first NPC** on the floor. **Death**: show the death modal using **current run** stats **without** setting **`ui.death`** (no gameplay lock). **`DitheredFrameRoot`** mounts the **stage modal layer** during **game** when these flags are set; real party death clears **`debugShowDeathPopup`**. Closing the NPC dialog clears **`debugShowNpcDialogPopup`**.
+
+### Rationale
+Modal layout and **html2canvas** capture need repeatable ways to inspect popups without spawning deaths or formal dialog opens.
+
+### Consequences
+Reducer accepts **`debug/setShowNpcDialogPopupPreview`** and **`debug/setShowDeathPopupPreview`** alongside other F2-safe actions on title/death screens. **New run**, **go to title**, **reload checkpoint**, and **real death** reset the death preview flag; **go to title** / **new run** / **reload checkpoint** / **close NPC dialog** reset the NPC preview flag as appropriate.

@@ -403,6 +403,58 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         placeholder="Search… (will matter later)"
       />
 
+      {(!q || 'popup modal dialog death npc ui overlay'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>UI</div>
+          <div className={styles.row}>
+            <div className={styles.label}>NPC dialog popup</div>
+            <div className={`${styles.value} ${styles.popupPreviewValue}`}>
+              {state.ui.screen !== 'game' ? (
+                <span className={styles.popupPreviewHint}>In run only</span>
+              ) : state.floor.npcs.length === 0 ? (
+                <span className={styles.popupPreviewHint}>Spawn an NPC first</span>
+              ) : null}
+              <label className={styles.pill} title="Shows the dialog for the first NPC on this floor. Does not open a real encounter.">
+                <input
+                  type="checkbox"
+                  checked={Boolean(state.ui.debugShowNpcDialogPopup)}
+                  disabled={
+                    state.ui.screen !== 'game' ||
+                    !!state.ui.npcDialogFor ||
+                    !!state.ui.death ||
+                    state.floor.npcs.length === 0
+                  }
+                  onChange={(e) => {
+                    const on = e.target.checked
+                    if (on && state.floor.npcs.length === 0) {
+                      dispatch({ type: 'ui/toast', text: 'No NPCs on this floor. Use Spawn (NPC) below.', ms: 2200 })
+                      return
+                    }
+                    dispatch({ type: 'debug/setShowNpcDialogPopupPreview', show: on })
+                  }}
+                />
+                Show
+              </label>
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>Death popup</div>
+            <div className={`${styles.value} ${styles.popupPreviewValue}`}>
+              {state.ui.screen !== 'game' ? <span className={styles.popupPreviewHint}>In run only</span> : null}
+              <label className={styles.pill} title="Shows the post-death modal without killing the party or blocking input.">
+                <input
+                  type="checkbox"
+                  checked={Boolean(state.ui.debugShowDeathPopup)}
+                  disabled={state.ui.screen !== 'game' || !!state.ui.death}
+                  onChange={(e) => dispatch({ type: 'debug/setShowDeathPopupPreview', show: e.target.checked })}
+                />
+                Show
+              </label>
+            </div>
+          </div>
+        </div>
+      )}
+
       {(!q || 'floor floors procgen floorindex floorproperties properties'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Floors</div>
