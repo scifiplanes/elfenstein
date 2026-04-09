@@ -243,6 +243,7 @@ export function HudLayout(props: {
             <PortraitPanel
               state={state}
               dispatch={dispatch}
+              content={content}
               characterId={state.party.chars[1].id}
               captureForPostprocess={captureForPostprocess}
               portraitColumnTranslateXPx={PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
@@ -298,6 +299,7 @@ export function HudLayout(props: {
             <PortraitPanel
               state={state}
               dispatch={dispatch}
+              content={content}
               characterId={state.party.chars[3].id}
               captureForPostprocess={captureForPostprocess}
               portraitColumnTranslateXPx={-PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
@@ -312,6 +314,7 @@ export function HudLayout(props: {
             <PortraitPanel
               state={state}
               dispatch={dispatch}
+              content={content}
               characterId={state.party.chars[0].id}
               captureForPostprocess={captureForPostprocess}
               portraitColumnTranslateXPx={PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
@@ -343,6 +346,7 @@ export function HudLayout(props: {
             <PortraitPanel
               state={state}
               dispatch={dispatch}
+              content={content}
               characterId={state.party.chars[2].id}
               captureForPostprocess={captureForPostprocess}
               portraitColumnTranslateXPx={-PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}

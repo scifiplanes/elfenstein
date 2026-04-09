@@ -945,7 +945,20 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'equipmentSlot') {
-        return equipItem(stateAtAction, target.characterId, target.slot, itemId, CONTENT)
+        let st = stateAtAction
+        if (payload.source.kind === 'equipmentSlot') {
+          // Equipped items are not in `inventory.slots`, so `equipItem` → `removeItemFromInventory`
+          // does not detach them; clear the source slot first (incl. two-hand) to avoid duplicates.
+          const cleared = clearEquippedSlotIfMatched(
+            st,
+            payload.source.characterId,
+            payload.source.slot,
+            itemId,
+          )
+          if (!cleared) return stateAtAction
+          st = cleared
+        }
+        return equipItem(st, target.characterId, target.slot, itemId, CONTENT)
       }
 
       if (target.kind === 'npc') {

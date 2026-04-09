@@ -1,7 +1,7 @@
 import { useMemo, type Dispatch, type PointerEvent } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
-import { itemFitsCharacterEquipmentSlot } from '../../game/state/equipment'
+import { getCharacterEquipmentHudModel, itemFitsCharacterEquipmentSlot } from '../../game/state/equipment'
 import type { EquipmentSlot, GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import { EquipIcon } from './EquipIcon'
@@ -21,25 +21,20 @@ export function CharacterEquipStrip(props: {
 }) {
   const { state, dispatch, content, characterId, className, equipTranslateXPx, equipNudgeUpPx } = props
   const cursor = useCursor()
-  const c = state.party.chars.find((x) => x.id === characterId) ?? null
+  const m = getCharacterEquipmentHudModel(state, content, characterId)
+  if (!m) return null
 
-  if (!c) return null
-
-  const headItemId = c.equipment.head
-  const handLeftId = c.equipment.handLeft
-  const handRightId = c.equipment.handRight
-  const headItem = headItemId ? state.party.items[headItemId] : null
-  const leftHandItem = handLeftId ? state.party.items[handLeftId] : null
-  const rightHandItem = handRightId ? state.party.items[handRightId] : null
-  const headDef = headItem ? content.item(headItem.defId) : null
-  const leftHandDef = leftHandItem ? content.item(leftHandItem.defId) : null
-  const rightHandDef = rightHandItem ? content.item(rightHandItem.defId) : null
-  const twoHandHeld =
-    Boolean(handLeftId && handRightId && handLeftId === handRightId && leftHandDef)
-
-  const showEquipHandLeft = !twoHandHeld && !!leftHandDef
-  const showEquipHandRightTwoHand = twoHandHeld && !!leftHandDef
-  const showEquipHandRightOneHand = !twoHandHeld && !!rightHandDef
+  const {
+    headItem,
+    leftHandItem,
+    rightHandItem,
+    headDef,
+    leftHandDef,
+    rightHandDef,
+    showEquipHandLeft,
+    showEquipHandRightTwoHand,
+    showEquipHandRightOneHand,
+  } = m
 
   const beginEquipDrag = (slot: EquipmentSlot, itemId: string, e: PointerEvent<HTMLButtonElement>) => {
     cursor.beginPointerDown(

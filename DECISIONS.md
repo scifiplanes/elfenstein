@@ -3816,4 +3816,45 @@ Matches the intended **visual** identity of each language without encoding item 
 
 ### Consequences
 - **`web/src/game/npc/gibberish.ts`**, **`NpcDialogModal.tsx`**, **`web/src/game/npc/gibberish.test.ts`**; **`DESIGN.md`** §7.6 / §15.
->>>>>>> origin/main
+
+---
+
+## ADR-0242 — Portrait equipment mirror (read-only icons)
+Date: 2026-04-09
+
+### Decision
+Restore **non-interactive** equipped **head** / **hand** icons on **`PortraitPanel`** (same CSS bands and sizing as legacy on-portrait equip), driven by shared **`getCharacterEquipmentHudModel`** (**`equipment.ts`**) with **`CharacterEquipStrip`**. **HUD** equip drag/drop remains **strip-only**; portrait layers use **`pointer-events: none`**. Icons render whenever **`PortraitPanel`** mounts (including **`captureForPostprocess`**) so the **dither presenter**’s captured HUD bitmap includes them; the live **`interactiveHud`** layer stays **`opacity: 0`**, so players do not see that DOM tree.
+
+### Rationale
+Players see **at a glance** what a character is wearing without reading the side strip alone; avoids duplicating **two-hand** / left-right rules between UI surfaces.
+
+### Consequences
+- **`PortraitPanel`** takes **`content`** again; **`HudLayout`** passes **`CONTENT`**; **`PortraitPanel.module.css`** regains equip mirror rules; **`DESIGN.md`** §7.1 / §7.4 updated.
+
+---
+
+## ADR-0243 — Portrait equip mirror must appear in HUD capture
+Date: 2026-04-09
+
+### Decision
+Stop gating portrait equip mirror layers on **`!captureForPostprocess`**. **`DitheredFrameRoot`** shows the **captured** HUD (`captureForPostprocess={true}`) on the presenter canvas while the interactive HUD (`opacity: 0`) is hit-only; omitting mirrors from capture made equipped icons **invisible**.
+
+### Rationale
+Mouth/idle reaction sprites are compositor overlays and are suppressed in capture by design; static equip icons have **no** WebGL overlay path and must be part of the captured DOM.
+
+### Consequences
+- **`PortraitPanel.tsx`** always paints equip mirror DOM when equipped; **`DESIGN.md`** portrait mirror bullet clarified.
+
+---
+
+## ADR-0244 — Fix equipment slot-to-slot drag duplicating items
+Date: 2026-04-09
+
+### Decision
+On **`drag/drop`** with **`target.kind === 'equipmentSlot`**, when **`payload.source.kind === 'equipmentSlot`**, run **`clearEquippedSlotIfMatched`** on the **source** before **`equipItem`**.
+
+### Rationale
+**`equipItem`** begins with **`removeItemFromInventory`**, which only clears **`party.inventory.slots`**. Items worn in **`party.chars[].equipment`** are **not** in that grid, so a cross-character equip drop assigned the item to the target without removing it from the source.
+
+### Consequences
+- **`reducer.ts`**; **`DESIGN.md`** §7.4 **HUD equip** bullet.

@@ -1,13 +1,16 @@
 import type { Dispatch } from 'react'
 import type React from 'react'
+import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { useEffect, useState } from 'react'
+import { getCharacterEquipmentHudModel } from '../../game/state/equipment'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { loadImage, prefetchImages } from '../assets/imageCache'
 import { hpMax, staminaMax } from '../../game/state/runProgression'
+import { EquipIcon } from './EquipIcon'
 import styles from './PortraitPanel.module.css'
 
 const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
@@ -19,6 +22,9 @@ const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
 
 /** Matches feed clamp in `interactions.ts`. */
 const HUNGER_THIRST_CAP = 100
+
+/** Whole portrait column (face + vitals + equip mirror): nudge up vs grid cell. */
+const PORTRAIT_COLUMN_NUDGE_UP_PX = 20
 
 /** Order: row1 HP|STA, row2 HUN|THR. HP/STA use run-level maxima from `runProgression`. */
 const PORTRAIT_VITAL_CELL_KEYS = ['hp', 'sta', 'hun', 'thr'] as const
@@ -92,12 +98,13 @@ const SPECIES_FALLBACK_FACE: Record<string, string> = {
 export function PortraitPanel(props: {
   state: GameState
   dispatch: Dispatch<Action>
+  content: ContentDB
   characterId: string
   captureForPostprocess?: boolean
   /** `translateX` on the whole column (portrait + vitals). `HudLayout`: **+n** left rail, **−n** right rail (mirror). */
   portraitColumnTranslateXPx?: number
 }) {
-  const { state, dispatch, characterId, captureForPostprocess = false, portraitColumnTranslateXPx } = props
+  const { state, dispatch, content, characterId, captureForPostprocess = false, portraitColumnTranslateXPx } = props
   const cursor = useCursor()
   const nowMs = performance.now()
   const c = state.party.chars.find((x) => x.id === characterId) ?? null
@@ -325,6 +332,8 @@ export function PortraitPanel(props: {
 
   if (!c) return null
 
+  const equipHud = getCharacterEquipmentHudModel(state, content, characterId)
+
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
 
@@ -339,8 +348,9 @@ export function PortraitPanel(props: {
   const idleHideEyes = showIdleForEyes && !showEyesInspect
 
   const columnTx = portraitColumnTranslateXPx ?? 0
-  const rootNudgeStyle =
-    columnTx !== 0 ? ({ transform: `translateX(${columnTx}px)` } satisfies React.CSSProperties) : undefined
+  const rootTransformParts: string[] = [`translateY(-${PORTRAIT_COLUMN_NUDGE_UP_PX}px)`]
+  if (columnTx !== 0) rootTransformParts.unshift(`translateX(${columnTx}px)`)
+  const rootNudgeStyle = { transform: rootTransformParts.join(' ') } satisfies React.CSSProperties
 
   return (
     <div
@@ -429,6 +439,33 @@ export function PortraitPanel(props: {
             </div>
           )}
         </div>
+
+        {equipHud && equipHud.headDef && equipHud.headItem ? (
+          <div className={styles.equipHat} aria-hidden="true">
+            <EquipIcon def={equipHud.headDef} emojiClass={styles.equipHatEmoji} imgClass={styles.equipHatImg} />
+          </div>
+        ) : null}
+
+        {equipHud?.showEquipHandsBand ? (
+          <div className={styles.equipHandsBand} aria-hidden="true">
+            <div className={styles.equipHandSlotLeft}>
+              {equipHud.showEquipHandLeft && equipHud.leftHandDef && equipHud.leftHandItem ? (
+                <EquipIcon def={equipHud.leftHandDef} emojiClass={styles.equipHandEmoji} imgClass={styles.equipHandImg} />
+              ) : null}
+            </div>
+            <div className={styles.equipHandSlotRight}>
+              {equipHud.showEquipHandRightTwoHand && equipHud.leftHandDef && equipHud.leftHandItem ? (
+                <EquipIcon
+                  def={equipHud.leftHandDef}
+                  emojiClass={styles.equipHandEmojiTwoHand}
+                  imgClass={styles.equipHandImgTwoHand}
+                />
+              ) : equipHud.showEquipHandRightOneHand && equipHud.rightHandDef && equipHud.rightHandItem ? (
+                <EquipIcon def={equipHud.rightHandDef} emojiClass={styles.equipHandEmoji} imgClass={styles.equipHandImg} />
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {__debug ? (
           <div

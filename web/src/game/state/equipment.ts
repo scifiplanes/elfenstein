@@ -1,5 +1,5 @@
-import type { ContentDB } from '../content/contentDb'
-import type { CharacterId, EquipmentSlot, GameState, ItemId } from '../types'
+import type { ContentDB, ItemDef } from '../content/contentDb'
+import type { CharacterId, EquipmentSlot, GameState, InventoryItem, ItemId } from '../types'
 import { moveItemToInventorySlot, removeItemFromInventory } from './inventory'
 
 function isUsableWeaponItem(state: GameState, itemId: ItemId, content: ContentDB): boolean {
@@ -191,6 +191,60 @@ export function itemFitsCharacterEquipmentSlot(
     return slotOk
   }
   return false
+}
+
+/** Shared by `CharacterEquipStrip` and portrait equip mirrors (icons + visibility flags). */
+export type CharacterEquipmentHudModel = {
+  headItem: InventoryItem | null
+  leftHandItem: InventoryItem | null
+  rightHandItem: InventoryItem | null
+  headDef: ItemDef | null
+  leftHandDef: ItemDef | null
+  rightHandDef: ItemDef | null
+  twoHandHeld: boolean
+  showEquipHandLeft: boolean
+  showEquipHandRightTwoHand: boolean
+  showEquipHandRightOneHand: boolean
+  showEquipHandsBand: boolean
+}
+
+export function getCharacterEquipmentHudModel(
+  state: GameState,
+  content: ContentDB,
+  characterId: CharacterId,
+): CharacterEquipmentHudModel | null {
+  const c = state.party.chars.find((x) => x.id === characterId) ?? null
+  if (!c) return null
+
+  const headItemId = c.equipment.head
+  const handLeftId = c.equipment.handLeft
+  const handRightId = c.equipment.handRight
+  const headItem = headItemId ? (state.party.items[headItemId] ?? null) : null
+  const leftHandItem = handLeftId ? (state.party.items[handLeftId] ?? null) : null
+  const rightHandItem = handRightId ? (state.party.items[handRightId] ?? null) : null
+  const headDef = headItem ? content.item(headItem.defId) : null
+  const leftHandDef = leftHandItem ? content.item(leftHandItem.defId) : null
+  const rightHandDef = rightHandItem ? content.item(rightHandItem.defId) : null
+  const twoHandHeld = Boolean(handLeftId && handRightId && handLeftId === handRightId && leftHandDef)
+
+  const showEquipHandLeft = !twoHandHeld && !!leftHandDef
+  const showEquipHandRightTwoHand = twoHandHeld && !!leftHandDef
+  const showEquipHandRightOneHand = !twoHandHeld && !!rightHandDef
+  const showEquipHandsBand = showEquipHandLeft || showEquipHandRightTwoHand || showEquipHandRightOneHand
+
+  return {
+    headItem,
+    leftHandItem,
+    rightHandItem,
+    headDef,
+    leftHandDef,
+    rightHandDef,
+    twoHandHeld,
+    showEquipHandLeft,
+    showEquipHandRightTwoHand,
+    showEquipHandRightOneHand,
+    showEquipHandsBand,
+  }
 }
 
 /** True if an item that is not in the grid can be placed into `dst` (possibly displacing an occupant). */

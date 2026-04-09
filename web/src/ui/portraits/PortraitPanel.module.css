@@ -135,6 +135,97 @@
   height: 28%;
 }
 
+/* Equipped item icons (above portrait art, below eyes/mouth hit targets); mirror strip — non-interactive. */
+.equipHat,
+.equipHandsBand {
+  position: absolute;
+  z-index: 4;
+  pointer-events: none;
+}
+
+.equipHat {
+  top: 0;
+  left: 8%;
+  width: 84%;
+  height: 16%;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.equipHatEmoji {
+  font-size: clamp(88px, 22vmin, 160px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75));
+}
+
+.equipHatImg {
+  display: block;
+  max-height: clamp(96px, 24vmin, 176px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 16px rgba(0, 0, 0, 0.75));
+}
+
+.equipHandsBand {
+  top: 82%;
+  left: 8%;
+  width: 84%;
+  height: 18%;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 0 2px 3px;
+}
+
+.equipHandSlotLeft,
+.equipHandSlotRight {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: flex-end;
+}
+
+.equipHandSlotLeft {
+  justify-content: flex-start;
+}
+
+.equipHandSlotRight {
+  justify-content: flex-end;
+}
+
+.equipHandEmoji {
+  font-size: clamp(72px, 18vmin, 136px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.equipHandImg {
+  display: block;
+  max-height: clamp(80px, 20vmin, 144px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.equipHandEmojiTwoHand {
+  font-size: clamp(80px, 20vmin, 152px);
+  line-height: 1;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
+.equipHandImgTwoHand {
+  display: block;
+  max-height: clamp(88px, 22vmin, 160px);
+  width: auto;
+  image-rendering: pixelated;
+  filter: drop-shadow(0 8px 20px rgba(0, 0, 0, 0.8));
+}
+
 .hint {
   position: absolute;
   left: 10px;
@@ -152,7 +243,7 @@
   right: 0;
   bottom: 0;
   z-index: 7;
-  transform: translateY(10px);
+  transform: translateY(30px);
   /* Wide rails: keep ~70px side inset for art; narrow (equip strip beside portrait): clamp so bars keep usable width. */
   padding: 6px clamp(10px, 8%, 70px) 20px;
   font-family: var(--mono);
