@@ -14,15 +14,57 @@
   opacity: 0;
 }
 
-/* Wraps the panel inside `HudLayout`’s `.npcCaptureLayer` (flex top + horizontal center). */
+/* Fills `HudLayout`’s `.npcCaptureLayer` so top + bottom anchors match the game cell. */
 .captureInGameCell {
   box-sizing: border-box;
-  max-width: 100%;
+  width: 100%;
+  align-self: stretch;
+  min-height: 100%;
   pointer-events: none;
 }
 
-.modalCapture {
+.captureRoot {
   position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  pointer-events: none;
+}
+
+.capturePanelTop {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 100%;
+}
+
+.captureSpeech {
+  position: absolute;
+  /* Fallback before `captureRoot` measure; overridden inline as % of game cell height. */
+  bottom: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.speechStrip {
+  box-sizing: border-box;
+  background: #000;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 12px 12px 14px;
+  width: fit-content;
+  max-width: min(620px, calc(var(--stage-w, 1920px) - 24px), 100%);
+  text-align: center;
+}
+
+/* Brief fallback before `gameViewportRef` measures (~25px at 1080px-tall viewport when game fills height). */
+.speechInteractiveFallback {
+  position: fixed;
+  left: 50%;
+  bottom: 2.315%;
+  transform: translateX(-50%);
 }
 
 .modal {

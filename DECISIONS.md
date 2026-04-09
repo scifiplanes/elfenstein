@@ -2969,3 +2969,45 @@ Modal layout and **html2canvas** capture need repeatable ways to inspect popups 
 
 ### Consequences
 Reducer accepts **`debug/setShowNpcDialogPopupPreview`** and **`debug/setShowDeathPopupPreview`** alongside other F2-safe actions on title/death screens. **New run**, **go to title**, **reload checkpoint**, and **real death** reset the death preview flag; **go to title** / **new run** / **reload checkpoint** / **close NPC dialog** reset the NPC preview flag as appropriate.
+
+---
+
+## ADR-0199 — NPC dialog: bottom speech strip
+Date: 2026-04-09
+
+### Decision
+Split **gibberish** dialog body out of the main **`GamePopup`**-styled NPC panel into a **second** UI element: a **speech strip** with **`#000`** background, **square** corners, **no** border, **no** box shadow, **10 CSS px** above the **bottom** of the 3D game viewport (**interactive**: `position: fixed` + `getBoundingClientRect` math; **capture**: full-cell **`captureRoot`** with absolute **`bottom: 10px`**). The **top** panel keeps **title**, **hint**, and **Close**. **Both** elements carry **`data-drop-kind="npc"`** so drag-drop works on either. **`npcCaptureLayer`** uses **`align-items: stretch`** so the capture subtree fills the game cell height.
+
+### Rationale
+Separates chrome from subtitle text and matches the requested **flat black** caption bar aesthetic without changing shared modal styling for other screens.
+
+### Consequences
+**`NpcDialogModal`** renders **two** positioned nodes in both variants; **`DESIGN.md`** §7.5 / frame pipeline describe the split. Brief interactive fallback **`bottom: 10%`** when the viewport ref has not measured yet.
+
+---
+
+## ADR-0200 — NPC speech strip: centered copy, fit-content width
+Date: 2026-04-09
+
+### Decision
+The NPC **speech strip** uses **`width: fit-content`**, **`text-align: center`**, and **`max-width: min(620px, stage − 24px, 100%)`** instead of full **`panelWidthMd`** width so the **black** box shrinks to the gibberish text while long lines still cap and wrap like the top panel.
+
+### Rationale
+Clearer caption read and less empty bar when the line is short.
+
+### Consequences
+**`NpcDialogModal`** no longer applies **`panelWidthMd`** to the speech wrapper; sizing lives in **`NpcDialogModal.module.css`** **`.speechStrip`**.
+
+---
+
+## ADR-0201 — NPC speech strip: 25px inset, percentage `bottom`
+Date: 2026-04-09
+
+### Decision
+Raise the speech strip by **15 CSS px** ( **`25 CSS px`** gap from the game viewport’s bottom edge, was **10**). **`bottom`** is a **percentage**: **interactive** uses **`((innerHeight − gameBottom + 25) / innerHeight) × 100%`** on the portaled hit layer; **capture** uses **`(25 / captureRootHeight) × 100%`** measured with **`ResizeObserver`**.
+
+### Rationale
+Keeps alignment tied to the **game rect** while satisfying a **%-based** stack; capture matches via **local** `%` of the **game cell**.
+
+### Consequences
+**`captureRoot`** gets a **ref** + observer only for this metric; **`DESIGN.md`** §7.5 documents the formula.
