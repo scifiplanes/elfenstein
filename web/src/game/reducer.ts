@@ -4,6 +4,7 @@ import type {
   DragTarget,
   EquipmentSlot,
   GameState,
+  ItemDefId,
   ItemId,
   NpcKind,
   PoiKind,
@@ -15,7 +16,14 @@ import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
 import { feedCharacter, inspectCharacter } from './state/interactions'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
-import { equipItem, unequipItem } from './state/equipment'
+import {
+  clearEquippedSlotIfMatched,
+  equipHandsFromPortrait,
+  equipHatFromPortrait,
+  equipItem,
+  moveEquippedItemToInventorySlot,
+  unequipItem,
+} from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
 import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
@@ -77,6 +85,8 @@ export type Action =
   | { type: 'debug/spawnNpc'; kind: NpcKind }
   /** Debug: spawn a POI of the given kind one cell in front of the player. */
   | { type: 'debug/spawnPoi'; kind: PoiKind }
+  /** Debug: spawn a floor item of the given def one cell in front of the player (floor tile only). */
+  | { type: 'debug/spawnItem'; defId: ItemDefId }
   /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
   /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
@@ -360,6 +370,38 @@ export function reduce(state: GameState, action: Action): GameState {
       const poi = { id: `debug_poi_${state.nowMs}`, kind: action.kind, pos }
       return { ...state, floor: { ...state.floor, pois: [...state.floor.pois, poi], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
+    case 'debug/spawnItem': {
+      try {
+        CONTENT.item(action.defId)
+      } catch {
+        return state
+      }
+      const dv = dirVec(state.floor.playerDir)
+      const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const { w, h, tiles } = state.floor
+      if (pos.x < 0 || pos.y < 0 || pos.x >= w || pos.y >= h || tiles[pos.x + pos.y * w] !== 'floor') {
+        return pushActivityLog(state, 'Cannot spawn item: cell ahead is not floor.')
+      }
+      const newId = (`i_${action.defId}_${state.floor.seed}_dbg_${state.nowMs}` as unknown) as ItemId
+      const jitter = makeDropJitter({
+        floorSeed: state.floor.seed,
+        itemId: newId,
+        nonce: Math.floor(state.nowMs),
+        radius: state.render.dropJitterRadius ?? 0.28,
+      })
+      return {
+        ...state,
+        party: {
+          ...state.party,
+          items: { ...state.party.items, [newId]: { id: newId, defId: action.defId, qty: 1 } },
+        },
+        floor: {
+          ...state.floor,
+          itemsOnFloor: state.floor.itemsOnFloor.concat([{ id: newId, pos: { ...pos }, jitter }]),
+          floorGeomRevision: state.floor.floorGeomRevision + 1,
+        },
+      }
+    }
     case 'floor/debugCycleRealizer': {
       const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
       const i = Math.max(0, order.indexOf(state.floor.floorType))
@@ -484,6 +526,11 @@ export function reduce(state: GameState, action: Action): GameState {
       const { payload, target } = action
       const itemId: ItemId = payload.itemId
 
+      if (target.kind === 'stowEquipped') {
+        if (payload.source.kind !== 'equipmentSlot') return stateAtAction
+        return unequipItem(stateAtAction, payload.source.characterId, payload.source.slot)
+      }
+
       if (target.kind === 'inventorySlot') {
         const dst = target.slotIndex
         if (payload.source.kind === 'inventorySlot') {
@@ -501,24 +548,45 @@ export function reduce(state: GameState, action: Action): GameState {
           }
           return swapInventorySlots(stateAtAction, src, dst)
         }
+        if (payload.source.kind === 'equipmentSlot') {
+          return moveEquippedItemToInventorySlot(
+            stateAtAction,
+            payload.source.characterId,
+            payload.source.slot,
+            itemId,
+            dst,
+          )
+        }
         return moveItemToInventorySlot(stateAtAction, itemId, dst)
       }
 
       if (target.kind === 'floorDrop') {
-        const item = stateAtAction.party.items[itemId]
+        let st = stateAtAction
+        if (payload.source.kind === 'equipmentSlot') {
+          const cleared = clearEquippedSlotIfMatched(
+            stateAtAction,
+            payload.source.characterId,
+            payload.source.slot,
+            itemId,
+          )
+          if (!cleared) return stateAtAction
+          st = cleared
+        }
+
+        const item = st.party.items[itemId]
         if (item?.defId === 'Hive') {
-          const seed = hashStr(`${stateAtAction.floor.seed}:hive:${itemId}:${stateAtAction.nowMs >> 9}`)
+          const seed = hashStr(`${st.floor.seed}:hive:${itemId}:${st.nowMs >> 9}`)
           const queenRoll = (seed % 100) + 1
           const breakRoll = ((seed >>> 10) % 100) + 1
           const breaks = breakRoll <= 75
 
-          const pos = target.dropPos ?? stateAtAction.floor.playerPos
-          const hasFreeInv = stateAtAction.party.inventory.slots.some((s) => s == null)
+          const pos = target.dropPos ?? st.floor.playerPos
+          const hasFreeInv = st.party.inventory.slots.some((s) => s == null)
 
           // 8%: produce a Swarm Queen instead of spawning a Swarm.
           if (queenRoll <= 8) {
-            let next = breaks ? consumeItem(stateAtAction, itemId) : dropItemToFloor(stateAtAction, itemId, pos)
-            next = mintItemToInventoryOrFloor(next, 'SwarmQueen', `hiveQueen_${itemId}_${stateAtAction.nowMs}`, pos)
+            let next = breaks ? consumeItem(st, itemId) : dropItemToFloor(st, itemId, pos)
+            next = mintItemToInventoryOrFloor(next, 'SwarmQueen', `hiveQueen_${itemId}_${st.nowMs}`, pos)
             return reduce(
               pushActivityLog(next, hasFreeInv ? 'A Swarm Queen wriggles free.' : 'A Swarm Queen wriggles free and drops to the floor.'),
               { type: 'ui/sfx', kind: 'pickup' },
@@ -526,11 +594,11 @@ export function reduce(state: GameState, action: Action): GameState {
           }
 
           // Otherwise: spawn a Swarm NPC at the drop cell.
-          const swarmId = `npc_swarm_${stateAtAction.floor.seed}_${(seed >>> 0).toString(16)}`
-          const status: 'hostile' | 'neutral' = partyHasItemDef(stateAtAction, 'SwarmQueen') ? 'neutral' : 'hostile'
+          const swarmId = `npc_swarm_${st.floor.seed}_${(seed >>> 0).toString(16)}`
+          const status: 'hostile' | 'neutral' = partyHasItemDef(st, 'SwarmQueen') ? 'neutral' : 'hostile'
           const swarm = { id: swarmId, kind: 'Swarm' as const, name: 'Swarm', pos, status, hp: 9, language: 'Zalgo' as const }
 
-          let next = breaks ? consumeItem(stateAtAction, itemId) : dropItemToFloor(stateAtAction, itemId, pos)
+          let next = breaks ? consumeItem(st, itemId) : dropItemToFloor(st, itemId, pos)
           next = {
             ...next,
             floor: { ...next.floor, npcs: next.floor.npcs.concat([swarm]), floorGeomRevision: next.floor.floorGeomRevision + 1 },
@@ -540,7 +608,7 @@ export function reduce(state: GameState, action: Action): GameState {
           return reduce(next, { type: 'ui/shake', magnitude: 0.35, ms: 160 })
         }
 
-        return dropItemToFloor(stateAtAction, itemId, target.dropPos)
+        return dropItemToFloor(st, itemId, target.dropPos)
       }
 
       if (target.kind === 'floorItem') {
@@ -550,7 +618,24 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'portrait') {
         if (target.target === 'eyes') return inspectCharacter(stateAtAction, CONTENT, target.characterId, itemId)
-        return feedCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+        if (target.target === 'mouth') return feedCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+        if (target.target === 'hat') {
+          const before = stateAtAction
+          const next = equipHatFromPortrait(before, CONTENT, target.characterId, itemId)
+          if (next === before) {
+            return reduce(pushActivityLog(before, 'That does not go on the head.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          return next
+        }
+        if (target.target === 'hands') {
+          const before = stateAtAction
+          const next = equipHandsFromPortrait(before, CONTENT, target.characterId, itemId)
+          if (next === before) {
+            return reduce(pushActivityLog(before, 'That cannot be equipped in hand.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          return next
+        }
+        return stateAtAction
       }
 
       if (target.kind === 'poi') {
@@ -558,7 +643,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'equipmentSlot') {
-        return equipItem(stateAtAction, target.characterId, target.slot, itemId)
+        return equipItem(stateAtAction, target.characterId, target.slot, itemId, CONTENT)
       }
 
       if (target.kind === 'npc') {
@@ -841,6 +926,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
   const poiGroundY_Chest = clampNpcGroundY(r.poiGroundY_Chest ?? 0)
   const poiSpriteBoost = Math.max(0, Math.min(3, Number(r.poiSpriteBoost ?? 1.0)))
+  const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(r.poiFootLift ?? 0.02)))
 
   const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
   const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
@@ -908,6 +994,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     poiGroundY_Well,
     poiGroundY_Chest,
     poiSpriteBoost,
+    poiFootLift,
     npcSize_Wurglepup,
     npcSizeRand_Wurglepup,
     npcSize_Bobr,

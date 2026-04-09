@@ -15,7 +15,14 @@ export function getDungeonEnvTextureSrcs(floorType: FloorType): DungeonEnvTextur
       ceiling: '/content/ruins_ceiling.png',
     }
   }
-  // Dungeon + Cave currently share the cave set.
+  if (floorType === 'Dungeon') {
+    return {
+      floor: '/content/dungeon_floor.png',
+      wall: '/content/dungon_wall.png',
+      ceiling: '/content/dungon_ceiling.png',
+    }
+  }
+  // Cave uses the cave set.
   return {
     floor: '/content/cave_floor.png',
     wall: '/content/cave_wall.png',

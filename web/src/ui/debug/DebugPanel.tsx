@@ -1,6 +1,7 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
+import { DEFAULT_ITEMS } from '../../game/content/items'
+import type { GameState, ItemDefId, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
 import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
@@ -41,6 +42,11 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const [floorIndexDraft, setFloorIndexDraft] = useState<string>(String(state.floor.floorIndex))
   const [spawnNpcKind, setSpawnNpcKind] = useState<NpcKind>('Skeleton')
   const [spawnPoiKind, setSpawnPoiKind] = useState<PoiKind>('Chest')
+  const [spawnItemDefId, setSpawnItemDefId] = useState<ItemDefId>(() => DEFAULT_ITEMS[0]!.id)
+  const itemDefsSpawnSorted = useMemo(
+    () => [...DEFAULT_ITEMS].sort((a, b) => a.id.localeCompare(b.id)),
+    [],
+  )
   const [perfOpen, setPerfOpen] = useState(false)
   const [telegraphMode, setTelegraphMode] = useState<'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'>('auto')
   const [telegraphStrength, setTelegraphStrength] = useState(0.22)
@@ -259,9 +265,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'poiFootLift', label: 'POI above ground', min: -0.2, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiGroundY_Chest', label: 'POI Chest groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 2.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
@@ -460,7 +467,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </div>
       )}
 
-      {(!q || 'spawn npc poi entity'.includes(q)) && (
+      {(!q || 'spawn npc poi item entity'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Spawn (1 cell ahead)</div>
           <div className={styles.row}>
@@ -504,6 +511,31 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 type="button"
                 className={styles.headerBtn}
                 onClick={() => dispatch({ type: 'debug/spawnPoi', kind: spawnPoiKind })}
+              >
+                Spawn
+              </button>
+            </div>
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>Item</div>
+            <div className={styles.value}>
+              <select
+                className={styles.inlineInput}
+                value={spawnItemDefId}
+                onChange={(e) => setSpawnItemDefId(e.target.value as ItemDefId)}
+              >
+                {itemDefsSpawnSorted.map((d) => (
+                  <option key={d.id} value={d.id}>
+                    {d.name} ({d.id})
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className={styles.inlineBtns}>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => dispatch({ type: 'debug/spawnItem', defId: spawnItemDefId })}
               >
                 Spawn
               </button>

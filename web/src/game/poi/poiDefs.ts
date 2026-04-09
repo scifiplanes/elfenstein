@@ -20,9 +20,9 @@ export const POI_SPRITE_SRC: Record<PoiKind, string> = {
   Barrel: POI_BARREL_CLOSED_SRC,
   Crate: POI_CRATE_CLOSED_SRC,
   Bed: '/content/poi_placeholder.png',
-  Shrine: '/content/poi_placeholder.png',
+  Shrine: '/content/shrine_gnome.png',
   CrackedWall: '/content/poi_placeholder.png',
-  Exit: '/content/poi_placeholder.png',
+  Exit: '/content/stairs_down.png',
 }
 
 /** Optional open-frame override used when a POI has `opened: true`. */
@@ -30,6 +30,7 @@ export const POI_OPENED_SPRITE_SRC: Partial<Record<PoiKind, string>> = {
   Chest: POI_CHEST_OPEN_SRC,
   Barrel: POI_BARREL_OPEN_SRC,
   Crate: POI_CRATE_OPEN_SRC,
+  Shrine: '/content/shrine_gnome_off.png',
 }
 
 /** Drawn behind / on top of the main Well billboard (not pick targets). */

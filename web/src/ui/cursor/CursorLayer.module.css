@@ -107,7 +107,7 @@
 
 .affordance {
   position: absolute;
-  transform: translate(26px, -10px);
+  transform: translate(-50%, calc(-100% - 6px));
   display: inline-flex;
   align-items: center;
   gap: 6px;

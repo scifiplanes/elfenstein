@@ -2800,4 +2800,147 @@ Players should recognize loot at a glance; the HUD already shows the authoritati
 ### Consequences
 - `DitheredFrameRoot` passes `latestContentRef.current` into `world.renderFrame`.
 - `DESIGN.md` §7.2 notes parity between HUD and world floor-item billboards.
+<<<<<<< HEAD
+>>>>>>> origin/main
+=======
+
+---
+
+## ADR-0171 — Portrait hat + hands equipment drop zones
+Date: 2026-04-08
+
+### Decision
+- Add **portrait UI hit bands** for **hat** (top) and **hands** (bottom); drops resolve through **`drag/drop`** with `PortraitDropTarget` **`hat`** / **`hands`**.
+- Extend **`ItemDef.tags`** with **`hat`**, **`oneHand`**, and **`twoHand`**. Hat items use **`equipSlots`** including **`head`** when `equipSlots` is set.
+- **Two-handed** items store the **same `itemId` in `handLeft` and `handRight`**; **`unequipItem`** on either hand clears both and stows **once**. **One-handed** portrait drops fill **left → right → replace left** when both hands are full.
+
+### Rationale
+Keeps equip discoverable on the portrait without enabling the full paperdoll modal; tags stay data-driven and match the prior “content in ContentDB” approach.
+
+### Consequences
+- `equipItem` takes **`ContentDB`** to branch **hand** slots on **`oneHand` / `twoHand`**.
+- New sample content (**`WoolCap`**) and allowlist entry for procgen content audit; **Spear** / **Bow** are **`twoHand`** for testing.
+
+---
+
+## ADR-0172 — F2 debug: spawn floor item one cell ahead
+Date: 2026-04-08
+
+### Decision
+Add **`debug/spawnItem`** (`ItemDefId`) next to existing **NPC** / **POI** spawn in the F2 panel: mints the item in **`party.items`**, places it on **`itemsOnFloor`** one grid cell in the facing direction, with normal drop jitter, and bumps **`floorGeomRevision`**. If the target cell is not **`floor`**, append an activity-log line instead of spawning.
+
+### Rationale
+Content authors need the same quick placement loop for items as for NPCs and POIs when testing interactions, loot, and equipment.
+
+### Consequences
+- `DESIGN.md` §3 notes the item spawn row and the floor-tile constraint.
+
+---
+
+## ADR-0173 — Portrait unequip via drag (inventory, floor, void)
+Date: 2026-04-08
+
+### Decision
+- **Portrait** equipped **hat** / **hands** icons are **draggable** (`equipmentSlot` source with optional **`fromPortrait`**). They sit above the transparent hat/hands drop bands and carry the same **`portrait`** drop metadata so incoming equips still work.
+- **`drag/drop`** resolves **`equipmentSlot` → `inventorySlot`** and **→ `floorDrop`** by **clearing equipment** before moving the item (fixes equipped items not living in the grid).
+- **`stowEquipped`** target: pointer-up with **no DOM drop target** after a **portrait** equipment drag calls **`unequipItem`** (first free slot), without applying that shortcut to paperdoll drags.
+- **`moveItemToInventorySlot`** places items **not currently in the grid** into a slot by **displacing** an occupant to the first free slot when needed.
+
+### Rationale
+Unequip should match the “drag out of the portrait” mental model; equipment and inventory must stay consistent when moving items that are only equipped.
+
+### Consequences
+- `PortraitPanel`, `CursorProvider`, `types` (`DragSource` / `DragTarget`), `equipment.ts` helpers, `inventory.ts`, and `reducer` `drag/drop` updated accordingly.
+
+---
+
+## ADR-0174 — Portrait equip drag hit: transparent button chrome
+Date: 2026-04-08
+
+### Decision
+Define **`PortraitPanel.module.css`** classes **`equipDragHit`** / **`equipHandDragHit`** (and **`equipHatDraggable`** / **`equipHandsBandDraggable`** **`pointer-events`**) so draggable equipped icons use **`appearance: none`**, **`background: transparent`**, **`border`/`padding`/`margin: 0`**.
+
+### Rationale
+**`<button>`** default UA styling paints an **opaque** plate behind children; **`styles.equipDragHit`** was referenced in **`PortraitPanel.tsx`** but **missing** from the CSS module, so PNG item art **lost visible transparency**.
+
+### Consequences
+`DESIGN.md` portrait unequip bullet notes transparent hit chrome.
+
+---
+
+## ADR-0175 — Dungeon env tiles + Exit/Shrine POI art from Content
+Date: 2026-04-09
+
+### Decision
+- **`getDungeonEnvTextureSrcs`**: **`FloorType` `Dungeon`** uses **`/content/dungeon_floor.png`**, **`/content/dungon_wall.png`**, **`/content/dungon_ceiling.png`** (filenames match **`Content/`** as shipped, including the **`dungon_*`** spelling). **`Cave`** keeps **`cave_*`**; **`Ruins`** keeps **`ruins_*`**.
+- **`POI_SPRITE_SRC`**: **`Exit`** → **`stairs_down.png`**; **`Shrine`** → **`shrine_gnome.png`**. **`POI_OPENED_SPRITE_SRC.Shrine`** → **`shrine_gnome_off.png`**.
+- **`applyPoiUse` (Shrine)**: set **`opened: true`** on the shrine POI and bump **`floorGeomRevision`** so **`WorldRenderer`** rebuilds and shows the off-frame after the first interaction.
+
+### Rationale
+New PNGs in **`Content/`** were unused; wiring them matches the existing env-texture and POI billboard patterns without adding a duplicate asset pipeline step (Vite already exposes repo **`Content/`** at **`/content/*`**).
+
+### Consequences
+- Shrine interactions always transition to the “off” sprite after the first use (including when the log line is “The shrine is silent.”).
+- **`DESIGN.md`** §9 / §11 / §13.1 asset lists updated for the new paths.
+
+---
+
+## ADR-0176 — Headwear recipes, new hats, and procgen/POI drops
+Date: 2026-04-08
+
+### Decision
+- Add **`HerbCirclet`** and **`SporeCap`** item defs (`hat` tag, `head` slot); recipes: **`ClothScrap` + `Twine` → WoolCap** (weaving), **`HerbLeaf` + `Twine` → HerbCirclet** (weaving), **`Mushrooms` + `ClothScrap` → SporeCap** (foraging).
+- Extend **`CHEST_LOOT_DEF_IDS`** and **`CONTAINER_LOOT_DEF_IDS`** with all three ids; extend **`pickFloorItemDefFromTable`** with low-probability headwear nudges for **Passage**, **Communal**, and **Habitat** room functions; extend **`PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS`** accordingly.
+- Remove **`WoolCap`** from **`ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN`** now that it is covered by loot/spawn pipelines.
+
+### Rationale
+Head slot content was previously sample-only for **`WoolCap`** without a gameplay path; weaving/foraging recipes and dungeon drops make hats obtainable without debug spawn.
+
+### Consequences
+**`npm run audit:procgen-content`** must stay green; **`DESIGN.md`** §7.3 / §13.2 note headwear crafting and drops.
+
+---
+
+## ADR-0177 — Room-hazard floor decals in the 3D view
+Date: 2026-04-09
+
+### Decision
+Render **sparse deterministic** ground decals for procgen **room properties** **`Burning` / `Flooded` / `Infected`**: billboard sprites **`hazard_fire.png`**, **`hazard_water.png`**, **`hazard_poison.png`** from repo **`Content/`** (served as **`/content/*`**), only on **`floor`** tiles inside the matching **`GenRoom.rect`**, skipping cells with a **POI**, **NPC**, or **floor item**. Hash-based ~**40%** cell coverage; materials cached in **`WorldRenderer`**; tint follows the lantern/theme sprite color like floor items.
+
+### Rationale
+Compositor hazard telegraph alone does not show *where* the hazard room is in the dungeon; sparse floor art reinforces room identity without carpeting every tile or obscuring interactables.
+
+### Consequences
+- **Renderer-only** (no new **`GameState`** fields); rebuilds with **`floorGeomRevision`**.
+- **`DESIGN.md`** §11 documents the mapping and rules; implementation uses **`web/src/game/world/hazardDefs.ts`** and **`WorldRenderer.buildGeometry`**.
+
+---
+
+## ADR-0179 — Exit POI billboard at 2× scale
+Date: 2026-04-09
+
+### Decision
+**`WorldRenderer.syncPoiSpriteScales`**: **`PoiKind.Exit`** applies a **2×** multiplier to the shared POI billboard height (and width via aspect), and uses the same multiplier in the bottom-pivot **Y** placement so **`stairs_down.png`** stays grounded.
+
+### Rationale
+The exit staircase should read clearly as the primary progression landmark at a glance.
+
+### Consequences
+Only **`Exit`** differs; other POIs unchanged. No new **`GameState`** fields.
+
+---
+
+## ADR-0178 — POI billboards: bottom pivot, foot lift slider, brighter default boost
+Date: 2026-04-09
+
+### Decision
+- **`WorldRenderer`**: POI (and Well glow/sparkle) sprites set **`center`** to **`(0.5, 0)`** so the anchor is the **bottom** of the billboard; **Y** placement uses **`floorTop + poiFootLift − poiGroundY × height`** (height **0.55**), decoupled from **`npcFootLift`**.
+- **`GameState.render`**: add **`poiFootLift`** (clamped like other foot offsets); raise default **`poiSpriteBoost`** to **1.5**; F2 **POI sprite boost** slider max **3.0** (matches reducer).
+- **F2**: new slider **POI above ground** → **`poiFootLift`**.
+
+### Rationale
+Center-pivot POIs with **`npcFootLift`** were hard to tune independently from NPCs; a bottom pivot matches “sits on the floor” mentally. A dedicated lift avoids coupling; higher default boost improves POI visibility against the scene tint.
+
+### Consequences
+**`debug-settings.json`** may persist **`poiFootLift`**; old saves without it get **`clampRenderTuning`** defaults. **`DESIGN.md`** §9 documents bottom pivot + **`poiFootLift`**.
 >>>>>>> origin/main

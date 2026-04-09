@@ -3,7 +3,7 @@ import type { Rng } from './seededRng'
 import type { FloorProperty, FloorType, GenNpc, GenRoom } from './types'
 import { pickFloorItemDefFromTable, pickNpcKindFromTable } from './spawnTables'
 import { shortestPathIndices } from './locks'
-import { bfsDistances } from './validate'
+import { bfsDistances, floorCellTouchesOrthogonalWall } from './validate'
 import { findNearestFloor, pickClosestDistanceCell, pickFarthestUnusedFloor } from './layoutPasses'
 import { buildRoomAdjacency } from './districtsTags'
 
@@ -130,15 +130,6 @@ export function placePois(args: {
     return candidates[0]?.r.center ?? null
   }
 
-  const hasWallNeighbor = (p: Vec2) => {
-    const i = p.x + p.y * w
-    const n = p.y > 0 ? tiles[i - w] : 'wall'
-    const s = p.y < h - 1 ? tiles[i + w] : 'wall'
-    const e = p.x < w - 1 ? tiles[i + 1] : 'wall'
-    const w0 = p.x > 0 ? tiles[i - 1] : 'wall'
-    return n === 'wall' || s === 'wall' || e === 'wall' || w0 === 'wall'
-  }
-
   const pickWallAdjacentInRoom = (room: GenRoom): Vec2 | null => {
     const { x, y, w: rw, h: rh } = room.rect
     // Deterministic scan order; does not consume RNG so downstream population stays stable.
@@ -146,7 +137,7 @@ export function placePois(args: {
       for (let xx = x; xx < x + rw; xx++) {
         const p = { x: xx, y: yy }
         if (!ok(p)) continue
-        if (!hasWallNeighbor(p)) continue
+        if (!floorCellTouchesOrthogonalWall(tiles, w, h, p)) continue
         // Prefer off-path placements when possible.
         if (pathCells.has(keyOf(p))) continue
         return p
@@ -157,7 +148,7 @@ export function placePois(args: {
       for (let xx = x; xx < x + rw; xx++) {
         const p = { x: xx, y: yy }
         if (!ok(p)) continue
-        if (!hasWallNeighbor(p)) continue
+        if (!floorCellTouchesOrthogonalWall(tiles, w, h, p)) continue
         return p
       }
     }

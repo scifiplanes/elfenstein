@@ -13,9 +13,16 @@ import {
   POI_WELL_GLOW_SRC,
   POI_WELL_SPARKLE_FRAMES,
 } from '../game/poi/poiDefs'
+import type { RoomHazardProperty } from '../game/world/hazardDefs'
+import { ROOM_HAZARD_SPRITE_SRC, shouldPlaceHazardDecal } from '../game/world/hazardDefs'
 import { getThemeLightIntent } from './themeTuning'
 
 const TAU = Math.PI * 2
+
+/** World-space height for room-hazard floor decals (`hazard_*.png`). */
+const HAZARD_DECAL_HEIGHT = 0.45
+/** Y offset above floor plane (ground-stain read). */
+const HAZARD_DECAL_FLOOR_Y = 0.08
 
 const DOOR_CLOSED_SRC = '/content/door_closed.png'
 const DOOR_OPEN_SRC = '/content/door_open.png'
@@ -118,6 +125,10 @@ export class WorldRenderer {
   private doorClosedMat: THREE.SpriteMaterial | null = null
   private doorOpenMat: THREE.SpriteMaterial | null = null
 
+  private readonly hazardDecalMats: Partial<Record<RoomHazardProperty, THREE.SpriteMaterial>> = {}
+  private readonly hazardDecalAspects: Partial<Record<RoomHazardProperty, number>> = {}
+  private hazardDecalSprites: Array<{ sprite: THREE.Sprite; prop: RoomHazardProperty }> = []
+
   private doorFxGroup: THREE.Group | null = null
   private lastDoorFxKey = ''
 
@@ -194,6 +205,13 @@ export class WorldRenderer {
       this.doorOpenMat.map?.dispose()
       this.doorOpenMat.dispose()
       this.doorOpenMat = null
+    }
+    for (const prop of ['Burning', 'Flooded', 'Infected'] as const) {
+      const m = this.hazardDecalMats[prop]
+      if (!m) continue
+      m.map?.dispose()
+      m.dispose()
+      delete this.hazardDecalMats[prop]
     }
     for (const t of this.wellSparkleTextures) t.dispose()
     this.wellSparkleTextures = []
@@ -571,6 +589,39 @@ export class WorldRenderer {
       }
     }
 
+    this.hazardDecalSprites = []
+    const floorSeed = state.floor.seed
+    const genRooms = state.floor.gen?.rooms
+    if (genRooms?.length) {
+      const occupied = new Set<string>()
+      for (const p of state.floor.pois) occupied.add(`${p.pos.x},${p.pos.y}`)
+      for (const n of state.floor.npcs) occupied.add(`${n.pos.x},${n.pos.y}`)
+      for (const it of state.floor.itemsOnFloor) occupied.add(`${it.pos.x},${it.pos.y}`)
+
+      for (const room of genRooms) {
+        const prop = room.tags?.roomProperties
+        if (prop !== 'Burning' && prop !== 'Flooded' && prop !== 'Infected') continue
+        const { x: rx, y: ry, w: rw, h: rh } = room.rect
+        for (let y = ry; y < ry + rh; y++) {
+          for (let x = rx; x < rx + rw; x++) {
+            if (x < 0 || y < 0 || x >= w || y >= h) continue
+            if (tiles[x + y * w] !== 'floor') continue
+            const cellKey = `${x},${y}`
+            if (occupied.has(cellKey)) continue
+            if (!shouldPlaceHazardDecal({ floorSeed, roomId: room.id, prop, x, y })) continue
+            const wx = x - w / 2
+            const wz = y - h / 2
+            const mat = this.getHazardDecalMat(prop)
+            const s = new THREE.Sprite(mat)
+            s.position.set(wx, HAZARD_DECAL_FLOOR_Y, wz)
+            s.userData = { kind: 'hazardDecal' }
+            g.add(s)
+            this.hazardDecalSprites.push({ sprite: s, prop })
+          }
+        }
+      }
+    }
+
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
@@ -581,8 +632,9 @@ export class WorldRenderer {
             ? this.getPoiOpenedSpriteMat(p.kind)
             : this.getPoiSpriteMat(p.kind)
       const s = new THREE.Sprite(mat)
+      s.center.set(0.5, 0)
       s.position.set(x, 0, z)
-      // Scale and floor grounding are applied in `syncTuning()` (same center-pivot math as NPCs).
+      // Scale and floor grounding are applied in `syncTuning()` (bottom pivot + `poiFootLift`).
       s.userData = { kind: 'poi', id: p.id }
       g.add(s)
       this.pickables.push(s)
@@ -590,9 +642,11 @@ export class WorldRenderer {
 
       if (p.kind === 'Well' && !p.drained) {
         const glow = new THREE.Sprite(this.getWellGlowMat())
+        glow.center.set(0.5, 0)
         glow.position.set(x, 0, z)
         glow.renderOrder = s.renderOrder - 1
         const sparkle = new THREE.Sprite(this.getWellSparkleMat())
+        sparkle.center.set(0.5, 0)
         sparkle.position.set(x, 0, z)
         sparkle.renderOrder = s.renderOrder + 1
         g.add(glow)
@@ -755,6 +809,7 @@ export class WorldRenderer {
     }
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
+    this.syncHazardDecalScales()
     this.syncNpcIdleFrames(state)
     this.syncWellSparkleFrame(state)
   }
@@ -791,6 +846,18 @@ export class WorldRenderer {
       const spr = p as THREE.Sprite
       const mat = spr.material as THREE.SpriteMaterial
       mat.color.copy(this.themeSpriteColor)
+    }
+    for (const prop of ['Burning', 'Flooded', 'Infected'] as const) {
+      const m = this.hazardDecalMats[prop]
+      if (m) m.color.copy(this.themeSpriteColor)
+    }
+  }
+
+  private syncHazardDecalScales() {
+    const baseH = HAZARD_DECAL_HEIGHT
+    for (const { sprite, prop } of this.hazardDecalSprites) {
+      const aspect = this.hazardDecalAspects[prop] ?? 1.0
+      sprite.scale.set(baseH * aspect, baseH, 1)
     }
   }
 
@@ -923,13 +990,18 @@ export class WorldRenderer {
     if (!this.poiSprites.length) return
 
     const floorTopY = 0
-    const lift = Number(state.render.npcFootLift ?? 0)
+    const foot = Number(state.render.poiFootLift ?? 0.02)
     const baseH = 0.55
+    /** Exit (`stairs_down`) renders at 2× other POI billboards for readability. */
+    const exitMult = 2
     for (const p of this.poiSprites) {
+      const mult = p.kind === 'Exit' ? exitMult : 1
+      const h = baseH * mult
       const aspect = this.poiSpriteAspects[p.kind] ?? 1.0
-      p.sprite.scale.set(baseH * aspect, baseH, 1)
+      p.sprite.scale.set(h * aspect, h, 1)
       const groundY = this.getPoiGroundYForKind(state, p.kind)
-      p.sprite.position.y = floorTopY + lift + baseH * (0.5 - groundY)
+      // Bottom pivot: texture row at `groundY` (0=bottom) meets the floor at `floorTopY + foot`.
+      p.sprite.position.y = floorTopY + foot - groundY * h
     }
 
     for (const d of this.wellDecorSprites) {
@@ -939,6 +1011,28 @@ export class WorldRenderer {
       d.glow.scale.copy(d.main.scale).multiplyScalar(1.08)
       d.sparkle.scale.copy(d.main.scale).multiplyScalar(0.5)
     }
+  }
+
+  private getHazardDecalMat(prop: RoomHazardProperty): THREE.SpriteMaterial {
+    const cached = this.hazardDecalMats[prop]
+    if (cached) return cached
+
+    const src = ROOM_HAZARD_SPRITE_SRC[prop]
+    const tex = this.textureLoader.load(src, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const iw = img && typeof img.width === 'number' ? img.width : 0
+      const ih = img && typeof img.height === 'number' ? img.height : 0
+      if (iw > 0 && ih > 0) this.hazardDecalAspects[prop] = iw / ih
+    })
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    mat.color.copy(this.themeSpriteColor)
+    this.hazardDecalMats[prop] = mat
+    return mat
   }
 
   private getDoorClosedMat(): THREE.SpriteMaterial {
@@ -975,7 +1069,7 @@ export class WorldRenderer {
     }
   }
 
-  /** Normalized pivot from bottom of texture (same convention as `npcGroundY_*`). */
+  /** Normalized ground contact from bottom of texture (same 0–1 convention as `npcGroundY_*`). */
   private getPoiGroundYForKind(state: GameState, kind: PoiKind) {
     if (kind === 'Well') return state.render.poiGroundY_Well
     if (kind === 'Chest') return state.render.poiGroundY_Chest
