@@ -5,12 +5,26 @@ import type { Action } from '../../game/reducer'
 import styles from './HudLayout.module.css'
 import { GameViewport } from '../viewport/GameViewport'
 import { InventoryPanel } from '../inventory/InventoryPanel'
+import { CharacterEquipStrip } from '../portraits/CharacterEquipStrip'
 import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
 import { useCursor } from '../cursor/useCursor'
 import type { WorldRenderer } from '../../world/WorldRenderer'
+
+/**
+ * `CharacterEquipStrip` horizontal nudge (px): **left** rails (**CHAR1/CHAR2**) shift **+n** toward the **right** / game;
+ * **right** rails (**CHAR3/CHAR4**) use **−n** so placement **mirrors** (both toward the game column).
+ */
+const EQUIP_STRIP_NUDGE_TOWARD_GAME_PX = 55
+/** `translateY` **up** (px); same value on **all** four strips (no horizontal mirror). */
+const EQUIP_STRIP_NUDGE_UP_PX = 20
+/**
+ * Whole **`PortraitPanel`** (**portrait + vitals**) `translateX` toward the game column (px).
+ * Left rails (**CHAR1/CHAR2**): **+n**; right rails (**CHAR3/CHAR4**): **−n** (mirror).
+ */
+const PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX = 35
 
 export function HudLayout(props: {
   state: GameState
@@ -126,13 +140,26 @@ export function HudLayout(props: {
       }
     >
       <section className={`${styles.panel} ${styles.char2}`}>
-        <PortraitPanel
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          characterId={state.party.chars[1].id}
-          captureForPostprocess={captureForPostprocess}
-        />
+        <div className={styles.charRail}>
+          <div className={styles.charRailPortraitGrow}>
+            <PortraitPanel
+              state={state}
+              dispatch={dispatch}
+              characterId={state.party.chars[1].id}
+              captureForPostprocess={captureForPostprocess}
+              portraitColumnTranslateXPx={PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
+            />
+          </div>
+          <CharacterEquipStrip
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            characterId={state.party.chars[1].id}
+            className={styles.charRailPushEnd}
+            equipTranslateXPx={EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
+            equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+          />
+        </div>
       </section>
 
       <section className={`${styles.panel} ${styles.game}`}>
@@ -151,33 +178,70 @@ export function HudLayout(props: {
       </section>
 
       <section className={`${styles.panel} ${styles.char4}`}>
-        <PortraitPanel
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          characterId={state.party.chars[3].id}
-          captureForPostprocess={captureForPostprocess}
-        />
+        <div className={styles.charRail}>
+          <CharacterEquipStrip
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            characterId={state.party.chars[3].id}
+            equipTranslateXPx={-EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
+            equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+          />
+          <div className={`${styles.charRailPortraitGrow} ${styles.charRailPushEnd}`}>
+            <PortraitPanel
+              state={state}
+              dispatch={dispatch}
+              characterId={state.party.chars[3].id}
+              captureForPostprocess={captureForPostprocess}
+              portraitColumnTranslateXPx={-PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
+            />
+          </div>
+        </div>
       </section>
 
       <section className={`${styles.panel} ${styles.char1}`}>
-        <PortraitPanel
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          characterId={state.party.chars[0].id}
-          captureForPostprocess={captureForPostprocess}
-        />
+        <div className={styles.charRail}>
+          <div className={styles.charRailPortraitGrow}>
+            <PortraitPanel
+              state={state}
+              dispatch={dispatch}
+              characterId={state.party.chars[0].id}
+              captureForPostprocess={captureForPostprocess}
+              portraitColumnTranslateXPx={PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
+            />
+          </div>
+          <CharacterEquipStrip
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            characterId={state.party.chars[0].id}
+            className={styles.charRailPushEnd}
+            equipTranslateXPx={EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
+            equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+          />
+        </div>
       </section>
 
       <section className={`${styles.panel} ${styles.char3}`}>
-        <PortraitPanel
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          characterId={state.party.chars[2].id}
-          captureForPostprocess={captureForPostprocess}
-        />
+        <div className={styles.charRail}>
+          <CharacterEquipStrip
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            characterId={state.party.chars[2].id}
+            equipTranslateXPx={-EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
+            equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+          />
+          <div className={`${styles.charRailPortraitGrow} ${styles.charRailPushEnd}`}>
+            <PortraitPanel
+              state={state}
+              dispatch={dispatch}
+              characterId={state.party.chars[2].id}
+              captureForPostprocess={captureForPostprocess}
+              portraitColumnTranslateXPx={-PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX}
+            />
+          </div>
+        </div>
       </section>
 
       <div className={styles.bottomRow}>
