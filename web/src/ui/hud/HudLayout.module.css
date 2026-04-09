@@ -110,6 +110,19 @@
 .inventory {
   grid-area: inventory;
   padding: 20px;
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 0;
+}
+
+.inventory > * {
+  width: 95%;
+  max-width: 95%;
+  flex: 0 1 auto;
+  min-width: 0;
 }
 
 .map {

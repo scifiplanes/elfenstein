@@ -19,7 +19,7 @@ Last updated: 2026-04-09
 
 ## 4) Core player experience (pillars)
 - **Touch what you see**: the hand cursor is the primary verb (click, drag, drop).
-- **Party as a single organism**: shared inventory and pooled capacity (via party endurance).
+- **Party as a single organism**: shared inventory with a **fixed** slot grid (see §7.2).
 - **Discovery through interaction**: crafting by experimentation; NPC language as a memorization puzzle.
 - **Atmosphere via light + sound**: darkness is default; proximity audio supports exploration.
 
@@ -143,10 +143,9 @@ The party has **up to 4** character portrait slots.
 
 ### 7.2 Inventory
 - **Shared inventory** across party (one pool).
-- On the HUD, the **inventory** panel has **20 px** padding on all sides around the grid.
-- Inventory is a **large grid panel** for management; each cell has a **square** shape with a **2 px** border tinted **`#ab886b`** at **0.75** opacity (no corner rounding). **Emoji** item icons in slots use **~55 CSS px** font size (**+25%** vs the prior **44 px**).
-- **Capacity**: number of grid cells is informed by **total party Endurance**.
-- Inventory UI is **scrollable in sections** (paged), not continuous.
+- On the HUD, the **inventory** panel has **20 px** padding on all sides around the grid, is offset **20 px** downward within the bottom HUD row (**`margin-top`** on the panel in **`HudLayout.module.css`**), and the **slot grid** is **95%** of the inner panel width (**5%** smaller than full bleed), **flex-centered** so slots stay square and scale down together.
+- Inventory is a **two-row** grid panel for management (**10** columns × **2** rows = **20** slots); each cell has a **square** shape with a **2 px** border tinted **`#ab886b`** at **0.75** opacity (no corner rounding). **Emoji** item icons in slots use **~55 CSS px** font size (**+25%** vs the prior **44 px**).
+- **Capacity**: fixed at **20** slots (grid dimensions above), not scaled by party stats.
 - Hovering an **occupied** slot shows the item’s **name** in a small overlay rendered with the **cursor layer** (the interactive HUD grid is hit-only; labels align to the hovered slot in viewport space), set in **[Jim Nightshade](https://fonts.google.com/specimen/Jim+Nightshade)** at **~33 CSS px** loaded as a **webfont** from Google Fonts.
 - **Button title** typography (primary label on modal/HUD buttons that use the display face at a slightly smaller size than the inventory hover tooltip) is centralized in **`web/src/index.css`** as **`--buttonTitleFontFamily`** (same stack as **`--fontInventoryTooltip`**), **`--buttonTitleFontSize`** (**25 CSS px**), **`--buttonTitleFontWeight`**, **`--buttonTitleLetterSpacing`**, **`--buttonTitleLineHeight`**, **`--buttonTitleColor`**, and **`--buttonTitleTextShadow`**. New UI should reference these instead of duplicating literals.
 - **Modal chrome (shared)**: **`TitleScreen`**, **`DeathModal`**, **`PaperdollModal`**, and the NPC dialog **top panel** share presentation from **`web/src/ui/shared/GamePopup.module.css`**: **`rgba(18, 20, 28, 0.92)`** fill, **square** corners, **`2px`** border **`rgba(171, 136, 107, 0.75)`** (aligned with inventory slots), and **`--buttonTitle*`** typography for titles, hint text, **Close**, and footer **action** buttons (primary actions use the existing red-forward treatment). The NPC dialog **gibberish line** (body copy) sits in a **separate** strip: **solid black**, **square** corners, **no** border (see §7.5). Modals that need a visible scrim compose **`backdropDim`** locally with their own positioning/stacking. **Title** and **paperdoll** use the same **dual DOM** pattern (**full-HUD capture** + **`modalPortalHitRoot`**). **Death** uses the same dual pattern but **capture + interactive** align to the **game viewport** ( **`npcCaptureLayer`**, **`gameViewportRef`** ), with **dim + panel** **centered** in that rect. **NPC dialog** stays special for **no dim** behind the interactive chrome, **viewport-anchored** top **and** bottom strips, and drag/drop wiring—see §7.5.
