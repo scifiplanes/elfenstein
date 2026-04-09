@@ -26,7 +26,18 @@ export class SfxFilePlayer {
     if (!this.buffers.length) return
     const ctx = this.ensure()
     const buffer = this.buffers[Math.floor(Math.random() * this.buffers.length)]
+    this.playBuffer(ctx, buffer, volume)
+  }
 
+  /** Plays the buffer at the given load index (0-based). No-ops if out of range. */
+  playAt(index: number, volume = 1) {
+    const buffer = this.buffers[index]
+    if (!buffer) return
+    const ctx = this.ensure()
+    this.playBuffer(ctx, buffer, volume)
+  }
+
+  private playBuffer(ctx: AudioContext, buffer: AudioBuffer, volume: number) {
     const src = ctx.createBufferSource()
     src.buffer = buffer
 

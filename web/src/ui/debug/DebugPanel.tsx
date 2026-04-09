@@ -13,7 +13,7 @@ import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
 import { getThemeLightIntent } from '../../world/themeTuning'
-import { BG_NOISE_LABELS, BG_NOISE_TRACKS } from '../audio/musicTracks'
+import { BG_NOISE_LABELS, BG_NOISE_TRACKS, BG_SFX_TRACKS } from '../audio/musicTracks'
 import { selectBgTrack } from '../audio/musicRules'
 import styles from './DebugPanel.module.css'
 
@@ -1210,6 +1210,18 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
               }
             >
               {BG_NOISE_LABELS[url] ?? url}
+            </button>
+          ))}
+        </div>
+        <div className={styles.audioBtns}>
+          {BG_SFX_TRACKS.map((url, i) => (
+            <button
+              key={url}
+              type="button"
+              className={styles.audioBtn}
+              onClick={() => dispatch({ type: 'ui/triggerDebugBgSfx', index: i })}
+            >
+              {url.split('/').pop()}
             </button>
           ))}
         </div>
