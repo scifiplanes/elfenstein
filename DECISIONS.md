@@ -3152,6 +3152,156 @@ Slightly reduces slot size so the block reads lighter on the bar while keeping h
 
 ---
 
+## ADR-0211 — Character equipment strip beside portraits
+Date: 2026-04-09
+
+### Decision
+Move **head** and **hand** equipment **display, drag, and `equipmentSlot` drops** off the **`PortraitPanel`** stack into a dedicated **`CharacterEquipStrip`** beside each portrait, using **`Content/ui/hud/ui_hud_charequip_background.png`** (**198×589**) as vertical chrome with three aligned hit regions (**head** → **handLeft** → **handRight**). **`HudLayout`** wraps **`PortraitPanel` + strip** in a flex rail: strip **right** of the portrait on **CHAR1/CHAR2**, strip **left** of the portrait on **CHAR3/CHAR4**. Remove **`portrait` `hat` / `hands`** drop zones from the portrait; **eyes** / **mouth** targets stay on the portrait. Preserve **`fromPortrait: true`** on strip-originated equipment drags for void-drop **stow**.
+
+### Rationale
+Equipment reads as **HUD chrome** (same **html2canvas** capture path as the rest of the HUD, so **dither** matches), slot hit areas can track **authored frame art**, and the portrait stays focused on **face interactions** + stats.
+
+### Consequences
+**`PortraitPanel`** no longer accepts a **`content`** prop (equipment resolution moved out). **`DESIGN.md`** §6.2 / §7.1 / §11 updated. Tuning: CSS **%** slot bands in **`CharacterEquipStrip.module.css`** may need nudges if the PNG frames shift.
+
+---
+
+## ADR-0212 — Symmetric portrait / equip rail (`charRailPushEnd`)
+Date: 2026-04-09
+
+### Decision
+Lay out **`PortraitPanel`** + **`CharacterEquipStrip`** with **`charRail`**: **`[Portrait][Strip]`** on **CHAR1/CHAR2**, **`[Strip][Portrait]`** on **CHAR3/CHAR4**. Portrait sits in **`charRailPortraitGrow`** (**`flex: 1 1 0`**, **`min-width: 0`**). The **second** flex child always gets **`charRailPushEnd`** (**`margin-left: auto`**), so **all** remaining rail width is **between** portrait and strip. Remove **spacer** divs, **`gap: 6px`**, and **`translateX`** on the strip. **`CharacterEquipStrip`** takes optional **`className`** for **`charRailPushEnd`** when it is the second child.
+
+### Rationale
+**Mirrors** left and right rails with **one** spacing rule (flex **auto** margin), avoiding asymmetric **transform** / **margin** hacks that clipped or failed to move under **`overflow`** and **`gap`**.
+
+### Consequences
+**`DESIGN.md`** §6.4 / §7.1 updated. **`portraitHudRail`** removed from **`CharacterEquipStrip`**. (**ADR-0218** later removed **`portraitHudRail`** from **`PortraitPanel`** too.)
+
+---
+
+## ADR-0213 — Mirrored equip strip `translateX` from one constant
+Date: 2026-04-09
+
+### Decision
+**`HudLayout`** defines **`EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** (**20**). **`CharacterEquipStrip`** accepts **`equipTranslateXPx`**; **CHAR1/CHAR2** pass **`+`** the constant, **CHAR3/CHAR4** pass **`-`** the same value so both rails nudge **toward the game** in mirror.
+
+### Rationale
+One number to tune; avoids drifting left/right adjustments separately.
+
+### Consequences
+**`DESIGN.md`** §7.1 notes the constant and sign convention.
+
+---
+
+## ADR-0214 — Equip strip shared upward nudge
+Date: 2026-04-09
+
+### Decision
+Add **`EQUIP_STRIP_NUDGE_UP_PX`** (**20**) in **`HudLayout`**; pass **`equipNudgeUpPx`** to **every** **`CharacterEquipStrip`**. **`CharacterEquipStrip`** composes **`transform`** from optional **`translateX`** and **`translateY(-up)`**.
+
+### Rationale
+Move all equip chrome **up** together; vertical shift does not need left/right mirror.
+
+### Consequences
+**`DESIGN.md`** §7.1 updated.
+
+---
+
+## ADR-0215 — Character equip strip 15% larger
+Date: 2026-04-09
+
+### Decision
+**`CharacterEquipStrip.module.css`**: set **`--equip-strip-scale: 1.15`** on **`.root`**; drive **strip width** (**`calc(78px * var(--equip-strip-scale))`**) and **emoji `clamp` / `vmin`** plus **icon drop-shadow** offsets from the same variable.
+
+### Rationale
+One multiplier keeps chrome, hit regions (percent-based), and icons visually consistent when enlarging the strip.
+
+### Consequences
+**`DESIGN.md`** §7.1 notes **`--equip-strip-scale`** and the **78px** baseline.
+
+---
+
+## ADR-0216 — Equip strip shared rightward `translateX` nudge
+Date: 2026-04-09
+
+### Decision
+**`HudLayout`** adds **`EQUIP_STRIP_NUDGE_RIGHT_PX`** (**20**). **`equipTranslateXPx`** is **`±EQUIP_STRIP_NUDGE_TOWARD_GAME_PX + EQUIP_STRIP_NUDGE_RIGHT_PX`** (left rail **+**, right rail **−** on the first term only).
+
+### Rationale
+Move all strips **right** by the same screen delta while keeping the existing **toward-game** mirror (right rail still uses the negated toward-game term).
+
+### Consequences
+**`DESIGN.md`** §7.1 documents the three horizontal/up constants.
+
+### Update (superseded)
+**ADR-0217** removes the additive **`EQUIP_STRIP_NUDGE_RIGHT_PX`**; horizontal placement is **only** **`±EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** again.
+
+---
+
+## ADR-0217 — Equip strip horizontal: left +20px, mirrored −20px on right rail
+Date: 2026-04-09
+
+### Decision
+Drop **`EQUIP_STRIP_NUDGE_RIGHT_PX`**. **`equipTranslateXPx`** is **`+EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** on **CHAR1/CHAR2** and **−** the same on **CHAR3/CHAR4** (pure mirror toward the game column).
+
+### Rationale
+Match the spec: **left** equipment **20px** to the **right**; **right** widgets use the **mirrored** offset (no extra global right shift on top).
+
+### Consequences
+**`DESIGN.md`** §7.1 and **`HudLayout`** comments updated.
+
+---
+
+## ADR-0218 — Portrait vitals overlay centered on frame (no rail `translateX`)
+Date: 2026-04-09
+
+### Decision
+Remove **`PortraitPanel`** **`portraitHudRail`** and **`statsOverlayRailLeft` / `statsOverlayRailRight`** (**±40px** **`translateX`**). The stats overlay uses **`PortraitPanel.module.css`** **`.statsOverlay`** only (**`translateY(10px)`**).
+
+### Rationale
+The horizontal nudge moved the **attributes** box off the portrait’s horizontal center while sprites stayed centered in the frame; dropping **X** nudge realigns face and vitals.
+
+### Consequences
+**`HudLayout`** no longer passes **`portraitHudRail`**. **`DESIGN.md`** §7.1 updated.
+
+---
+
+## ADR-0219 — Portrait + vitals column mirrored `translateX` toward game
+Date: 2026-04-09
+
+### Decision
+**`HudLayout`** defines **`PORTRAIT_AND_VITALS_NUDGE_TOWARD_GAME_PX`** (**35**; was **25** at introduction). **`PortraitPanel`** accepts **`portraitColumnTranslateXPx`** applied on **`.root`** (**`translateX`**): **+** on **CHAR1/CHAR2**, **−** on **CHAR3/CHAR4**.
+
+### Rationale
+Move **portrait and attributes** together **toward the game** with the same mirror convention as **`CharacterEquipStrip`**, without re-skewing overlay vs face (overlay stays centered on the portrait box).
+
+### Consequences
+**`DESIGN.md`** §7.1 updated.
+
+### Update
+**+10** px on the constant (same mirror on both rails).
+
+---
+
+## ADR-0220 — Equip strip horizontal nudge +20px (mirror): 40px toward game
+Date: 2026-04-09
+
+### Decision
+Increase **`EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** from **20** to **40** (**+20** on **CHAR1/CHAR2**, **−20** more on **CHAR3/CHAR4** vs prior).
+
+### Rationale
+Left equipment **20px** further **right**; right equipment **mirrored** toward the game column.
+
+### Consequences
+**`DESIGN.md`** §7.1 updated.
+
+### Update
+**`EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** tuned to **48** (was **40**), then **55**.
+
+
+*Merged history note: the following entries reuse ADR numbers **0211–0229** from another branch; titles disambiguate them from the equipment-strip **ADR-0211–ADR-0220** block above.*
+
 ## ADR-0211 — Fix 3D drag/drop hover and cursor-aimed floor drops
 Date: 2026-04-09
 
@@ -3569,6 +3719,21 @@ PoI tiles **block occupancy**; a single PoI on a **1-wide articulation** between
 
 ---
 
+<<<<<<< HEAD
+## ADR-0236 — Equipment strip drag affordance borders
+Date: 2026-04-09
+
+### Decision
+- Add **`--hud-inventory-slot-border`** and **`--hud-stamina-vital-fill`** on **`:root`** (`index.css`); use them for inventory slot borders, portrait vital cell borders, stamina bar fill, and **`CharacterEquipStrip`** slot frames.
+- **`itemFitsCharacterEquipmentSlot`** in **`equipment.ts`** encodes strip-only fit (**`hat`** / **`oneHand`** / **`twoHand`** + **`equipSlots`**).
+- **`CharacterEquipStrip`** applies **`slotAffordEquip`** while **`cursor.state.dragging?.started`** when the dragged item fits that slot’s role, switching the **`::after`** border to the stamina token; otherwise the inventory token.
+
+### Rationale
+Clear default chrome aligned with inventory; during drag, valid equip targets read as the same accent as the stamina vital.
+
+### Consequences
+- **`PortraitPanel.tsx`** stamina fill uses **`var(--hud-stamina-vital-fill)`**; **`DESIGN.md`** §6.2 / §6.4 / equipment strip spec updated.
+=======
 ## ADR-0236 — In-combat portrait feed is intentional triage (policy A)
 Date: 2026-04-09
 
@@ -3651,3 +3816,45 @@ Matches the intended **visual** identity of each language without encoding item 
 
 ### Consequences
 - **`web/src/game/npc/gibberish.ts`**, **`NpcDialogModal.tsx`**, **`web/src/game/npc/gibberish.test.ts`**; **`DESIGN.md`** §7.6 / §15.
+
+---
+
+## ADR-0242 — Portrait equipment mirror (read-only icons)
+Date: 2026-04-09
+
+### Decision
+Restore **non-interactive** equipped **head** / **hand** icons on **`PortraitPanel`** (same CSS bands and sizing as legacy on-portrait equip), driven by shared **`getCharacterEquipmentHudModel`** (**`equipment.ts`**) with **`CharacterEquipStrip`**. **HUD** equip drag/drop remains **strip-only**; portrait layers use **`pointer-events: none`**. Icons render whenever **`PortraitPanel`** mounts (including **`captureForPostprocess`**) so the **dither presenter**’s captured HUD bitmap includes them; the live **`interactiveHud`** layer stays **`opacity: 0`**, so players do not see that DOM tree.
+
+### Rationale
+Players see **at a glance** what a character is wearing without reading the side strip alone; avoids duplicating **two-hand** / left-right rules between UI surfaces.
+
+### Consequences
+- **`PortraitPanel`** takes **`content`** again; **`HudLayout`** passes **`CONTENT`**; **`PortraitPanel.module.css`** regains equip mirror rules; **`DESIGN.md`** §7.1 / §7.4 updated.
+
+---
+
+## ADR-0243 — Portrait equip mirror must appear in HUD capture
+Date: 2026-04-09
+
+### Decision
+Stop gating portrait equip mirror layers on **`!captureForPostprocess`**. **`DitheredFrameRoot`** shows the **captured** HUD (`captureForPostprocess={true}`) on the presenter canvas while the interactive HUD (`opacity: 0`) is hit-only; omitting mirrors from capture made equipped icons **invisible**.
+
+### Rationale
+Mouth/idle reaction sprites are compositor overlays and are suppressed in capture by design; static equip icons have **no** WebGL overlay path and must be part of the captured DOM.
+
+### Consequences
+- **`PortraitPanel.tsx`** always paints equip mirror DOM when equipped; **`DESIGN.md`** portrait mirror bullet clarified.
+
+---
+
+## ADR-0244 — Fix equipment slot-to-slot drag duplicating items
+Date: 2026-04-09
+
+### Decision
+On **`drag/drop`** with **`target.kind === 'equipmentSlot`**, when **`payload.source.kind === 'equipmentSlot`**, run **`clearEquippedSlotIfMatched`** on the **source** before **`equipItem`**.
+
+### Rationale
+**`equipItem`** begins with **`removeItemFromInventory`**, which only clears **`party.inventory.slots`**. Items worn in **`party.chars[].equipment`** are **not** in that grid, so a cross-character equip drop assigned the item to the target without removing it from the source.
+
+### Consequences
+- **`reducer.ts`**; **`DESIGN.md`** §7.4 **HUD equip** bullet.

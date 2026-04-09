@@ -8,6 +8,10 @@
   --muted: rgba(255, 255, 255, 0.5);
   --shadow: rgba(0, 0, 0, 0.55);
 
+  /* HUD: inventory grid cells + equipment strip frames (default); stamina vital bar fill + valid equip-slot drag affordance */
+  --hud-inventory-slot-border: rgba(171, 136, 107, 0.75);
+  --hud-stamina-vital-fill: #d6bdb5;
+
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
   --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial,
     sans-serif;

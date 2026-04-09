@@ -1,5 +1,5 @@
-import type { ContentDB } from '../content/contentDb'
-import type { CharacterId, EquipmentSlot, GameState, ItemId } from '../types'
+import type { ContentDB, ItemDef } from '../content/contentDb'
+import type { CharacterId, EquipmentSlot, GameState, InventoryItem, ItemId } from '../types'
 import { moveItemToInventorySlot, removeItemFromInventory } from './inventory'
 
 function isUsableWeaponItem(state: GameState, itemId: ItemId, content: ContentDB): boolean {
@@ -164,6 +164,87 @@ export function equipHatFromPortrait(state: GameState, content: ContentDB, chara
   if (!def.tags.includes('hat')) return state
   if (def.equipSlots && !def.equipSlots.includes('head')) return state
   return equipItem(state, characterId, 'head', itemId, content)
+}
+
+/** HUD strip slots only: whether `itemId` may use `slot` for this character (`hat` / `oneHand` / `twoHand` + optional `equipSlots`). */
+export function itemFitsCharacterEquipmentSlot(
+  state: GameState,
+  content: ContentDB,
+  characterId: CharacterId,
+  slot: 'head' | 'handLeft' | 'handRight',
+  itemId: ItemId,
+): boolean {
+  const c = state.party.chars.find((x) => x.id === characterId)
+  if (!c) return false
+  const item = state.party.items[itemId]
+  if (!item) return false
+  const def = content.item(item.defId)
+  const slotOk = !def.equipSlots?.length || def.equipSlots.includes(slot)
+
+  if (slot === 'head') {
+    return def.tags.includes('hat') && slotOk
+  }
+  if (def.tags.includes('twoHand')) {
+    return slotOk
+  }
+  if (def.tags.includes('oneHand')) {
+    return slotOk
+  }
+  return false
+}
+
+/** Shared by `CharacterEquipStrip` and portrait equip mirrors (icons + visibility flags). */
+export type CharacterEquipmentHudModel = {
+  headItem: InventoryItem | null
+  leftHandItem: InventoryItem | null
+  rightHandItem: InventoryItem | null
+  headDef: ItemDef | null
+  leftHandDef: ItemDef | null
+  rightHandDef: ItemDef | null
+  twoHandHeld: boolean
+  showEquipHandLeft: boolean
+  showEquipHandRightTwoHand: boolean
+  showEquipHandRightOneHand: boolean
+  showEquipHandsBand: boolean
+}
+
+export function getCharacterEquipmentHudModel(
+  state: GameState,
+  content: ContentDB,
+  characterId: CharacterId,
+): CharacterEquipmentHudModel | null {
+  const c = state.party.chars.find((x) => x.id === characterId) ?? null
+  if (!c) return null
+
+  const headItemId = c.equipment.head
+  const handLeftId = c.equipment.handLeft
+  const handRightId = c.equipment.handRight
+  const headItem = headItemId ? (state.party.items[headItemId] ?? null) : null
+  const leftHandItem = handLeftId ? (state.party.items[handLeftId] ?? null) : null
+  const rightHandItem = handRightId ? (state.party.items[handRightId] ?? null) : null
+  const headDef = headItem ? content.item(headItem.defId) : null
+  const leftHandDef = leftHandItem ? content.item(leftHandItem.defId) : null
+  const rightHandDef = rightHandItem ? content.item(rightHandItem.defId) : null
+  const twoHandHeld = Boolean(handLeftId && handRightId && handLeftId === handRightId && leftHandDef)
+
+  const showEquipHandLeft = !twoHandHeld && !!leftHandDef
+  const showEquipHandRightTwoHand = twoHandHeld && !!leftHandDef
+  const showEquipHandRightOneHand = !twoHandHeld && !!rightHandDef
+  const showEquipHandsBand = showEquipHandLeft || showEquipHandRightTwoHand || showEquipHandRightOneHand
+
+  return {
+    headItem,
+    leftHandItem,
+    rightHandItem,
+    headDef,
+    leftHandDef,
+    rightHandDef,
+    twoHandHeld,
+    showEquipHandLeft,
+    showEquipHandRightTwoHand,
+    showEquipHandRightOneHand,
+    showEquipHandsBand,
+  }
 }
 
 /** True if an item that is not in the grid can be placed into `dst` (possibly displacing an occupant). */

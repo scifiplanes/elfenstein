@@ -10,7 +10,7 @@
 .slot {
   aspect-ratio: 1 / 1;
   border-radius: 0;
-  border: 2px solid rgba(171, 136, 107, 0.75);
+  border: 2px solid var(--hud-inventory-slot-border);
   background: rgba(0, 0, 0, 0.22);
   display: grid;
   place-items: center;
