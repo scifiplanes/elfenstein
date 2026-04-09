@@ -79,6 +79,14 @@
   pointer-events: none;
 }
 
+/* Title / death / paperdoll (capture): rasterize over the entire HUD stage box. */
+.fullHudCaptureLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+}
+
 /* NPC dialog (capture): same box as the 3D view; inner `captureRoot` pins top/bottom for html2canvas. */
 .npcCaptureLayer {
   position: absolute;

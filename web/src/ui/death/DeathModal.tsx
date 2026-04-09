@@ -1,4 +1,6 @@
-import type { Dispatch } from 'react'
+import type { Dispatch, RefObject } from 'react'
+import { useLayoutEffect, useState } from 'react'
+import { createPortal } from 'react-dom'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import popup from '../shared/GamePopup.module.css'
@@ -11,12 +13,54 @@ function fmtMs(ms: number) {
   return `${m}:${String(r).padStart(2, '0')}`
 }
 
-export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action> }) {
-  const { state, dispatch } = props
+type GameViewportRect = { left: number; top: number; width: number; height: number }
+
+export type DeathModalVariant = 'interactive' | 'capture'
+
+export function DeathModal(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  variant?: DeathModalVariant
+  /** Interactive: align dim + panel to the live 3D viewport rect (`FixedStageViewport` scale-safe). */
+  gameViewportRef?: RefObject<HTMLDivElement | null>
+}) {
+  const { state, dispatch, variant = 'interactive', gameViewportRef } = props
+  const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
+
   const death = state.ui.death
   const preview =
     !death && Boolean(state.ui.debugShowDeathPopup) && state.ui.screen === 'game'
   if (!death && !preview) return null
+
+  useLayoutEffect(() => {
+    if (variant !== 'interactive') {
+      setViewportRect(null)
+      return
+    }
+    const el = gameViewportRef?.current
+    if (!el) {
+      setViewportRect(null)
+      return
+    }
+    const sync = () => {
+      const r = el.getBoundingClientRect()
+      setViewportRect({ left: r.left, top: r.top, width: r.width, height: r.height })
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    window.addEventListener('resize', sync)
+    window.visualViewport?.addEventListener('resize', sync)
+    window.visualViewport?.addEventListener('scroll', sync)
+    window.addEventListener('scroll', sync, true)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+      window.visualViewport?.removeEventListener('resize', sync)
+      window.visualViewport?.removeEventListener('scroll', sync)
+      window.removeEventListener('scroll', sync, true)
+    }
+  }, [variant, gameViewportRef])
 
   const deathData =
     death ??
@@ -29,7 +73,7 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
   const recent = log.slice(Math.max(0, log.length - 6))
   const hasCheckpoint = !!state.run.checkpoint
 
-  return (
+  const inner = (
     <div className={`${styles.backdrop} ${popup.backdropDim}`}>
       <div
         className={`${popup.panel} ${popup.panelWidthMd} ${styles.modal}`}
@@ -37,8 +81,15 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
         aria-modal="true"
         aria-label="Death screen"
       >
-        <div className={`${popup.title} ${styles.title}`}>You died</div>
-        <div className={`${popup.sub} ${styles.sub}`}>This run is over.</div>
+        <div className={styles.title}>You died</div>
+        <div className={styles.epitaph}>
+          <p className={styles.epitaphBody}>
+            Your eyes slowly close, as your mind drifts into an endless sleep. Your last breath, drawn deep within the
+            bowels of Elfenstein, marks the quiet end of your adventure. Your physical form, now hollow and soulless,
+            becomes one with the earth beneath you — surrendered, at last, to Elfenstein itself.
+          </p>
+          <p className={styles.epitaphCoda}>Forever...</p>
+        </div>
 
         <div className={styles.stats}>
           <div className={styles.statLabel}>Run</div>
@@ -64,11 +115,8 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
         ) : null}
 
         <div className={popup.footer}>
-          <button className={popup.actionBtn} type="button" onClick={() => dispatch({ type: 'ui/goTitle' })}>
-            Title
-          </button>
           <button
-            className={`${popup.actionBtn} ${!hasCheckpoint ? popup.actionBtnDisabled : ''}`}
+            className={`${popup.actionBtn} ${styles.deathActionBtn} ${!hasCheckpoint ? popup.actionBtnDisabled : ''}`}
             type="button"
             disabled={!hasCheckpoint}
             onClick={() => dispatch({ type: 'run/reloadCheckpoint' })}
@@ -77,7 +125,7 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
             Reload checkpoint
           </button>
           <button
-            className={`${popup.actionBtn} ${popup.actionBtnPrimary}`}
+            className={`${popup.actionBtn} ${styles.deathActionBtn} ${popup.actionBtnPrimary}`}
             type="button"
             onClick={() => dispatch({ type: 'run/new' })}
           >
@@ -87,5 +135,30 @@ export function DeathModal(props: { state: GameState; dispatch: Dispatch<Action>
       </div>
     </div>
   )
-}
 
+  if (variant === 'capture') {
+    return inner
+  }
+
+  const shell =
+    viewportRect != null ? (
+      <div
+        className={styles.gameViewportShell}
+        style={{
+          left: viewportRect.left,
+          top: viewportRect.top,
+          width: viewportRect.width,
+          height: viewportRect.height,
+        }}
+      >
+        {inner}
+      </div>
+    ) : (
+      <div className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`}>{inner}</div>
+    )
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(<div className={popup.modalPortalHitRoot}>{shell}</div>, document.body)
+  }
+  return shell
+}

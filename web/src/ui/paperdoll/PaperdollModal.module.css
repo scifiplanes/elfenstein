@@ -5,6 +5,13 @@
   pointer-events: auto;
 }
 
+/* Capture HUD: fills `HudLayout` full-overlay box (not viewport-fixed). */
+.backdropCapture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
 .modal {
   position: absolute;
   left: 248px;

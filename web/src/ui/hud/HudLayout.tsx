@@ -26,6 +26,8 @@ export function HudLayout(props: {
   onNavPadVisualPress: (id: NavPadButtonId) => void
   /** Capture HUD only: centered in the game cell (e.g. dithered NPC dialog). */
   captureNpcOverlay?: ReactNode
+  /** Capture HUD only: full-bleed over the whole HUD grid (e.g. title / death / paperdoll). */
+  captureFullHudOverlay?: ReactNode
 }) {
   const {
     state,
@@ -40,6 +42,7 @@ export function HudLayout(props: {
     navPadPressedId,
     onNavPadVisualPress,
     captureNpcOverlay,
+    captureFullHudOverlay,
   } = props
   const cursor = useCursor()
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
@@ -195,6 +198,10 @@ export function HudLayout(props: {
           />
         </section>
       </div>
+
+      {captureForPostprocess && captureFullHudOverlay ? (
+        <div className={styles.fullHudCaptureLayer}>{captureFullHudOverlay}</div>
+      ) : null}
     </div>
   )
 }

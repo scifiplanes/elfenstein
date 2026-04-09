@@ -1363,6 +1363,8 @@ The final image is **WebGL presenter canvas** (3D + HUD **`html2canvas` texture*
 - **`HudLayout`** no longer imports modal components.
 - **`stageModalLayer`** must use **`pointer-events: auto`** and mount **only when** a modal is open; a **`pointer-events: none`** wrapper let events fall through to **`.interactiveHud`**, so **Close** and other controls never received clicks.
 
+**Superseded (behavior):** **ADR-0205** — capture HUD now includes modal pixels; visible modal is the **dithered** bitmap; **DOM** modals **portal** invisibly for hits.
+
 ---
 
 ## ADR-0088 — Minimap local viewport (~12×12, player-centered)
@@ -3053,3 +3055,33 @@ A flat **three-column** root widened the **1fr** portrait and **0.75fr** map/nav
 
 ### Consequences
 **`DESIGN.md`** §6.4 describes merged **game** span + original track list. **ADR-0203** column summary is superseded for layout structure; statue **components** remain removed.
+
+---
+
+## ADR-0205 — Title, death, paperdoll: HUD capture + body hit layer (dither parity)
+Date: 2026-04-09
+
+### Decision
+Extend the **NPC dialog** pattern to **`TitleScreen`**, **`DeathModal`**, and **`PaperdollModal`**: each has **`capture`** vs **`interactive`** variants; **capture** renders inside the offscreen **`html2canvas`** tree; **interactive** **`createPortal`**s the same DOM (wrapped in **`GamePopup.module.css`** **`modalPortalHitRoot`**) to **`document.body`**. **`HudLayout`** gains **`captureFullHudOverlay`** (**`fullHudCaptureLayer`**, full-bleed over the HUD grid). **`DitheredFrameRoot`** composes capture overlays with priority **title → death / debug death preview → paperdoll** alongside the existing **`captureNpcOverlay`** game-cell path. Expand **`hudKey`** with **`screen`**, **`paperdollFor`**, **`debugShowDeathPopup`**, **`debugShowNpcDialogPopup`**, and a **checkpoint** flag so previews and title actions refresh captures.
+
+### Rationale
+Ordinary modals in **`stageModalLayer`** sat **above** the presenter as **clean** vector UI; only the **NPC** path was in the rasterized HUD, so **death / title / paperdoll** broke the unified **dithered** look.
+
+### Consequences
+Three modals double-render while open; **`PaperdollModal`** **capture** omits drag/drop handlers (display-only). Slightly larger **`hudKey`** string; shared **`modalPortalHitRoot`** for stacking consistency with **NPC**.
+
+**Revision:** **ADR-0206** moves **death** capture from **`fullHudCaptureLayer`** into the **game-cell** overlay.
+
+---
+
+## ADR-0206 — Death modal centered in game viewport (capture + interactive)
+Date: 2026-04-09
+
+### Decision
+**`DeathModal`** **capture** mounts in **`npcCaptureLayer`** (**`captureNpcOverlay`**), **before** the **NPC** dialog branch, so death (or **debug death preview**) replaces the NPC capture slot. **`captureFullHudOverlay`** carries **title** and **paperdoll** only. **Interactive** **`DeathModal`** accepts **`gameViewportRef`**; a **`position: fixed`** shell matches the **live** viewport **`getBoundingClientRect()`** ( **`ResizeObserver`**, **resize** / **`visualViewport`** / **scroll**), with **dim + panel** **flex-centered** inside the shell ( **`inset: 0`** fallback until measured).
+
+### Rationale
+The death screen should sit **on the 3D game widget**, not over the **entire HUD grid**, consistent with **NPC** anchoring and player attention.
+
+### Consequences
+**Death** and **NPC** **capture** previews are **mutually exclusive** when death is active; **`DESIGN.md`** § frame pipeline updated accordingly.

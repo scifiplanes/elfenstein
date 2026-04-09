@@ -1,5 +1,6 @@
 import type { Dispatch } from 'react'
 import { useLayoutEffect, useRef } from 'react'
+import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { EquipmentSlot, GameState } from '../../game/types'
@@ -9,41 +10,59 @@ import styles from './PaperdollModal.module.css'
 
 const SLOT_ORDER: EquipmentSlot[] = ['head', 'handLeft', 'handRight', 'feet', 'clothing', 'accessory']
 
-export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
-  const { state, dispatch, content } = props
+export type PaperdollModalVariant = 'interactive' | 'capture'
+
+export function PaperdollModal(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  content: ContentDB
+  variant?: PaperdollModalVariant
+}) {
+  const { state, dispatch, content, variant = 'interactive' } = props
   const cursor = useCursor()
   const characterId = state.ui.paperdollFor
   /** Opening from a portrait tap dispatches before the synthetic `click`; the click then hits this full-screen backdrop and would close immediately. */
   const suppressBackdropCloseUntilRef = useRef(0)
   useLayoutEffect(() => {
-    if (characterId) {
+    if (characterId && variant === 'interactive') {
       suppressBackdropCloseUntilRef.current = performance.now() + 450
     }
-  }, [characterId])
+  }, [characterId, variant])
 
   if (!characterId) return null
   const c = state.party.chars.find((x) => x.id === characterId)
   if (!c) return null
 
-  return (
+  const backdropClass =
+    variant === 'capture' ? `${styles.backdropCapture} ${popup.backdropDim}` : `${styles.backdrop} ${popup.backdropDim}`
+
+  const tree = (
     <div
-      className={`${styles.backdrop} ${popup.backdropDim}`}
-      onClick={(e) => {
-        if (performance.now() < suppressBackdropCloseUntilRef.current) {
-          e.preventDefault()
-          e.stopPropagation()
-          return
-        }
-        dispatch({ type: 'ui/closePaperdoll' })
-      }}
-      onPointerMove={cursor.onPointerMove}
-      onPointerCancel={cursor.cancelDrag}
-      onPointerUp={(e) => {
-        const result = cursor.endPointerUp(e)
-        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
-      }}
+      className={backdropClass}
+      onClick={
+        variant === 'interactive'
+          ? (e) => {
+              if (performance.now() < suppressBackdropCloseUntilRef.current) {
+                e.preventDefault()
+                e.stopPropagation()
+                return
+              }
+              dispatch({ type: 'ui/closePaperdoll' })
+            }
+          : undefined
+      }
+      onPointerMove={variant === 'interactive' ? cursor.onPointerMove : undefined}
+      onPointerCancel={variant === 'interactive' ? cursor.cancelDrag : undefined}
+      onPointerUp={
+        variant === 'interactive'
+          ? (e) => {
+              const result = cursor.endPointerUp(e)
+              if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+            }
+          : undefined
+      }
     >
-      <div className={`${popup.panel} ${styles.modal}`} onClick={(e) => e.stopPropagation()}>
+      <div className={`${popup.panel} ${styles.modal}`} onClick={variant === 'interactive' ? (e) => e.stopPropagation() : undefined}>
         <div className={popup.header}>
           <div className={popup.titleRow}>
             <div className={popup.title}>Paperdoll · {c.name}</div>
@@ -63,36 +82,41 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
               <div
                 key={slot}
                 className={styles.slot}
-                data-drop-kind="equipmentSlot"
-                data-drop-character-id={characterId}
-                data-drop-equip-slot={slot}
+                data-drop-kind={variant === 'interactive' ? 'equipmentSlot' : undefined}
+                data-drop-character-id={variant === 'interactive' ? characterId : undefined}
+                data-drop-equip-slot={variant === 'interactive' ? slot : undefined}
               >
                 <div className={styles.slotName}>{slot}</div>
                 {item && def ? (
-                  <button
-                    className={styles.itemBtn}
-                    type="button"
-                    onPointerDown={(e) => {
-                      cursor.beginPointerDown(
-                        { itemId: item.id, source: { kind: 'equipmentSlot', characterId, slot, itemId: item.id } },
-                        e,
-                      )
-                    }}
-                    onPointerMove={cursor.onPointerMove}
-                    onPointerCancel={cursor.cancelDrag}
-                    onPointerUp={(e) => {
-                      const result = cursor.endPointerUp(e)
-                      if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
-                    }}
-                    onDoubleClick={() => {
-                      // MVP convenience: double-click unequips (later: drag back to inventory).
-                      dispatch({ type: 'equip/unequip', characterId, slot })
-                      dispatch({ type: 'ui/toast', text: 'Unequipped.' })
-                    }}
-                    aria-label={`Equipped: ${def.name}`}
-                  >
-                    {def.icon.kind === 'emoji' ? def.icon.value : '□'}
-                  </button>
+                  variant === 'interactive' ? (
+                    <button
+                      className={styles.itemBtn}
+                      type="button"
+                      onPointerDown={(e) => {
+                        cursor.beginPointerDown(
+                          { itemId: item.id, source: { kind: 'equipmentSlot', characterId, slot, itemId: item.id } },
+                          e,
+                        )
+                      }}
+                      onPointerMove={cursor.onPointerMove}
+                      onPointerCancel={cursor.cancelDrag}
+                      onPointerUp={(e) => {
+                        const result = cursor.endPointerUp(e)
+                        if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+                      }}
+                      onDoubleClick={() => {
+                        dispatch({ type: 'equip/unequip', characterId, slot })
+                        dispatch({ type: 'ui/toast', text: 'Unequipped.' })
+                      }}
+                      aria-label={`Equipped: ${def.name}`}
+                    >
+                      {def.icon.kind === 'emoji' ? def.icon.value : '□'}
+                    </button>
+                  ) : (
+                    <span className={styles.itemBtn} aria-hidden>
+                      {def.icon.kind === 'emoji' ? def.icon.value : '□'}
+                    </span>
+                  )
                 ) : (
                   <span style={{ fontFamily: 'var(--mono)', fontSize: 12, color: 'rgba(255,255,255,0.45)' }}>
                     drop item
@@ -105,5 +129,13 @@ export function PaperdollModal(props: { state: GameState; dispatch: Dispatch<Act
       </div>
     </div>
   )
-}
 
+  if (variant === 'capture') {
+    return tree
+  }
+
+  if (typeof document !== 'undefined' && document.body) {
+    return createPortal(<div className={popup.modalPortalHitRoot}>{tree}</div>, document.body)
+  }
+  return tree
+}
