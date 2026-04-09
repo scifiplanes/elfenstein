@@ -9,6 +9,7 @@ import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
+import { CombatIndicator } from './CombatIndicator'
 import { useCursor } from '../cursor/useCursor'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 
@@ -49,6 +50,56 @@ export function HudLayout(props: {
   const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
   const PORTRAIT_TAP_SLOP_PX = 28
 
+  const isInsideRect = (x: number, y: number, r: DOMRectReadOnly) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
+
+  const worldPointToCell = (state: GameState, p: { x: number; z: number }) => {
+    // Floor tiles are centered at (gridX - w/2, gridY - h/2) in world space.
+    const gx = Math.floor(p.x + state.floor.w / 2 + 0.5)
+    const gy = Math.floor(p.z + state.floor.h / 2 + 0.5)
+    return { x: gx, y: gy }
+  }
+
+  const clampByManhattanRange = (player: { x: number; y: number }, target: { x: number; y: number }, range: number) => {
+    const dx = target.x - player.x
+    const dy = target.y - player.y
+    const adx = Math.abs(dx)
+    const ady = Math.abs(dy)
+    const dist = adx + ady
+    if (dist <= range) return target
+    const sx = dx < 0 ? -1 : 1
+    const sy = dy < 0 ? -1 : 1
+    const useX = Math.min(adx, range)
+    const rem = Math.max(0, range - useX)
+    const useY = Math.min(ady, rem)
+    return { x: player.x + sx * useX, y: player.y + sy * useY }
+  }
+
+  const findNearestFloorCell = (state: GameState, start: { x: number; y: number }, maxRange: number) => {
+    const { w, h, tiles, playerPos } = state.floor
+    const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h
+    const isFloor = (x: number, y: number) => tiles[x + y * w] === 'floor'
+    const withinPlayerRange = (x: number, y: number) => Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y) <= maxRange
+
+    if (inBounds(start.x, start.y) && isFloor(start.x, start.y) && withinPlayerRange(start.x, start.y)) return start
+
+    for (let r = 1; r <= maxRange; r++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const dy = r - Math.abs(dx)
+        const candidates = [
+          { x: start.x + dx, y: start.y + dy },
+          { x: start.x + dx, y: start.y - dy },
+        ]
+        for (const c of candidates) {
+          if (!inBounds(c.x, c.y)) continue
+          if (!withinPlayerRange(c.x, c.y)) continue
+          if (!isFloor(c.x, c.y)) continue
+          return c
+        }
+      }
+    }
+    return null
+  }
+
   const cancelPortraitTap = (args: { pointerId?: number; reason: 'cancel' | 'slop' | 'drag' }) => {
     const g = portraitTapRef.current
     if (!g) return
@@ -66,6 +117,26 @@ export function HudLayout(props: {
         interactive
           ? (e) => {
               cursor.onPointerMove(e)
+
+              // 3D viewport hover: inject a virtual hover target so the cursor can become active
+              // over pickable scene objects even when pointer events are captured by another element.
+              if (world && gameViewportRef?.current) {
+                const rect = gameViewportRef.current.getBoundingClientRect()
+                if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
+                  const pick = world.pickObject(rect, e.clientX, e.clientY)
+                  if (!pick) {
+                    const at = { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }
+                    cursor.setVirtualHover({ kind: 'floorDrop' }, at)
+                  } else {
+                    const at = world.projectWorldToClient(rect, pick.worldPos)
+                    const hoverRect = { left: at.x, right: at.x, top: at.y, bottom: at.y }
+                    if (pick.kind === 'poi') cursor.setVirtualHover({ kind: 'poi', poiId: pick.id }, hoverRect)
+                    if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, hoverRect)
+                    if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, hoverRect)
+                  }
+                }
+              }
+
               const g = portraitTapRef.current
               if (!g) return
               if (g.pointerId !== e.pointerId) return
@@ -120,7 +191,33 @@ export function HudLayout(props: {
         interactive
           ? (e) => {
               const result = cursor.endPointerUp(e)
-              if (result) dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
+              if (!result) return
+
+              // Cursor-aimed 3D floor drop: if the drop resolves to `floorDrop` and the pointer is
+              // over the 3D viewport, compute a snapped grid cell near the ray hit.
+              if (result.target.kind === 'floorDrop' && world && gameViewportRef?.current) {
+                const rect = gameViewportRef.current.getBoundingClientRect()
+                if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
+                  const p = world.pickFloorPoint(rect, e.clientX, e.clientY)
+                  if (p) {
+                    const rawCell = worldPointToCell(state, { x: p.x, z: p.z })
+                    const range = Math.max(0, Math.round(Number(state.render.dropRangeCells ?? 0)))
+                    const clamped = clampByManhattanRange(state.floor.playerPos, rawCell, range)
+                    const snapped = findNearestFloorCell(state, clamped, range)
+                    if (snapped) {
+                      dispatch({
+                        type: 'drag/drop',
+                        payload: result.payload,
+                        target: { kind: 'floorDrop', dropPos: snapped },
+                        nowMs: performance.now(),
+                      })
+                      return
+                    }
+                  }
+                }
+              }
+
+              dispatch({ type: 'drag/drop', payload: result.payload, target: result.target, nowMs: performance.now() })
             }
           : undefined
       }
@@ -135,7 +232,7 @@ export function HudLayout(props: {
         />
       </section>
 
-      <section className={`${styles.panel} ${styles.game}`}>
+      <section className={`${styles.panel} ${styles.game} ${state.combat ? styles.gameCombat : ''}`}>
         {captureForPostprocess ? (
           // `GameViewport` is omitted in capture HUD (3D is not rasterized here). Keep a same-sized
           // shell so `gameViewportRef` (e.g. `captureGameViewportRef`) attaches and NPC dialog / layout
@@ -144,7 +241,10 @@ export function HudLayout(props: {
         ) : (
           <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
         )}
-        <ActivityLog entries={state.ui.activityLog ?? []} />
+        <div className={styles.gameCornerStack}>
+          <ActivityLog entries={state.ui.activityLog ?? []} />
+          <CombatIndicator state={state} dispatch={dispatch} interactive={interactive} />
+        </div>
         {captureForPostprocess && captureNpcOverlay ? (
           <div className={styles.npcCaptureLayer}>{captureNpcOverlay}</div>
         ) : null}

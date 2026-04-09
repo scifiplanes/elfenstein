@@ -8,6 +8,7 @@ export type CharacterId = Id
 
 export type Species = 'Igor' | 'Mycyclops' | 'Frosch' | 'Afonso'
 export type SkillId = 'weaving' | 'chipping' | 'cooking' | 'foraging'
+export type DamageType = 'Blunt' | 'Pierce' | 'Cut' | 'Fire' | 'Water' | 'Thunder' | 'Earth'
 export type StatusEffectId =
   | 'Poisoned'
   | 'Blessed'
@@ -61,11 +62,29 @@ export type InventoryGrid = {
   slots: Array<ItemId | null>
 }
 
+export type CharacterStats = {
+  strength: number
+  agility: number
+  speed: number
+  perception: number
+  endurance: number
+  intelligence: number
+  wisdom: number
+  luck: number
+}
+
+/** 0..1 multiplier reduction by damage type (e.g. 0.2 = 20% reduced). */
+export type Resistances = Partial<Record<DamageType, number>>
+
 export type Character = {
   id: CharacterId
   name: string
   species: Species
   endurance: number
+  stats: CharacterStats
+  /** Flat damage mitigation (MVP; refined later). */
+  armor: number
+  resistances: Resistances
   skills: Partial<Record<SkillId, number>>
   hunger: number
   thirst: number
@@ -339,6 +358,19 @@ export type AudioTuning = {
   munchTremHz: number
 }
 
+export type CombatTurn = { kind: 'pc'; id: CharacterId; initiative: number } | { kind: 'npc'; id: Id; initiative: number }
+
+export type CombatState = {
+  encounterId: Id
+  startedAtMs: number
+  participants: { party: CharacterId[]; npcs: Id[] }
+  turnQueue: CombatTurn[]
+  turnIndex: number
+  lastAction?: { actorKind: 'pc' | 'npc'; actorId: Id; action: 'attack' | 'defend' | 'flee'; atMs: number }
+  /** Active until that PC's next turn begins (cleared in advanceTurnIndex). */
+  pcDefense?: Partial<Record<CharacterId, { armorBonus: number; resistBonusPct: number }>>
+}
+
 export type GameState = {
   nowMs: number
   ui: UiState
@@ -361,6 +393,8 @@ export type GameState = {
     }
     checkpoint?: RunCheckpoint
   }
+
+  combat?: CombatState
 
   view: {
     camPos: { x: number; y: number; z: number }

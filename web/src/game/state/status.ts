@@ -25,3 +25,12 @@ export function removeStatus(state: GameState, characterId: string, statusId: st
   return { ...state, party: { ...state.party, chars } }
 }
 
+export function addStatus(state: GameState, characterId: string, statusId: string, untilMs?: number): GameState {
+  const idx = state.party.chars.findIndex((c) => c.id === characterId)
+  if (idx < 0) return state
+  const chars = state.party.chars.slice()
+  const c = chars[idx]
+  chars[idx] = { ...c, statuses: c.statuses.concat([{ id: statusId as any, untilMs }]) }
+  return { ...state, party: { ...state.party, chars } }
+}
+

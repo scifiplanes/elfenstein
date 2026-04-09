@@ -22,6 +22,7 @@ import {
   equipHatFromPortrait,
   equipItem,
   moveEquippedItemToInventorySlot,
+  resolveWeaponItemIdForPcTurn,
   unequipItem,
 } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
@@ -35,6 +36,19 @@ import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
 import { descendToNextFloor } from './state/floorProgression'
 import { applyXp } from './state/runProgression'
+import {
+  advanceTurnIndex,
+  attemptFlee,
+  collectEncounterNpcIds,
+  computePcAttackDamage,
+  currentTurn,
+  defend,
+  endCombat,
+  enterCombat,
+  npcTakeTurn,
+  pruneCombatTurnQueue,
+} from './state/combat'
+import { roomForCell } from './state/roomGeometry'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -104,9 +118,15 @@ export type Action =
   /** F2: preview the death modal without killing the party. */
   | { type: 'debug/setShowDeathPopupPreview'; show: boolean }
   | { type: 'floor/toggleChest'; poiId: string }
-  | { type: 'npc/attack'; npcId: string; itemId: ItemId }
+  | { type: 'npc/attack'; npcId: string; itemId: ItemId; actorId?: string }
   | { type: 'npc/give'; npcId: string; itemId: ItemId }
   | { type: 'npc/pet'; npcId: string }
+  | { type: 'combat/enter'; npcId: string }
+  | { type: 'combat/advanceTurn' }
+  | { type: 'combat/end' }
+  | { type: 'combat/fleeAttempt' }
+  | { type: 'combat/defend' }
+  | { type: 'combat/clickAttack'; npcId: string }
   | { type: 'run/new' }
   | { type: 'run/reloadCheckpoint' }
 
@@ -543,6 +563,10 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'player/step': {
       const s0 = dismissNpcDialogOnMovement(state)
       if (s0.view.anim) return s0
+      if (s0.combat) {
+        const withToast = reduce(s0, { type: 'ui/toast', text: 'You cannot move during combat.', ms: 900 })
+        return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+      }
       const { playerDir, playerPos } = s0.floor
       const step = action.forward
       const v = dirVec(playerDir)
@@ -553,6 +577,10 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'player/strafe': {
       const s0 = dismissNpcDialogOnMovement(state)
       if (s0.view.anim) return s0
+      if (s0.combat) {
+        const withToast = reduce(s0, { type: 'ui/toast', text: 'You cannot move during combat.', ms: 900 })
+        return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+      }
       const { playerDir, playerPos } = s0.floor
       const v = strafeVec(playerDir, action.side)
       const nx = playerPos.x + v.x
@@ -743,17 +771,79 @@ export function reduce(state: GameState, action: Action): GameState {
         }
 
         const isWeapon = CONTENT.item(item.defId).tags.includes('weapon')
-        return isWeapon
-          ? reduce(stateAtAction, { type: 'npc/attack', npcId: target.npcId, itemId })
-          : reduce(stateAtAction, { type: 'npc/give', npcId: target.npcId, itemId })
+        if (isWeapon) {
+          const turn = currentTurn(stateAtAction)
+          const actorId = turn?.kind === 'pc' ? turn.id : undefined
+          const actorOk =
+            !stateAtAction.combat ? true
+            : turn?.kind !== 'pc' ? false
+            : payload.source.kind === 'equipmentSlot' ? payload.source.characterId === actorId
+            : true
+          if (stateAtAction.combat && !actorOk) {
+            return reduce(pushActivityLog(stateAtAction, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          return reduce(stateAtAction, { type: 'npc/attack', npcId: target.npcId, itemId, actorId })
+        }
+        return reduce(stateAtAction, { type: 'npc/give', npcId: target.npcId, itemId })
       }
 
       return stateAtAction
+    }
+    case 'combat/enter': {
+      if (state.combat) return state
+      const npcIds = collectEncounterNpcIds(state, action.npcId)
+      const entered = enterCombat(state, npcIds)
+      return autoResolveNpcTurns(entered)
+    }
+    case 'combat/advanceTurn': {
+      const advanced = advanceTurnIndex(state)
+      const progressed = autoResolveNpcTurns(advanced)
+      return maybeEndCombat(progressed)
+    }
+    case 'combat/end': {
+      return endCombat(state)
+    }
+    case 'combat/fleeAttempt': {
+      if (!state.combat) return state
+      const withAttempt = attemptFlee(state)
+      return ensureDeath(withAttempt)
+    }
+    case 'combat/defend': {
+      if (!state.combat) return state
+      const turn = currentTurn(state)
+      if (!turn || turn.kind !== 'pc') {
+        return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const withDef = defend(state, turn.id)
+      return reduce(withDef, { type: 'combat/advanceTurn' })
+    }
+    case 'combat/clickAttack': {
+      if (!state.combat) return state
+      const turn = currentTurn(state)
+      if (!turn || turn.kind !== 'pc') {
+        return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const npc = state.floor.npcs.find((n) => n.id === action.npcId)
+      if (!npc || npc.hp <= 0) return state
+      if (!state.combat.participants.npcs.includes(action.npcId)) {
+        return reduce(pushActivityLog(state, 'That foe is not in this fight.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const itemId = resolveWeaponItemIdForPcTurn(state, turn.id, CONTENT)
+      if (!itemId) {
+        return reduce(reduce(state, { type: 'ui/toast', text: 'No weapon available.', ms: 2000 }), { type: 'ui/sfx', kind: 'reject' })
+      }
+      return reduce(state, { type: 'npc/attack', npcId: action.npcId, itemId, actorId: turn.id })
     }
     case 'npc/attack': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
       const item = state.party.items[action.itemId]
       if (npcIdx < 0 || !item) return state
+      if (state.combat) {
+        const turn = currentTurn(state)
+        if (!turn || turn.kind !== 'pc' || (action.actorId != null && turn.id !== action.actorId)) {
+          return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+      }
       const isWeapon = CONTENT.item(item.defId).tags.includes('weapon')
       if (!isWeapon) {
         return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
@@ -766,17 +856,37 @@ export function reduce(state: GameState, action: Action): GameState {
         return reduce(pushActivityLog(state, 'The swarm refuses to attack you.'), { type: 'ui/sfx', kind: 'reject' })
       }
 
-      const dmg =
-        item.defId === 'Firebolt' ? 10
-        : item.defId === 'Spear' ? 8
-        : item.defId === 'Club' ? 7
-        : item.defId === 'Bow' ? 6
-        : item.defId === 'Sling' ? 5
-        : item.defId === 'Bolas' ? 5
-        : item.defId === 'Stone' ? 5
-        : 4
-      const dmgBonus = Math.max(0, Number(state.run?.bonuses.damageBonusPct ?? 0))
-      const finalDmg = Math.max(1, Math.round(dmg * (1 + dmgBonus)))
+      const def = CONTENT.item(item.defId)
+      const weapon = def.weapon
+      if (!weapon) {
+        return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      if (state.combat) {
+        const actor = state.party.chars.find((c) => c.id === (action.actorId as any))
+        const cost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        if (actor && actor.stamina < cost) {
+          const withMsg = pushActivityLog(state, 'Too exhausted to attack.')
+          const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+          return reduce(withSfx, { type: 'combat/advanceTurn' })
+        }
+      }
+      const actorId = state.combat ? ((currentTurn(state)?.kind === 'pc' ? currentTurn(state)!.id : action.actorId) as any) : (action.actorId as any)
+      const out = state.combat && actorId ? computePcAttackDamage({ state, attackerId: actorId, defenderNpcId: npc.id, weaponBaseDamage: weapon.baseDamage }) : { hit: true, crit: false, finalDmg: weapon.baseDamage }
+      if (state.combat && !out.hit) {
+        const withMsg = pushActivityLog(state, 'Miss.')
+        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+        return reduce(withSfx, { type: 'combat/advanceTurn' })
+      }
+      if (state.combat) {
+        const cost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        const idx = state.party.chars.findIndex((c) => c.id === actorId)
+        if (idx >= 0 && cost > 0) {
+          const chars = state.party.chars.slice()
+          chars[idx] = { ...chars[idx], stamina: Math.max(0, chars[idx].stamina - cost) }
+          state = { ...state, party: { ...state.party, chars } }
+        }
+      }
+      const finalDmg = out.finalDmg
       const hp = Math.max(0, npc.hp - finalDmg)
       npcs[npcIdx] = { ...npc, hp }
       const died = hp === 0
@@ -786,7 +896,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       // Spell-like items are consumed on use.
-      if (item.defId === 'Firebolt') nextState = consumeItem(nextState, action.itemId)
+      if (weapon.consumesOnUse) nextState = consumeItem(nextState, action.itemId)
 
       // On death, sometimes drop loot to the floor.
       if (died) {
@@ -812,22 +922,31 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       const withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
       const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
-      return reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
+      const withShake = reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
+      return state.combat ? reduce(withShake, { type: 'combat/advanceTurn' }) : withShake
     }
     case 'npc/give': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
       const item = state.party.items[action.itemId]
       if (npcIdx < 0 || !item) return state
+      if (state.combat) {
+        const turn = currentTurn(state)
+        if (!turn || turn.kind !== 'pc') {
+          return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+      }
       const npc = state.floor.npcs[npcIdx]
       const quest = npc.quest
       if (!quest) {
-        return reduce(pushActivityLog(state, `${npc.name} ignores it.`), { type: 'ui/sfx', kind: 'reject' })
+        const res = reduce(pushActivityLog(state, `${npc.name} ignores it.`), { type: 'ui/sfx', kind: 'reject' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
       if (quest.hated.includes(item.defId)) {
         const npcs = state.floor.npcs.slice()
         npcs[npcIdx] = { ...npc, status: 'hostile' }
         const withNpc = { ...state, floor: { ...state.floor, npcs, floorGeomRevision: state.floor.floorGeomRevision + 1 } }
-        return reduce(pushActivityLog(withNpc, `${npc.name} becomes hostile!`), { type: 'ui/sfx', kind: 'reject' })
+        const res = reduce(pushActivityLog(withNpc, `${npc.name} becomes hostile!`), { type: 'ui/sfx', kind: 'reject' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
       if (quest.wants === item.defId) {
         // Consume item and improve status.
@@ -836,9 +955,11 @@ export function reduce(state: GameState, action: Action): GameState {
         npcs[npcIdx] = { ...npc, status: nextStatus }
         const withNpc = { ...state, floor: { ...state.floor, npcs, floorGeomRevision: state.floor.floorGeomRevision + 1 } }
         const withConsume = consumeItem(withNpc, action.itemId)
-        return reduce(pushActivityLog(withConsume, `${npc.name} accepts it.`), { type: 'ui/sfx', kind: 'pickup' })
+        const res = reduce(pushActivityLog(withConsume, `${npc.name} accepts it.`), { type: 'ui/sfx', kind: 'pickup' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
-      return reduce(pushActivityLog(state, `${npc.name} rejects it.`), { type: 'ui/sfx', kind: 'reject' })
+      const res = reduce(pushActivityLog(state, `${npc.name} rejects it.`), { type: 'ui/sfx', kind: 'reject' })
+      return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
     }
     case 'npc/pet': {
       const npc = state.floor.npcs.find((n) => n.id === action.npcId)
@@ -1077,18 +1198,6 @@ function hashStr(s: string) {
   return h >>> 0
 }
 
-function rectContains(r: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }) {
-  return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h
-}
-
-function roomForCell(state: GameState, x: number, y: number) {
-  const rooms = state.floor.gen?.rooms
-  if (!rooms?.length) return null
-  for (const r of rooms) {
-    if (rectContains(r.rect, { x, y })) return r
-  }
-  return null
-}
 
 function addStatusToChar(state: GameState, characterId: string, statusId: 'Poisoned' | 'Blessed' | 'Sick' | 'Bleeding' | 'Burning' | 'Drenched' | 'Drowsy' | 'Focused' | 'Cursed' | 'Frightened' | 'Rooted' | 'Shielded' | 'Starving' | 'Dehydrated', durMs?: number) {
   const idx = state.party.chars.findIndex((c) => c.id === characterId)
@@ -1167,6 +1276,57 @@ function strafeVec(playerDir: 0 | 1 | 2 | 3, side: -1 | 1) {
   return dirVec(d)
 }
 
+function ensureDeath(state: GameState): GameState {
+  if (state.ui.death) return state
+  const wiped = state.party.chars.length > 0 && state.party.chars.every((c) => c.hp <= 0)
+  if (!wiped) return state
+  const dead: GameState = {
+    ...state,
+    combat: undefined,
+    ui: {
+      ...state.ui,
+      death: { atMs: state.nowMs, runId: state.run.runId, floorIndex: state.floor.floorIndex, level: state.run.level },
+      debugShowDeathPopup: false,
+    },
+  }
+  return pushActivityLog(dead, 'The party has fallen.')
+}
+
+function maybeEndCombat(state: GameState): GameState {
+  if (!state.combat) return state
+  const combat = pruneCombatTurnQueue(state, state.combat)
+  const aliveNpc = combat.participants.npcs.some((id) => state.floor.npcs.some((n) => n.id === id && n.hp > 0))
+  if (!aliveNpc) {
+    const enemyCount = Math.max(1, combat.participants.npcs.length)
+    const xp = 10 * enemyCount
+    const { state: withXp, leveledUp, gainedLevels } = applyXp({ ...state, combat: undefined }, xp)
+    const msg = leveledUp ? `Encounter won. +${xp} XP (level +${gainedLevels}).` : `Encounter won. +${xp} XP.`
+    return pushActivityLog(withXp, msg)
+  }
+  return { ...state, combat }
+}
+
+function autoResolveNpcTurns(state: GameState): GameState {
+  let st: GameState = state
+  st = maybeEndCombat(st)
+  if (!st.combat) return st
+
+  // Ensure combat state is pruned before stepping.
+  st = { ...st, combat: pruneCombatTurnQueue(st, st.combat) }
+
+  for (let i = 0; i < 32; i++) {
+    if (!st.combat) break
+    const turn = currentTurn(st)
+    if (!turn || turn.kind !== 'npc') break
+    st = npcTakeTurn(st, turn.id)
+    st = ensureDeath(st)
+    if (st.ui.death) break
+    st = advanceTurnIndex(st)
+    st = maybeEndCombat(st)
+  }
+  return st
+}
+
 function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   if (state.view.anim) return state
   const { w, tiles } = state.floor
@@ -1179,12 +1339,8 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   if (tile !== 'floor') return bump(state)
 
   const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
-  if (npc) {
-    if (npc.status === 'hostile') {
-      const withToast = reduce(state, { type: 'ui/toast', text: `${npc.name} blocks your way!`, ms: 900 })
-      return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
-    }
-    return reduce(state, { type: 'ui/openNpcDialog', npcId: npc.id })
+  if (npc?.status === 'hostile') {
+    return reduce(state, { type: 'combat/enter', npcId: npc.id })
   }
 
   const startedAtMs = state.nowMs

@@ -74,6 +74,16 @@ export function GameApp() {
         dispatch({ type: 'player/step', forward: -1 })
         return
       }
+      if (e.key === 'r' || e.key === 'R') {
+        e.preventDefault()
+        dispatch({ type: 'combat/fleeAttempt' })
+        return
+      }
+      if (e.key === 'f' || e.key === 'F') {
+        e.preventDefault()
+        dispatch({ type: 'combat/defend' })
+        return
+      }
       if (e.key === 'F2') {
         e.preventDefault()
         dispatch({ type: 'ui/toggleDebug' })

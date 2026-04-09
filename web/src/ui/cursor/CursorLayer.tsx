@@ -5,6 +5,7 @@ import type { GameState } from '../../game/types'
 import type { ContentDB } from '../../game/content/contentDb'
 import { shakeTransform } from '../feedback/shakeTransform'
 import { findRecipe, recipeKey } from '../../game/content/recipes'
+import { currentTurn } from '../../game/state/combat'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const api = useContext(CursorContext)
@@ -135,6 +136,10 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
 
           if (hoverTarget?.kind === 'npc') {
             const isWeapon = def.tags.includes('weapon')
+            if (props.state.combat) {
+              const turn = currentTurn(props.state)
+              if (!turn || turn.kind !== 'pc') return { icon: '…', label: 'Wait' }
+            }
             return isWeapon ? { icon: '⚔', label: 'Attack' } : { icon: '🎁', label: 'Give' }
           }
 

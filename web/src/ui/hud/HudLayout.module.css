@@ -71,6 +71,25 @@
   background: transparent;
 }
 
+.gameCombat {
+  outline: 2px solid rgba(171, 136, 107, 0.35);
+  outline-offset: -2px;
+}
+
+.gameCornerStack {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 8px;
+  max-width: min(42%, 420px);
+  min-width: 0;
+  pointer-events: none;
+}
+
 /* Same box model as `GameViewport.module.css` `.root` (absolute fill of `.panel.game`). */
 .gameViewportCaptureShell {
   position: absolute;

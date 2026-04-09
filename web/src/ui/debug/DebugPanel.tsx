@@ -878,6 +878,65 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </div>
       )}
 
+      {(!q || 'combat encounter turn queue initiative speed'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Combat</div>
+          <div className={styles.row}>
+            <div className={styles.label}>active</div>
+            <div className={styles.value}>{state.combat ? 'yes' : 'no'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>actions</div>
+            <div className={styles.value}>
+              <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'combat/fleeAttempt' })} disabled={!state.combat}>
+                Flee (R)
+              </button>{' '}
+              <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'combat/defend' })} disabled={!state.combat}>
+                Defend (F)
+              </button>
+            </div>
+            <div />
+          </div>
+          {state.combat && (
+            <>
+              <div className={styles.row}>
+                <div className={styles.label}>encounterId</div>
+                <div className={styles.value}>{state.combat.encounterId}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>turn</div>
+                <div className={styles.value}>
+                  {state.combat.turnQueue.length
+                    ? `${state.combat.turnIndex + 1}/${state.combat.turnQueue.length}`
+                    : '—'}
+                </div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>queue</div>
+                <div className={styles.value}>
+                  {state.combat.turnQueue.length
+                    ? state.combat.turnQueue
+                        .slice(0, 8)
+                        .map((t) => {
+                          const name =
+                            t.kind === 'pc'
+                              ? state.party.chars.find((c) => c.id === t.id)?.name ?? t.id
+                              : state.floor.npcs.find((n) => n.id === t.id)?.name ?? t.id
+                          return `${t.kind}:${name}(${t.initiative.toFixed(2)})`
+                        })
+                        .join(' | ')
+                    : '—'}
+                </div>
+                <div />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {(!q || 'pose yaw direction playerdir camyaw'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Pose</div>

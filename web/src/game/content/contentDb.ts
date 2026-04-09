@@ -1,4 +1,4 @@
-import type { EquipmentSlot, ItemDefId, PoiKind, Species, StatusEffectId } from '../types'
+import type { DamageType, EquipmentSlot, ItemDefId, PoiKind, Species, StatusEffectId } from '../types'
 import { DEFAULT_ITEMS } from './items'
 import { DEFAULT_STATUSES } from './statuses'
 
@@ -9,6 +9,13 @@ export type ItemDef = {
   tags: Array<
     'food' | 'weapon' | 'container' | 'material' | 'quest' | 'tool' | 'hat' | 'oneHand' | 'twoHand'
   >
+  weapon?: {
+    baseDamage: number
+    damageType: DamageType
+    consumesOnUse?: boolean
+    staminaCost?: number
+    statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }>
+  }
   equipSlots?: EquipmentSlot[]
   feed?: { hunger: number; thirst?: number; stamina?: number; hp?: number; statusChances?: Array<{ status: StatusEffectId; pct: number; onlySpecies?: Species }> }
   useOnPoi?: Partial<Record<PoiKind, { transformTo?: ItemDefId; toast?: string }>>
