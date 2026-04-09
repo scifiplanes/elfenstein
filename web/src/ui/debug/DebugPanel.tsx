@@ -1,12 +1,23 @@
 import { type Dispatch, useMemo, useState } from 'react'
 import type { Action } from '../../game/reducer'
 import { DEFAULT_ITEMS } from '../../game/content/items'
-import type { GameState, ItemDefId, NpcKind, PoiKind, ProcgenDebugOverlayMode } from '../../game/types'
-import { saveDebugSettingsToProject } from '../../app/debugSettingsPersistence'
+import type {
+  GameState,
+  HubNormRect,
+  ItemDefId,
+  NpcKind,
+  PoiKind,
+  ProcgenDebugOverlayMode,
+} from '../../game/types'
+import {
+  buildDebugUiPersist,
+  clearLocalDebugSettings,
+  saveDebugSettingsToProject,
+} from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
 import { getThemeLightIntent } from '../../world/themeTuning'
-import { BG_NOISE_LABELS, BG_NOISE_TRACKS } from '../audio/musicTracks'
+import { BG_NOISE_LABELS, BG_NOISE_TRACKS, BG_SFX_TRACKS } from '../audio/musicTracks'
 import { selectBgTrack } from '../audio/musicRules'
 import styles from './DebugPanel.module.css'
 
@@ -48,8 +59,6 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
   const [perfOpen, setPerfOpen] = useState(false)
-  const [telegraphMode, setTelegraphMode] = useState<'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'>('auto')
-  const [telegraphStrength, setTelegraphStrength] = useState(0.22)
 
   const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
 
@@ -264,6 +273,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
     () => [
+      {
+        key: 'hubInnkeeperSpriteScale',
+        label: 'Hub innkeeper sprite scale',
+        min: 0.25,
+        max: 3,
+        step: 0.05,
+        format: (v) => v.toFixed(2),
+      },
       { key: 'npcFootLift', label: 'NPC foot lift', min: -0.05, max: 0.15, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiFootLift', label: 'POI above ground', min: -0.2, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
@@ -385,21 +402,44 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </button>
 
           {import.meta.env.DEV && (
-            <button
-              type="button"
-              className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
-              onClick={async () => {
-                try {
-                  await saveDebugSettingsToProject(state.render, state.audio)
-                  dispatch({ type: 'ui/toast', text: 'Saved debug settings to project.', ms: 1400 })
-                } catch {
-                  dispatch({ type: 'ui/toast', text: 'Failed to save debug settings to project.', ms: 1600 })
-                }
-              }}
-              title="Writes web/public/debug-settings.json (dev server only)"
-            >
-              Save to project
-            </button>
+            <>
+              <button
+                type="button"
+                className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
+                onClick={async () => {
+                  const ok = await saveDebugSettingsToProject(
+                    state.render,
+                    state.audio,
+                    state.hubHotspots,
+                    buildDebugUiPersist(state.ui),
+                  )
+                  dispatch({
+                    type: 'ui/toast',
+                    text: ok ? 'Saved debug settings to project.' : 'Failed to save debug settings to project.',
+                    ms: ok ? 1400 : 1600,
+                  })
+                }}
+                title="Writes web/public/debug-settings.json (dev server only)"
+              >
+                Save to project
+              </button>
+              <button
+                type="button"
+                className={styles.headerBtn}
+                onClick={() => {
+                  clearLocalDebugSettings()
+                  dispatch({
+                    type: 'ui/toast',
+                    text: 'Cleared local debug overrides. Reloading…',
+                    ms: 1200,
+                  })
+                  window.setTimeout(() => window.location.reload(), 350)
+                }}
+                title="Removes elfenstein.debugSettings from localStorage and reloads so project JSON applies cleanly"
+              >
+                Clear local overrides
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -676,17 +716,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             <div className={styles.value}>
               <select
                 className={styles.inlineInput}
-                value={telegraphMode}
+                value={state.ui.roomTelegraphMode}
                 onChange={(e) => {
-                  const v = e.target.value as typeof telegraphMode
-                  setTelegraphMode(v)
-                  const w = window as unknown as {
-                    __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
-                  }
-                  w.__elfensteinRoomTelegraph = {
-                    ...(w.__elfensteinRoomTelegraph ?? {}),
-                    mode: v,
-                  }
+                  const v = e.target.value as GameState['ui']['roomTelegraphMode']
+                  dispatch({ type: 'debug/setRoomTelegraphMode', mode: v })
                 }}
               >
                 <option value="auto">auto (from room tag)</option>
@@ -700,25 +733,17 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </div>
           <div className={styles.row}>
             <div className={styles.label}>strength</div>
-            <div className={styles.value}>{telegraphStrength.toFixed(2)}</div>
+            <div className={styles.value}>{state.ui.roomTelegraphStrength.toFixed(2)}</div>
             <input
               className={styles.slider}
               type="range"
               min={0}
               max={1}
               step={0.01}
-              value={telegraphStrength}
-              onChange={(e) => {
-                const v = Number(e.target.value)
-                setTelegraphStrength(v)
-                const w = window as unknown as {
-                  __elfensteinRoomTelegraph?: { mode?: string; strength?: number }
-                }
-                w.__elfensteinRoomTelegraph = {
-                  ...(w.__elfensteinRoomTelegraph ?? {}),
-                  strength: v,
-                }
-              }}
+              value={state.ui.roomTelegraphStrength}
+              onChange={(e) =>
+                dispatch({ type: 'debug/setRoomTelegraphStrength', strength: Number(e.target.value) })
+              }
             />
           </div>
         </div>
@@ -878,6 +903,65 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </div>
       )}
 
+      {(!q || 'combat encounter turn queue initiative speed'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Combat</div>
+          <div className={styles.row}>
+            <div className={styles.label}>active</div>
+            <div className={styles.value}>{state.combat ? 'yes' : 'no'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>actions</div>
+            <div className={styles.value}>
+              <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'combat/fleeAttempt' })} disabled={!state.combat}>
+                Flee (R)
+              </button>{' '}
+              <button type="button" className={styles.headerBtn} onClick={() => dispatch({ type: 'combat/defend' })} disabled={!state.combat}>
+                Defend (F)
+              </button>
+            </div>
+            <div />
+          </div>
+          {state.combat && (
+            <>
+              <div className={styles.row}>
+                <div className={styles.label}>encounterId</div>
+                <div className={styles.value}>{state.combat.encounterId}</div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>turn</div>
+                <div className={styles.value}>
+                  {state.combat.turnQueue.length
+                    ? `${state.combat.turnIndex + 1}/${state.combat.turnQueue.length}`
+                    : '—'}
+                </div>
+                <div />
+              </div>
+              <div className={styles.row}>
+                <div className={styles.label}>queue</div>
+                <div className={styles.value}>
+                  {state.combat.turnQueue.length
+                    ? state.combat.turnQueue
+                        .slice(0, 8)
+                        .map((t) => {
+                          const name =
+                            t.kind === 'pc'
+                              ? state.party.chars.find((c) => c.id === t.id)?.name ?? t.id
+                              : state.floor.npcs.find((n) => n.id === t.id)?.name ?? t.id
+                          return `${t.kind}:${name}(${t.initiative.toFixed(2)})`
+                        })
+                        .join(' | ')
+                    : '—'}
+                </div>
+                <div />
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {(!q || 'pose yaw direction playerdir camyaw'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Pose</div>
@@ -911,6 +995,65 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             <div className={styles.value}>{deg(yawThree).toFixed(1)}°</div>
             <div />
           </div>
+        </div>
+      )}
+
+      {(!q || 'hub hotspot village tavern 2d scene rect'.includes(q)) && (
+        <div className={styles.section}>
+          <div className={styles.sectionTitle}>Hub hotspots (normalized 0–1 in game viewport)</div>
+          {(
+            [
+              { label: 'Village · Tavern', spot: 'village.tavern' as const },
+              { label: 'Village · Cave', spot: 'village.cave' as const },
+              { label: 'Tavern · Innkeeper', spot: 'tavern.innkeeper' as const },
+              { label: 'Tavern · Exit', spot: 'tavern.exit' as const },
+            ] as const
+          ).map(({ label, spot }) => {
+            const rect: HubNormRect =
+              spot === 'village.tavern'
+                ? state.hubHotspots.village.tavern
+                : spot === 'village.cave'
+                  ? state.hubHotspots.village.cave
+                  : spot === 'tavern.innkeeper'
+                    ? state.hubHotspots.tavern.innkeeper
+                    : state.hubHotspots.tavern.exit
+            const axes = [
+              { key: 'x' as const, label: 'x' },
+              { key: 'y' as const, label: 'y' },
+              { key: 'w' as const, label: 'w' },
+              { key: 'h' as const, label: 'h' },
+            ]
+            return (
+              <div key={spot}>
+                <div className={styles.subSectionTitle}>{label}</div>
+                {axes.map(({ key, label: axisLabel }) => {
+                  const v = rect[key]
+                  return (
+                    <div key={key} className={styles.row}>
+                      <div className={styles.label}>{axisLabel}</div>
+                      <div className={styles.value}>{v.toFixed(3)}</div>
+                      <input
+                        className={styles.slider}
+                        type="range"
+                        min={0}
+                        max={1}
+                        step={0.005}
+                        value={v}
+                        onChange={(e) =>
+                          dispatch({
+                            type: 'hubHotspot/setAxis',
+                            spot,
+                            key,
+                            value: Number(e.target.value),
+                          })
+                        }
+                      />
+                    </div>
+                  )
+                })}
+              </div>
+            )
+          })}
         </div>
       )}
 
@@ -1077,6 +1220,18 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
               }
             >
               {BG_NOISE_LABELS[url] ?? url}
+            </button>
+          ))}
+        </div>
+        <div className={styles.audioBtns}>
+          {BG_SFX_TRACKS.map((url, i) => (
+            <button
+              key={url}
+              type="button"
+              className={styles.audioBtn}
+              onClick={() => dispatch({ type: 'ui/triggerDebugBgSfx', index: i })}
+            >
+              {url.split('/').pop()}
             </button>
           ))}
         </div>

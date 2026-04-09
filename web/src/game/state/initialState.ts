@@ -1,8 +1,11 @@
 import type { ContentDB } from '../content/contentDb'
 import type { GameState, InventoryGrid, ItemId } from '../types'
+import { DEFAULT_HUB_HOTSPOTS } from '../hubHotspotDefaults'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { generateDungeon } from '../../procgen/generateDungeon'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
+import { pickPlayerSpawnCell } from './playerFloorCell'
+import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 
 function mkInventory(cols: number, rows: number): InventoryGrid {
@@ -66,14 +69,33 @@ export function makeInitialState(_content: ContentDB): GameState {
     difficulty,
   })
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(DEFAULT_RENDER, gen.floorItems, floorSeed)
-  const playerPos = { ...gen.entrance }
+  const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
   const playerDir = 0 as const
 
   return {
     nowMs,
-    ui: { screen: 'game', debugOpen: false, sfxQueue: [], procgenDebugOverlay: undefined, activityLog: [], death: undefined },
+    ui: {
+      screen: 'game',
+      debugOpen: false,
+      sfxQueue: [],
+      procgenDebugOverlay: undefined,
+      roomTelegraphMode: 'auto',
+      roomTelegraphStrength: 0.22,
+      activityLog: [],
+      death: undefined,
+    },
     render: { ...DEFAULT_RENDER },
     audio: { ...DEFAULT_AUDIO },
+    hubHotspots: {
+      village: {
+        tavern: { ...DEFAULT_HUB_HOTSPOTS.village.tavern },
+        cave: { ...DEFAULT_HUB_HOTSPOTS.village.cave },
+      },
+      tavern: {
+        innkeeper: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeper },
+        exit: { ...DEFAULT_HUB_HOTSPOTS.tavern.exit },
+      },
+    },
     run: {
       runId: `run_${floorSeed}`,
       startedAtMs: nowMs,
@@ -99,7 +121,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       pois: gen.pois,
       itemsOnFloor: spawnedOnFloor,
       floorGeomRevision: 1,
-      npcs: gen.npcs,
+      npcs: npcsWithDefaultStatuses(gen.npcs),
     },
     party: {
       chars: [
@@ -108,6 +130,18 @@ export function makeInitialState(_content: ContentDB): GameState {
           name: 'Char1',
           species: 'Igor',
           endurance: 6,
+          stats: {
+            strength: 8,
+            agility: 5,
+            speed: 5,
+            perception: 5,
+            endurance: 6,
+            intelligence: 4,
+            wisdom: 4,
+            luck: 5,
+          },
+          armor: 1,
+          resistances: { Cut: 0.05 },
           skills: { chipping: 2, foraging: 1 },
           hunger: 60,
           thirst: 60,
@@ -121,6 +155,18 @@ export function makeInitialState(_content: ContentDB): GameState {
           name: 'Char2',
           species: 'Mycyclops',
           endurance: 7,
+          stats: {
+            strength: 6,
+            agility: 4,
+            speed: 4,
+            perception: 6,
+            endurance: 7,
+            intelligence: 6,
+            wisdom: 6,
+            luck: 4,
+          },
+          armor: 0,
+          resistances: { Earth: 0.1, Fire: 0.05 },
           skills: { cooking: 1, foraging: 2 },
           hunger: 60,
           thirst: 60,
@@ -134,6 +180,18 @@ export function makeInitialState(_content: ContentDB): GameState {
           name: 'Char3',
           species: 'Frosch',
           endurance: 5,
+          stats: {
+            strength: 5,
+            agility: 7,
+            speed: 7,
+            perception: 5,
+            endurance: 5,
+            intelligence: 4,
+            wisdom: 4,
+            luck: 6,
+          },
+          armor: 0,
+          resistances: { Water: 0.15 },
           skills: { weaving: 1, cooking: 2 },
           hunger: 60,
           thirst: 60,
@@ -147,6 +205,18 @@ export function makeInitialState(_content: ContentDB): GameState {
           name: 'Char4',
           species: 'Afonso',
           endurance: 6,
+          stats: {
+            strength: 6,
+            agility: 6,
+            speed: 6,
+            perception: 6,
+            endurance: 6,
+            intelligence: 6,
+            wisdom: 5,
+            luck: 5,
+          },
+          armor: 0,
+          resistances: { Thunder: 0.05 },
           skills: { chipping: 1, weaving: 1 },
           hunger: 60,
           thirst: 60,

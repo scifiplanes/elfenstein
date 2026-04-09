@@ -3,21 +3,22 @@ import type { NpcKind, PoiKind } from '../../game/types'
 
 /** Base ambient loops — one per floor type, looped indefinitely. */
 export const BG_NOISE_TRACKS: Record<FloorType, string> = {
-  Dungeon: '/sounds/music/bg_noise_1.mp3',
-  Cave:    '/sounds/music/bg_noise_2.mp3',
-  Ruins:   '/sounds/music/bg_noise_3.mp3',
+  Dungeon: '/sounds/background/bg_noise_1.mp3',
+  Cave:    '/sounds/background/bg_noise_2.mp3',
+  Ruins:   '/sounds/background/bg_noise_3.mp3',
 }
 
 /** Short label for each bg track (for the debug menu). */
 export const BG_NOISE_LABELS: Record<string, string> = {
-  '/sounds/music/bg_noise_1.mp3': 'bg_noise_1 (Dungeon)',
-  '/sounds/music/bg_noise_2.mp3': 'bg_noise_2 (Cave)',
-  '/sounds/music/bg_noise_3.mp3': 'bg_noise_3 (Ruins)',
+  '/sounds/background/bg_noise_1.mp3': 'bg_noise_1 (Dungeon)',
+  '/sounds/background/bg_noise_2.mp3': 'bg_noise_2 (Cave)',
+  '/sounds/background/bg_noise_3.mp3': 'bg_noise_3 (Ruins)',
 }
 
 /** Random ambient SFX played occasionally in the background. */
 export const BG_SFX_TRACKS = [
-  '/sounds/music/creak_1.mp3',
+  '/sounds/background/creak_1.mp3',
+  '/sounds/background/weird_bells.mp3',
 ]
 
 /**
@@ -44,13 +45,13 @@ export type ProximityOverlay = {
  */
 export const PROXIMITY_OVERLAYS: ProximityOverlay[] = [
   {
-    track: '/sounds/music/safe_haven_loop.mp3',
+    track: '/sounds/background/safe_haven_loop.mp3',
     npcNames: ['Bobr'],
     fullDist: 0.5,
     zeroDist: 3,
   },
   {
-    track: '/sounds/music/chant_1.mp3',
+    track: '/sounds/background/chant_1.mp3',
     poiKinds: ['Shrine'],
     fullDist: 1,
     zeroDist: 4,

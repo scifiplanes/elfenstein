@@ -1,4 +1,4 @@
-import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, Tile, Vec2 } from '../game/types'
+import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, StatusEffectId, Tile, Vec2 } from '../game/types'
 
 export type FloorType = 'Dungeon' | 'Cave' | 'Ruins'
 
@@ -150,8 +150,12 @@ export type GenNpc = {
   pos: Vec2
   status: 'hostile' | 'neutral' | 'friendly'
   hp: number
+  /** Canonical max HP (matches `hp` at spawn); optional on older dumped floors. */
+  hpMax?: number
   language: NpcLanguage
   quest?: { wants: ItemDefId; hated: ItemDefId[] }
+  /** Runtime combat/status debuffs; omitted in older gen JSON. */
+  statuses?: Array<{ id: StatusEffectId; untilMs?: number }>
 }
 
 export type FloorGenOutput = {

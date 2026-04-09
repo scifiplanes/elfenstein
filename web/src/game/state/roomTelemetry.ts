@@ -8,7 +8,7 @@ function pointInRect(p: Vec2, r: { x: number; y: number; w: number; h: number })
 export type ActiveRoomProperty = NonNullable<GenRoom['tags']>['roomProperties']
 
 /**
- * Same containment rule as `roomForCell` in `reducer.ts`: first room whose rect contains the cell, else null.
+ * Same containment rule as `roomForCell` in `roomGeometry.ts`: first room whose rect contains the cell, else null.
  * (No “nearest room” fallback — corridors must not inherit a neighbor room’s `roomProperties` or telegraph flickers.)
  */
 export function roomContainingPlayer(state: GameState): GenRoom | null {

@@ -1,3 +1,4 @@
+import { cellKey, nearestFloorCellAvoidingBlocked } from '../game/state/playerFloorCell'
 import type { Tile, Vec2 } from '../game/types'
 
 export function inBounds(pos: Vec2, w: number, h: number): boolean {
@@ -129,6 +130,72 @@ export function allReachable(tiles: Tile[], w: number, h: number, start: Vec2, t
     if (!reach[i]) return false
   }
   return true
+}
+
+/**
+ * True when the player can reach at least one orthogonal neighbor of `exit` (to use the Exit POI)
+ * after nudging off the entrance if it is blocked, using `isWalkable` tiles except those in
+ * `poiBlockedKeys`, and always treating the exit cell as non-traversable (stairs PoI blocks it).
+ */
+export function exitNeighborReachableWithPoiBlocking(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  entrance: Vec2,
+  exit: Vec2,
+  poiBlockedKeys: ReadonlySet<string>,
+): boolean {
+  const blocked = new Set(poiBlockedKeys)
+  blocked.add(cellKey(exit.x, exit.y))
+
+  const spawn = nearestFloorCellAvoidingBlocked(tiles, w, h, entrance, blocked)
+  const sx = spawn.x
+  const sy = spawn.y
+  if (!inBounds(spawn, w, h)) return false
+  const startIdx = sx + sy * w
+  if (startIdx < 0 || startIdx >= tiles.length || !isWalkable(tiles[startIdx]) || blocked.has(cellKey(sx, sy))) {
+    return false
+  }
+
+  const seen = new Uint8Array(tiles.length)
+  const qx: number[] = [sx]
+  const qy: number[] = [sy]
+  seen[startIdx] = 1
+
+  for (let qi = 0; qi < qx.length; qi++) {
+    const x = qx[qi]!
+    const y = qy[qi]!
+    const neigh = [
+      { x: x + 1, y },
+      { x: x - 1, y },
+      { x, y: y + 1 },
+      { x, y: y - 1 },
+    ]
+    for (const p of neigh) {
+      if (p.x < 0 || p.y < 0 || p.x >= w || p.y >= h) continue
+      const j = p.x + p.y * w
+      if (seen[j]) continue
+      if (!isWalkable(tiles[j])) continue
+      if (blocked.has(cellKey(p.x, p.y))) continue
+      seen[j] = 1
+      qx.push(p.x)
+      qy.push(p.y)
+    }
+  }
+
+  const exitNeighbors: Vec2[] = [
+    { x: exit.x + 1, y: exit.y },
+    { x: exit.x - 1, y: exit.y },
+    { x: exit.x, y: exit.y + 1 },
+    { x: exit.x, y: exit.y - 1 },
+  ]
+  for (const t of exitNeighbors) {
+    if (!inBounds(t, w, h)) continue
+    const ti = idxOf(t, w)
+    if (ti < 0 || ti >= tiles.length || !isWalkable(tiles[ti]) || blocked.has(cellKey(t.x, t.y))) continue
+    if (seen[ti]) return true
+  }
+  return false
 }
 
 /** Cells on any shortest entrance→exit path satisfy distFromEntrance + distFromExit === shortestLen. */

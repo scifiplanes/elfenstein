@@ -3152,6 +3152,7 @@ Slightly reduces slot size so the block reads lighter on the bar while keeping h
 
 ---
 
+<<<<<<< HEAD
 ## ADR-0211 — Character equipment strip beside portraits
 Date: 2026-04-09
 
@@ -3298,3 +3299,419 @@ Left equipment **20px** further **right**; right equipment **mirrored** toward t
 
 ### Update
 **`EQUIP_STRIP_NUDGE_TOWARD_GAME_PX`** tuned to **48** (was **40**), then **55**.
+=======
+## ADR-0211 — Fix 3D drag/drop hover and cursor-aimed floor drops
+Date: 2026-04-09
+
+### Decision
+- Move **3D hover picking** (POI/NPC/floor item) to the **HUD root pointer-move** handler so it works even when the pointer stream is **captured** by the drag origin element.
+- Make **empty 3D view drops** default to **cursor-aimed** placement (raycast to floor → grid cell), clamped by `render.dropRangeCells` with a nearest-valid-floor snap fallback.
+
+### Rationale
+Pointer capture is required to reliably receive `pointerup` for drags, but it also means `GameViewport` often stops receiving `pointermove` during a drag. Root-level picking keeps cursor hover state and affordances correct regardless of where the browser delivers pointer events.
+
+### Consequences
+- `HudLayout` becomes the single reliable place to compute in-viewport hover targets and aimed `floorDrop.dropPos`.
+- `GameViewport` no longer dispatches `drag/drop` on `pointerup`; it focuses on click interactions and drag-start from world floor items.
+- **`DESIGN.md`** §6.2 updated to reflect cursor-aimed world drops.
+
+---
+
+## ADR-0212 — Encounter-mode combat with real Speed stat
+Date: 2026-04-09
+
+### Decision
+- Implement combat as an explicit **encounter mode** (`state.combat`) entered when the player attempts to step into a **hostile** NPC cell.
+- Add the full **character stat block** (including real **Speed**) into runtime state and drive initiative primarily from **Speed** with a small deterministic tie-break.
+
+### Rationale
+Blocking movement on hostile NPCs prevented the core loop from delivering “resolve encounters” without additional UI. Encounter mode lets us use existing cursor-first interactions (drag weapon → NPC) while still making turn order and pacing real and debuggable.
+
+### Consequences
+- New `CombatState` and initiative logic (`web/src/game/state/combat.ts`), plus reducer integration in `web/src/game/reducer.ts`.
+- Weapons become data-shaped by adding `ItemDef.weapon` (replacing reducer hardcoding).
+- `DESIGN.md` §7.7 updated to describe encounter-mode combat and Speed-driven turn order.
+
+---
+
+## ADR-0213 — Feed refusal: idle pulse instead of mouth cue
+Date: 2026-04-09
+
+### Decision
+When a portrait **feed** attempt is refused (the item has no `feed` effect), do **not** trigger the feeding **mouth** cue/animation. Instead show a brief **idle sprite pulse** (`ui.portraitIdlePulse`) and play a **reject** SFX (while keeping portrait frame shake).
+
+### Rationale
+The mouth cue reads as “eating happened” even when the game refuses the item. An idle pulse is a short, neutral acknowledgement that preserves responsiveness without conveying the wrong outcome.
+
+### Consequences
+- Refusal feedback now uses `ui.portraitIdlePulse` + `reject` SFX; the mouth cue is reserved for actual feeding success.
+- `DESIGN.md` updated to reflect refusal vs success feedback.
+
+---
+
+## ADR-0214 — Inspect: Perception roll + tiered reveals
+Date: 2026-04-09
+
+### Decision
+- **Portrait inspect** (drag item → portrait **eyes**) resolves a **deterministic** check: **d20 + Perception** (stat of the **inspected character**) vs a **DC** from **item tags** (take the **highest** among: food/material **10**, container **11**, weapon/tool/hat **12**, quest **14**, default **12**).
+- **Tiered activity log output**:
+  - Always: inspect line + explicit `d20 + Perception = total vs DC`.
+  - **Fail**: one short line that nothing more stands out.
+  - **Success** (`total ≥ DC`): one line with a **brief classification** plus **character-relevant** hints (remedy fit vs current statuses, or species-tied feed affinity when defined).
+  - **Great success** (`total ≥ DC + 5`): additional lines with **full mechanical detail** (feed numbers, status chances, weapon/equip/POI fields) when present on the item def.
+- Roll seed: `floor.seed` + `characterId` + `itemId` + `defId` (stable across repeated inspects of the same item instance).
+
+### Rationale
+Inspect should reward **Perception** and the chosen character without adding UI chrome; the activity log already carries interaction feedback. Deterministic rolls match crafting and multiplayer-sane direction.
+
+### Consequences
+- `inspectCharacter` in `web/src/game/state/interactions.ts` owns DC mapping + messaging; item copy changes require revisiting tag→DC rules.
+- `DESIGN.md` §7.1 documents the inspect check and tiers.
+
+---
+
+## ADR-0215 — Defend buff expires at next PC turn
+Date: 2026-04-09
+
+### Decision
+- **Defend** grants **+armor** and **+resist** only until that PC’s **next** initiative slot: when the turn queue advances **into** that character’s turn again, their prior `pcDefense` entry is **cleared** before they act.
+- Remove unused `untilTurnIndex` storage and the unused `CombatState.phase` field (nothing read it).
+
+### Rationale
+The previous `untilTurnIndex` value was never enforced in `defenseForPc`, so defend bonuses **never expired**. Tying expiry to the **next** time that PC’s turn comes around matches readable UX (“holds until your next go”).
+
+### Consequences
+- `advanceTurnIndex` in `web/src/game/state/combat.ts` drops `pcDefense` for the PC whose turn is starting.
+- `DESIGN.md` §7.7 documents defend duration.
+
+---
+
+## ADR-0216 — Multi-hostile encounter roster + XP scaling
+Date: 2026-04-09
+
+### Decision
+- On encounter start, collect **hostile** NPCs: same **`roomForCell`** as the stepped-on NPC (shared helper in `web/src/game/state/roomGeometry.ts`), else **Chebyshev ≤ 1** from **player** if no room.
+- **`enterCombat`** takes an **array** of NPC ids; initiative queue unchanged in shape.
+- **Victory XP** = **10 ×** encounter roster size (`combat.participants.npcs.length`).
+
+### Rationale
+`participants.npcs` was already an array but only one id was ever added. Room-based pulls match “room fight” expectations; corridor fallback avoids empty multi-pull when `gen.rooms` misses. XP scales with threat without a new table.
+
+### Consequences
+- `collectEncounterNpcIds` + `roomForCell` export; `reducer.ts` imports `roomForCell` from `roomGeometry.ts`.
+- `DESIGN.md` §7.7 documents roster rules and XP.
+
+---
+
+## ADR-0217 — Diegetic combat HUD (CombatIndicator actions)
+Date: 2026-04-09
+
+### Decision
+- **CombatIndicator** exposes **Flee** and **Defend** buttons (styled like other HUD chrome); **capture** HUD shows a static shortcut line only (`interactive={false}` / `noopDispatch`).
+- **Keyboard R / F** remain accelerators; §6.4 documents encounter-only keys.
+- **§15** combat UI question: **resolved** toward **diegetic** primary; **no** encounter modal for now.
+
+### Rationale
+Avoids a second modal stack and capture-portal complexity while making flee/defend discoverable beyond keyboard.
+
+### Consequences
+- `HudLayout` passes `dispatch` and `interactive` into `CombatIndicator`.
+- `DESIGN.md` §7.7 and §15 updated.
+
+---
+
+## ADR-0218 — Click encounter enemy to attack (combat)
+Date: 2026-04-09
+
+### Decision
+- While an encounter is active, a **viewport click** on an NPC that is **alive** and in **`combat.participants.npcs`** dispatches **`combat/clickAttack`** instead of opening the NPC dialog.
+- The reducer resolves a weapon via **`resolveWeaponItemIdForPcTurn`** (equipped hands L→R, then first weapon in inventory slots) and delegates to the existing **`npc/attack`** path with **`actorId`** set to the current turn PC.
+- Clicks on **non-roster** NPCs during combat still open the dialog; invalid targets and **no weapon** produce toast / activity log + reject SFX consistent with other combat mistakes.
+
+### Rationale
+Players expect click-to-strike during a fight; reusing **`npc/attack`** avoids duplicating stamina, hit/miss, turn advance, and death/loot logic.
+
+### Consequences
+- `web/src/game/state/equipment.ts`: `resolveWeaponItemIdForPcTurn`.
+- `web/src/game/reducer.ts`: action **`combat/clickAttack`**.
+- `web/src/ui/viewport/GameViewport.tsx`: combat-aware NPC click branch.
+- `DESIGN.md` §7.7 documents click-to-attack.
+
+---
+
+## ADR-0219 — Activity log + combat corner stack (no overlap)
+Date: 2026-04-09
+
+### Decision
+Anchor **`ActivityLog`** and **`CombatIndicator`** in one **`gameCornerStack`** on the game panel: **column** flex, **log above** encounter UI, shared **`max-width: min(42%, 420px)`**, **`pointer-events: none`** on the wrapper (combat buttons keep **`pointer-events: auto`**). Remove per-widget **`position: absolute`** from **`ActivityLog.module.css`** and **`CombatIndicator.module.css`**.
+
+### Rationale
+Both widgets used the same corner with overlapping **`bottom`/`z-index`**, so combat chrome hid log lines during encounters.
+
+### Consequences
+Slightly less vertical room for log lines when encounter chrome is visible; optional later tweak (e.g. lower log row cap in combat only) if needed.
+
+---
+
+## ADR-0220 — Non-hostile NPCs do not block grid movement
+Date: 2026-04-09
+
+### Decision
+- **`attemptMoveTo`** still intercepts **hostile** NPCs: stepping into their cell dispatches **`combat/enter`** and the player does **not** move onto that tile (unchanged roster rules in **`collectEncounterNpcIds`** / **`enterCombat`**).
+- If the target cell has a **non-hostile** NPC (neutral / friendly), movement proceeds like empty **`floor`** (player may **co-occupy** the cell with that NPC).
+- Opening the NPC dialog is **not** tied to stepping onto non-hostiles; use **click** on the NPC in the 3D view (existing **`GameViewport`** path).
+
+### Rationale
+Neutral NPCs in doorways or narrow corridors should not hard-block navigation; hostiles remain a deliberate bump-to-encounter gate.
+
+### Consequences
+- `web/src/game/reducer.ts`: `attemptMoveTo` only short-circuits for **`npc.status === 'hostile'`**.
+- `DESIGN.md` §7.5 / §7.7 updated for interaction and combat trigger wording.
+
+---
+
+## ADR-0221 — Combat parity: NPC debuffs, mitigation, stat scaling, flee turn, combat item blocks
+Date: 2026-04-09
+
+### Decision
+- **NPC statuses**: floor NPCs carry a **`statuses`** array (same shape as PCs); **`applyStatusDecay`** prunes **`untilMs`** for NPCs too. **`weapon.statusOnHit`** rolls on successful PC weapon hits and applies timed effects via **`addStatusToNpc`** (deterministic seeds).
+- **NPC mitigation vs PC hits**: per-**`NpcKind`** **`armor`** (subtract after damage % bonus, for Blunt/Pierce/Cut only) and **`resistances`** by **`DamageType`** (capped at **0.95**, same style as NPC→PC). To-hit defense stays **10 + NPC Speed** (armor does not add to AC).
+- **Weapon stat scaling**: optional **`ItemDef.weapon.damageStat`** (**`strength`** | **`agility`**) adds **`floor(stat × 0.25)`** to base weapon damage before run **damageBonusPct**.
+- **Flee failure**: after stamina is spent and the flee check fails (free enemy hit), **`combat/advanceTurn`** runs so the same initiative slot cannot spam flee attempts.
+- **Combat item blocks**: during **`state.combat`**, **Hive** world drop, **Swarm Basket** capture, **Captured Swarm** release, and **Swarm Queen** calm-on-touch are rejected with a short log line.
+
+### Rationale
+Content already exposed **`statusOnHit`** and per-weapon fantasy (Str vs Agi) while code only modeled NPC→PC procs and flat PC damage. Flee-spam and “spawn/capture mid-fight” bypassed encounter pacing; aligning implementation with **`DESIGN.md` §7.7** reduces exploits and dead data.
+
+### Consequences
+- `web/src/game/types.ts`, `web/src/procgen/types.ts`, `web/src/procgen/population.ts`, `web/src/game/state/npcHydrate.ts`, `web/src/game/state/initialState.ts`, `web/src/game/state/floorProgression.ts`, `web/src/game/reducer.ts`: NPC **`statuses`** + hydration from procgen.
+- `web/src/game/state/status.ts`: NPC decay + **`addStatusToNpc`**.
+- `web/src/game/state/combat.ts`: **`npcCombatTuning`** armor/resist; **`computePcAttackDamage`** pipeline; **`applyWeaponStatusOnHitFromPc`**; **`attemptFlee`** returns **`{ state, advanceTurn }`**.
+- `web/src/game/content/contentDb.ts`, `web/src/game/content/items.ts`: **`damageStat`** on weapons.
+- `DESIGN.md` §7.7–§7.8 updated; this ADR.
+
+---
+
+## ADR-0222 — Pre-dungeon 2D hub (village / tavern) + tunable hotspots
+Date: 2026-04-09
+
+### Decision
+- **`ui.screen`** gains **`hub`**: **New run** from the title screen starts in **`hub`** with **`hubScene: village`** (2D art in the **game** HUD cell, click regions as red-outlined placeholders). **Tavern** / **Cave** / **Exit** / **Innkeeper** actions are driven by **`hub/*`** reducer actions; **Cave** sets **`screen: 'game'`** to show the existing 3D dungeon. **Checkpoint reload** skips the hub.
+- **Innkeeper** opens **`TavernTradeModal`**: stub copy **“Welcome, travellers…”** and **Close** only (real trade UI later).
+- **Hotspot geometry** lives in **`GameState.hubHotspots`** (normalized **0–1** rects). F2 **Hub hotspots** sliders and **`hubHotspots`** in **`debug-settings.json`** (plus localStorage) mirror the render/audio persistence pattern.
+- **Compositor**: **`HubViewport`** is mounted in the **capture** HUD for the hub (not an empty shell) so the final frame shows 2D art over the scene rect.
+
+### Rationale
+Bespoke starting locations need layout iteration without rebuilding art; normalized rects and shared debug persistence keep tuning workflow consistent with F2. Masking via the captured HUD matches the existing scene/UI composite contract.
+
+### Consequences
+- New modules: `web/src/ui/hub/HubViewport.tsx`, `TavernTradeModal.tsx`, `web/src/game/hubHotspotDefaults.ts`; `HudLayout` / `NavigationPanel` / `DitheredFrameRoot` / `reducer` / `types` / `debugSettingsPersistence` / `GameApp` / `DebugPanel` updated; `web/public/debug-settings.json` includes default **`hubHotspots`**.
+
+---
+
+## ADR-0223 — Tavern trade modal: capture overlay + cursor forwarding; tavern bartender art
+Date: 2026-04-09
+
+### Decision
+- **`TavernTradeModal`**: add **`variant="capture"`** for **`captureFullHudOverlay`** (same dual-DOM pattern as **`TitleScreen`**) so the stub trade panel appears in the dithered frame; interactive portaled tree keeps **`modalPortalHitRoot`** opacity-0 for hits.
+- Wrap portaled content in a full-screen **`hitShell`** that forwards **`cursor.onPointerMove`** / **`cancelDrag`** (same approach as **`DeathModal`**) so the custom cursor tracks the pointer while the modal sits above **`FixedStageViewport`**.
+- **Tavern hub**: render **`bartender_base` / `bartender_idle` / `bartender_blink`** inside the innkeeper rect, plus **`tavern_foreground.png`** under hotspot z-order so clicks still reach exit/innkeeper.
+
+### Rationale
+Without capture overlay, the trade UI was invisible in the composite; without pointer forwarding, **`HudLayout`** no longer received moves when the pointer was over the body portaled layer, so cursor position stalled.
+
+### Consequences
+- `TavernTradeModal.tsx`, `TavernTradeModal.module.css`, `HubViewport.tsx`, `HubViewport.module.css`, `DitheredFrameRoot.tsx`, `DESIGN.md` §5.1.
+
+---
+
+## ADR-0224 — Debug: hub innkeeper sprite scale (visual-only)
+Date: 2026-04-09
+
+### Decision
+Add **`hubInnkeeperSpriteScale`** to **`RenderTuning`** (default **1**, clamped **0.25–3**), exposed in F2 under the NPC/POI render sliders. The tavern **bartender** `<img>` uses **`transform: scale(...)`** with **`transformOrigin: bottom center`**. The **innkeeper hotspot** remains **`hubHotspots.tavern.innkeeper`** only.
+
+### Rationale
+Artists can tune sprite prominence independently of hit targets; coupling scale to the hotspot would force simultaneous retuning of trade click areas.
+
+### Consequences
+- `web/src/game/types.ts`, `tuningDefaults.ts`, `reducer.ts` (`clampRenderTuning`), `HubViewport.tsx`, `DebugPanel.tsx`; `DESIGN.md` F2 + §5.1.
+
+---
+
+## ADR-0225 — Combat gating: block POI, pickup, and crafting only
+Date: 2026-04-09
+
+### Decision
+- While **`state.combat`** is set, reject **POI** use (`poi/use` and **`drag/drop`** onto **`poi`**), **floor pickup** (`floor/pickup` and **`drag/drop`** onto **`floorItem`**), **starting** a craft (inventory merge with a recipe), and **completing** crafting (`maybeFinishCrafting` no-ops until combat clears).
+- **Do not** gate **equip**, **unequip**, portrait interactions, or non-recipe inventory moves.
+- **Cursor**: when dragging a valid recipe pair over an inventory slot during combat, show a **Blocked** affordance instead of **Craft** (matches reducer rejection).
+
+### Rationale
+Encounter mode should stop **world** interactions and **free crafting** while movement is frozen, without disabling **party/loadout** UX (portraits, equipment) that players rely on mid-fight.
+
+### Consequences
+- `web/src/game/reducer.ts`: **`rejectNotWhileInCombat`** helper; guards on **`poi/use`**, **`floor/pickup`**, recipe **`startCrafting`**, **`floorItem`**, **`poi`** drag targets.
+- `web/src/game/state/crafting.ts`: **`maybeFinishCrafting`** returns early when **`state.combat`**.
+- `web/src/ui/cursor/CursorLayer.tsx`: combat + craft hover label.
+- `DESIGN.md` §7.7: **World & crafting during combat**, **NPC hit vs party**, and this ADR.
+
+---
+
+## ADR-0226 — Portrait vital bars: proportional fill
+Date: 2026-04-09
+
+### Decision
+**Portrait** HP and Stamina bar widths reflect **current / max** using the same run-level caps as gameplay (**`hpMax` / `staminaMax`**). Hunger and Thirst bars use a **100** cap aligned with feed clamping.
+
+### Rationale
+Encounter combat and hazards change party HP, but fills were always **100%**, so players could not read fight outcomes from the HUD.
+
+### Consequences
+- `web/src/ui/portraits/PortraitPanel.tsx`: **`vitalFillRatio`**, import **`runProgression`**.
+- `DESIGN.md` §7.1: replace interim “always full” wording with proportional-fill rules.
+
+---
+
+## ADR-0227 — Activity log: combat to-hit detail
+Date: 2026-04-09
+
+### Decision
+Append **one activity-log line per swing** that states the **d20-based check** and outcome, mirroring inspect-style transparency:
+- **PC weapon (encounter):** `d20 + Perception + Agility` vs **`10 + defender NPC Speed`**; then damage / miss.
+- **NPC hit vs party:** `d20 + NPC Speed` vs **`10 + target PC Speed`**; then damage / miss / crit note.
+
+### Rationale
+Players learn the combat model from the log; numeric checks reduce opaque “Miss.” / hit lines.
+
+### Consequences
+- `web/src/game/state/combat.ts`: **`computePcAttackDamage`** returns optional **`pcAttackRoll`**; **`npcTakeTurn`** log strings extended.
+- `web/src/game/reducer.ts`: **`npc/attack`** uses **`pcAttackRoll`** for PC encounter logging.
+- `DESIGN.md` §7.7: **Activity log (combat swings)** note.
+
+---
+
+## ADR-0228 — NPC death loot: per-kind deterministic tables
+Date: 2026-04-09
+
+### Decision
+Replace the single global **`pickNpcLootDefId`** stub with **`pickNpcLootDefId(state, kind, npcId)`** driven by **`NpcKind` → weighted item def ids** in **`web/src/game/content/npcLoot.ts`**. Rolls stay **deterministic** from **`floor.seed`**, **`npcId`**, and a stable nonce (no **`nowMs`** in the drop pick).
+
+### Rationale
+**DESIGN.md** §7.5 calls for loot informed by tables; per-kind weights support faction flavor and balancing without touching reducer logic.
+
+### Consequences
+- New **`npcLoot.ts`**; **`reducer.ts`** death branch imports the helper.
+- `DESIGN.md` §7.5: note data-driven per-kind drops + determinism.
+
+---
+
+## ADR-0229 — Debug settings: `debugUi` slice, honest save, clear local
+Date: 2026-04-09
+
+### Decision
+- Extend **`web/public/debug-settings.json`** (and the matching **`localStorage`** blob) with a **`debugUi`** object that persists F2-only **UI** tuning: **`debugBgTrack`**, **`procgenDebugOverlay`**, **room telegraph** (**`roomTelegraphMode`** + **`roomTelegraphStrength`** on **`GameState.ui`**), and the **NPC dialog** / **death** **preview** flags. Room telegraph is driven from **`state.ui`** (no **`window.__elfensteinRoomTelegraph`** hook).
+- **`saveDebugSettingsToProject`** returns **`Promise<boolean>`**; **Save to project** shows success only when the dev-server write returns OK.
+- Add **Clear local overrides** (dev): removes **`elfenstein.debugSettings`** and reloads so the project file is not masked by storage.
+
+### Rationale
+Several F2 controls lived outside **`render` / `audio` / `hubHotspots`**, so **Save to project** silently dropped them; the success toast also fired when **`POST /__debug_settings/save`** failed. Persisting a small **`debugUi`** slice and fixing feedback aligns repo and production builds with designer intent; clearing storage addresses **local-after-project** load order.
+
+### Consequences
+- **`web/src/app/debugSettingsPersistence.ts`**, **`GameApp.tsx`**, **`DebugPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`types.ts`**, **`initialState.ts`**, **`reducer.ts`**; sample **`debugUi`** in **`web/public/debug-settings.json`**.
+- `DESIGN.md` §3: documents **`debugUi`**, load order, save failure feedback, and **Clear local overrides**.
+
+---
+
+## ADR-0230 — POI tiles block player occupancy
+Date: 2026-04-09
+
+### Decision
+**POI** grid cells are **not** valid **player** stand tiles: **`player/step`** and **`player/strafe`** reject moving onto any cell where **`floor.pois`** has a matching **`pos`**, using the same **bump** feedback as a blocked move with a distinct **activity-log** line. **Spawn** after **regen** / **descend** / **initial gen** uses **`pickPlayerSpawnCell`**: **`gen.entrance`** when it has no POI, else the first orthogonal **floor** cell without a POI (**N→E→S→W**). **`run/reloadCheckpoint`** nudges **`playerPos`** off a POI tile when restoring older checkpoints and re-snaps the camera.
+
+### Rationale
+Props read as **occupying** their cell; keeping the avatar off POI tiles avoids overlapping billboards with the player footprint and matches “object in the way” expectations.
+
+### Consequences
+- New **`web/src/game/state/playerFloorCell.ts`**: **`poiOccupiesCell`**, **`nearestFloorCellWithoutPoi`**, **`pickPlayerSpawnCell`**.
+- **`web/src/game/reducer.ts`**: **`attemptMoveTo`**, **`bump(message?)`**, **`floor/regen`**, **`run/reloadCheckpoint`**.
+- **`initialState.ts`**, **`floorProgression.ts`**: spawn uses **`pickPlayerSpawnCell`**.
+- **`DESIGN.md`**: §6.4 **POI cells**, §9 intro (no longer “non-blocking” for occupancy).
+
+---
+
+## ADR-0231 — Data-driven NPC combat stats + runtime `hpMax`
+Date: 2026-04-09
+
+### Decision
+Move encounter tuning (**Speed**, **base damage**, **damage type**, **armor**, **resists**, optional **statusOnHit**) and **`hpMax`** into **`web/src/game/content/npcCombat.ts`** as **`NPC_COMBAT_BY_KIND`**. **`npcCombatTuning`** in **`combat.ts`** reads that table. **`npcKindHpMax`** drives procgen **`hp`/`hpMax`** at spawn, debug **Hive** swarm spawn, and **`debug/spawnNpc`**. Runtime **`floor.npcs`** require **`hpMax`**; **`hydrateFloorNpcs`** / **`run/reloadCheckpoint`** back-fill from kind when missing.
+
+### Rationale
+Balancing and new **`NpcKind`** entries should not require editing the combat **`switch`**; **`hpMax`** must be canonical for **CombatIndicator** bars and stay consistent across spawns.
+
+### Consequences
+- New **`npcCombat.ts`**; **`combat.ts`**, **`population.ts`**, **`npcHydrate.ts`**, **`reducer.ts`**, **`types.ts`**, **`procgen/types.ts` (`GenNpc.hpMax?`)**; **`DESIGN.md`** §7.7.
+
+---
+
+## ADR-0232 — Fireshield: encounter consumable + `pcFireshield` turns
+Date: 2026-04-09
+
+### Decision
+- Extend **`ItemDef`** with optional **`combatShield`** (Fire resist %, stamina cost, **`shieldTurns`**, **`consumesOnUse`**). **Fireshield** uses it.
+- Extend **`CombatState`** with **`pcFireshield`**: per-PC **`fireResistBonusPct`** and **`turnsRemaining`**. Each time that PC’s initiative comes up, **`advanceTurnIndex`** decrements; at **0** the entry is removed.
+- **`npcTakeTurn`** adds shield bonus into the resist term **only** for **Fire** damage (stacks with **Defend**’s global resist bump).
+- During an encounter, drag **Fireshield** onto the **acting** PC’s portrait **hands**: pay stamina, log, consume item, **`combat/advanceTurn`**. Out of combat, normal equip rules still apply.
+
+### Rationale
+Matches the crafted **Ash+Sulfur** fantasy with minimal UI: reuses portrait **hands** and turn-gating; turn-based expiry aligns with **Defend** mental model.
+
+### Consequences
+- **`contentDb.ts`**, **`items.ts`**, **`types.ts`**, **`combat.ts`**, **`reducer.ts`**; **`DESIGN.md`** §7.3 / §7.7.
+
+---
+
+## ADR-0233 — CombatIndicator enemy HP bars
+Date: 2026-04-09
+
+### Decision
+Replace the single comma-separated enemy name line with a **per-roster** list: name + thin **HP bar** (**current / `hpMax`**), **`aria-valuenow`/`max`** on the track.
+
+### Rationale
+Diegetic readability without an encounter modal; **`hpMax`** is now authoritative on each NPC (see **ADR-0231**).
+
+### Consequences
+- **`CombatIndicator.tsx`**, **`CombatIndicator.module.css`**; **`DESIGN.md`** §7.7.
+
+---
+
+## ADR-0234 — Weapon stamina on miss + NPC soft targeting
+Date: 2026-04-09
+
+### Decision
+- In **`npc/attack`**, after resolving the encounter to-hit roll, apply **`weapon.staminaCost`** **before** branching on miss so **missed swings still cost stamina**.
+- **`npcTakeTurn`** target selection: minimize **effective softness** = **`hp` + 8** if the PC has **Defend** active, plus a tiny **deterministic** tie jitter from **`tieBreak01`**.
+
+### Rationale
+Swings should tire the attacker even on a miss; NPCs should prefer fragile targets but slightly avoid **Defending** PCs without abandoning low-HP focus.
+
+### Consequences
+- **`reducer.ts`**, **`combat.ts`**; **`DESIGN.md`** §7.7 (**PC damage resolution**, **NPC actions**).
+
+---
+
+## ADR-0235 — Procgen PoI placement avoids progression chokepoints
+Date: 2026-04-09
+
+### Decision
+- Add **`exitNeighborReachableWithPoiBlocking`** in **`web/src/procgen/validate.ts`**: BFS from **`nearestFloorCellAvoidingBlocked(entrance, …)`** (same N→E→S→W nudge as gameplay) over **`isWalkable`** tiles, skipping PoI keys and always skipping the **exit** cell; require reachability of **≥1** orthogonal **exit** neighbor.
+- Extract **`nearestFloorCellAvoidingBlocked`** / **`cellKey`** in **`web/src/game/state/playerFloorCell.ts`**; **`nearestFloorCellWithoutPoi`** delegates to it.
+- **`placePois`** in **`web/src/procgen/population.ts`** gates **Bed**, **Chest**, **Barrel**, **Crate**, optional **Shrine**, optional **CrackedWall** with that check; fallbacks may skip progression only as a last resort before **`validateGen`** rejects the layout.
+- **`validateGen`** in **`web/src/procgen/locks.ts`** enforces the same invariant for **all** floors (including **no-lock** attempts), using final **`gen.pois`** positions.
+
+### Rationale
+PoI tiles **block occupancy**; a single PoI on a **1-wide articulation** between spawn and the stairs soft-locks the floor. Preferring “off one shortest path” does not detect all such cut vertices.
+
+### Consequences
+- Fewer container PoIs on unavoidable choke tiles; optional PoIs may be omitted slightly more often. **`DESIGN.md`** §8.2 / §8.3 / §9 updated.
+>>>>>>> origin/main

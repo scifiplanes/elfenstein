@@ -2,6 +2,30 @@ import type { ContentDB } from '../content/contentDb'
 import type { CharacterId, EquipmentSlot, GameState, ItemId } from '../types'
 import { moveItemToInventorySlot, removeItemFromInventory } from './inventory'
 
+function isUsableWeaponItem(state: GameState, itemId: ItemId, content: ContentDB): boolean {
+  const item = state.party.items[itemId]
+  if (!item) return false
+  const def = content.item(item.defId)
+  return def.tags.includes('weapon') && Boolean(def.weapon)
+}
+
+/** Weapon for click-attack / UI: equipped hands (left, then right; two-hand counts once), else first weapon in inventory slots. */
+export function resolveWeaponItemIdForPcTurn(state: GameState, characterId: CharacterId, content: ContentDB): ItemId | undefined {
+  const c = state.party.chars.find((x) => x.id === characterId)
+  if (!c) return undefined
+  const L = c.equipment.handLeft
+  const R = c.equipment.handRight
+  const handOrder: ItemId[] = L && R && L === R ? [L] : [L, R].filter(Boolean) as ItemId[]
+  for (const id of handOrder) {
+    if (isUsableWeaponItem(state, id, content)) return id
+  }
+  for (const slot of state.party.inventory.slots) {
+    if (!slot) continue
+    if (isUsableWeaponItem(state, slot, content)) return slot
+  }
+  return undefined
+}
+
 function stowEquippedItemToInventory(state: GameState, itemId: ItemId): GameState {
   const freeIdx = state.party.inventory.slots.findIndex((s) => s == null)
   if (freeIdx < 0) return state

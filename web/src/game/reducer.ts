@@ -1,5 +1,7 @@
 import { ContentDB } from './content/contentDb'
+import type { DebugUiPersist } from '../app/debugSettingsPersistence'
 import type {
+  CharacterId,
   DragPayload,
   DragTarget,
   EquipmentSlot,
@@ -10,7 +12,9 @@ import type {
   PoiKind,
   ProcgenDebugOverlayMode,
   RenderTuning,
+  RoomTelegraphMode,
 } from './types'
+import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
@@ -22,6 +26,7 @@ import {
   equipHatFromPortrait,
   equipItem,
   moveEquippedItemToInventorySlot,
+  resolveWeaponItemIdForPcTurn,
   unequipItem,
 } from './state/equipment'
 import { generateDungeon } from '../procgen/generateDungeon'
@@ -29,12 +34,32 @@ import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
+import { npcKindHpMax } from './content/npcCombat'
+import { hydrateFloorNpcs, npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
+import { pickNpcLootDefId } from './content/npcLoot'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
 import { descendToNextFloor } from './state/floorProgression'
+import { nearestFloorCellWithoutPoi, pickPlayerSpawnCell, poiOccupiesCell } from './state/playerFloorCell'
 import { applyXp } from './state/runProgression'
+import {
+  advanceTurnIndex,
+  applyCombatFireshield,
+  applyWeaponStatusOnHitFromPc,
+  attemptFlee,
+  collectEncounterNpcIds,
+  computePcAttackDamage,
+  currentTurn,
+  defend,
+  endCombat,
+  enterCombat,
+  npcCombatTuning,
+  npcTakeTurn,
+  pruneCombatTurnQueue,
+} from './state/combat'
+import { roomForCell } from './state/roomGeometry'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -55,6 +80,33 @@ function nearestEquivalentAngle(from: number, to: number) {
   // even if `from` has drifted outside [0, 2π) due to earlier interpolation.
   const k = Math.round((from - to) / TAU)
   return to + k * TAU
+}
+
+function rejectNotWhileInCombat(state: GameState): GameState {
+  const withLog = pushActivityLog(state, 'Not while in combat.')
+  const q = withLog.ui.sfxQueue ?? []
+  return {
+    ...withLog,
+    ui: { ...withLog.ui, sfxQueue: q.concat([{ id: `s_${withLog.nowMs}_${q.length}`, kind: 'reject' }]) },
+  }
+}
+
+function mergePersistedDebugUi(state: GameState, patch: DebugUiPersist | undefined): GameState {
+  if (!patch) return state
+  const ui = { ...state.ui }
+  if ('debugBgTrack' in patch) ui.debugBgTrack = patch.debugBgTrack ?? undefined
+  if ('procgenDebugOverlay' in patch) ui.procgenDebugOverlay = patch.procgenDebugOverlay ?? undefined
+  if ('roomTelegraphMode' in patch && patch.roomTelegraphMode !== undefined) ui.roomTelegraphMode = patch.roomTelegraphMode
+  if ('roomTelegraphStrength' in patch && patch.roomTelegraphStrength !== undefined) {
+    ui.roomTelegraphStrength = Math.max(0, Math.min(1, patch.roomTelegraphStrength))
+  }
+  if ('debugShowNpcDialogPopup' in patch && patch.debugShowNpcDialogPopup !== undefined) {
+    ui.debugShowNpcDialogPopup = patch.debugShowNpcDialogPopup
+  }
+  if ('debugShowDeathPopup' in patch && patch.debugShowDeathPopup !== undefined) {
+    ui.debugShowDeathPopup = patch.debugShowDeathPopup
+  }
+  return { ...state, ui }
 }
 
 export type Action =
@@ -97,16 +149,38 @@ export type Action =
   | { type: 'floor/debugToggleFloorProperty'; property: FloorProperty }
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
+  | { type: 'ui/triggerDebugBgSfx'; index: number }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
+  | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
+  | { type: 'debug/loadPersistedUi'; patch?: DebugUiPersist }
+  | { type: 'debug/setRoomTelegraphMode'; mode: RoomTelegraphMode }
+  | { type: 'debug/setRoomTelegraphStrength'; strength: number }
+  | {
+      type: 'hubHotspot/setAxis'
+      spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.exit'
+      key: 'x' | 'y' | 'w' | 'h'
+      value: number
+    }
+  | { type: 'hub/goTavern' }
+  | { type: 'hub/goVillage' }
+  | { type: 'hub/enterDungeon' }
+  | { type: 'hub/openTavernTrade' }
+  | { type: 'hub/closeTavernTrade' }
   /** F2: preview the NPC dialog modal (first NPC on the floor) without affecting real dialog state. */
   | { type: 'debug/setShowNpcDialogPopupPreview'; show: boolean }
   /** F2: preview the death modal without killing the party. */
   | { type: 'debug/setShowDeathPopupPreview'; show: boolean }
   | { type: 'floor/toggleChest'; poiId: string }
-  | { type: 'npc/attack'; npcId: string; itemId: ItemId }
+  | { type: 'npc/attack'; npcId: string; itemId: ItemId; actorId?: string }
   | { type: 'npc/give'; npcId: string; itemId: ItemId }
   | { type: 'npc/pet'; npcId: string }
+  | { type: 'combat/enter'; npcId: string }
+  | { type: 'combat/advanceTurn' }
+  | { type: 'combat/end' }
+  | { type: 'combat/fleeAttempt' }
+  | { type: 'combat/defend' }
+  | { type: 'combat/clickAttack'; npcId: string }
   | { type: 'run/new' }
   | { type: 'run/reloadCheckpoint' }
 
@@ -125,11 +199,49 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
+      case 'hubHotspot/setAxis':
+        break
+      default:
+        return state
+    }
+  }
+
+  // Hub (2D village/tavern): no dungeon gameplay until Cave.
+  if (state.ui.screen === 'hub' && !state.ui.death) {
+    switch (action.type) {
+      case 'run/new':
+      case 'run/reloadCheckpoint':
+      case 'ui/goTitle':
+      case 'time/tick':
+      case 'ui/toggleDebug':
+      case 'ui/setProcgenDebugOverlay':
+      case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
+      case 'render/set':
+      case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
+      case 'debug/setShowNpcDialogPopupPreview':
+      case 'debug/setShowDeathPopupPreview':
+      case 'audio/set':
+      case 'hubHotspot/setAxis':
+      case 'hub/goTavern':
+      case 'hub/goVillage':
+      case 'hub/enterDungeon':
+      case 'hub/openTavernTrade':
+      case 'hub/closeTavernTrade':
         break
       default:
         return state
@@ -146,11 +258,17 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
+      case 'hubHotspot/setAxis':
         break
       default:
         return state
@@ -164,6 +282,8 @@ export function reduce(state: GameState, action: Action): GameState {
         ui: {
           ...state.ui,
           screen: 'title',
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
           paperdollFor: undefined,
           npcDialogFor: undefined,
           debugShowNpcDialogPopup: false,
@@ -178,9 +298,12 @@ export function reduce(state: GameState, action: Action): GameState {
         ...fresh,
         render: state.render,
         audio: state.audio,
+        hubHotspots: state.hubHotspots,
         ui: {
           ...fresh.ui,
-          screen: 'game',
+          screen: 'hub',
+          hubScene: 'village',
+          tavernTradeOpen: undefined,
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
@@ -192,15 +315,26 @@ export function reduce(state: GameState, action: Action): GameState {
       const cp = state.run.checkpoint
       if (!cp) return reduce(pushActivityLog(state, 'No checkpoint.'), { type: 'ui/sfx', kind: 'reject' })
       const snap = cp.snapshot
+      const f0 = snap.floor
+      const nudgedPos = nearestFloorCellWithoutPoi(f0.tiles, f0.w, f0.h, f0.playerPos, f0.pois)
+      const floorBody =
+        nudgedPos.x === f0.playerPos.x && nudgedPos.y === f0.playerPos.y
+          ? f0
+          : { ...f0, playerPos: nudgedPos }
+      const floor = { ...floorBody, npcs: hydrateFloorNpcs(floorBody.npcs as GameState['floor']['npcs']) }
+      const view =
+        floorBody === f0
+          ? snap.view
+          : snapViewToGrid(floor.w, floor.h, state.render.camEyeHeight, nudgedPos, floor.playerDir)
       const next: GameState = {
         ...state,
         // Preserve tuning across restore (same as `run/new`).
         render: state.render,
         audio: state.audio,
         run: { ...(snap.run as any), checkpoint: cp },
-        floor: snap.floor,
+        floor,
         party: snap.party,
-        view: snap.view,
+        view,
         ui: {
           ...state.ui,
           screen: snap.ui.screen,
@@ -222,9 +356,71 @@ export function reduce(state: GameState, action: Action): GameState {
           sfxQueue: [],
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
+    }
+    case 'hub/goTavern': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'village') return state
+      return {
+        ...state,
+        ui: { ...state.ui, hubScene: 'tavern', tavernTradeOpen: undefined },
+      }
+    }
+    case 'hub/goVillage': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
+      return {
+        ...state,
+        ui: { ...state.ui, hubScene: 'village', tavernTradeOpen: undefined },
+      }
+    }
+    case 'hub/enterDungeon': {
+      if (state.ui.screen !== 'hub') return state
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          screen: 'game',
+          hubScene: undefined,
+          tavernTradeOpen: undefined,
+        },
+      }
+    }
+    case 'hub/openTavernTrade': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
+      return { ...state, ui: { ...state.ui, tavernTradeOpen: true } }
+    }
+    case 'hub/closeTavernTrade': {
+      return { ...state, ui: { ...state.ui, tavernTradeOpen: false } }
+    }
+    case 'debug/loadHubHotspots': {
+      return { ...state, hubHotspots: mergeHubHotspotConfig(state.hubHotspots, action.patch) }
+    }
+    case 'debug/loadPersistedUi':
+      return mergePersistedDebugUi(state, action.patch)
+    case 'debug/setRoomTelegraphMode':
+      return { ...state, ui: { ...state.ui, roomTelegraphMode: action.mode } }
+    case 'debug/setRoomTelegraphStrength':
+      return {
+        ...state,
+        ui: { ...state.ui, roomTelegraphStrength: Math.max(0, Math.min(1, action.strength)) },
+      }
+    case 'hubHotspot/setAxis': {
+      const { spot, key, value } = action
+      const h = state.hubHotspots
+      let next: typeof h
+      if (spot === 'village.tavern') {
+        next = { ...h, village: { ...h.village, tavern: { ...h.village.tavern, [key]: value } } }
+      } else if (spot === 'village.cave') {
+        next = { ...h, village: { ...h.village, cave: { ...h.village.cave, [key]: value } } }
+      } else if (spot === 'tavern.innkeeper') {
+        next = { ...h, tavern: { ...h.tavern, innkeeper: { ...h.tavern.innkeeper, [key]: value } } }
+      } else {
+        next = { ...h, tavern: { ...h.tavern, exit: { ...h.tavern.exit, [key]: value } } }
+      }
+      return { ...state, hubHotspots: next }
     }
     case 'ui/toggleDebug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
@@ -232,6 +428,14 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/setDebugBgTrack':
       return { ...state, ui: { ...state.ui, debugBgTrack: action.track } }
+    case 'ui/triggerDebugBgSfx':
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          debugBgSfxTrigger: { index: action.index, seq: (state.ui.debugBgSfxTrigger?.seq ?? 0) + 1 },
+        },
+      }
     case 'ui/openPaperdoll':
       // Paperdoll popup disabled (global).
       return state
@@ -393,14 +597,17 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'debug/spawnNpc': {
       const dv = dirVec(state.floor.playerDir)
       const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
+      const hpMax = npcKindHpMax(action.kind)
       const npc = {
         id: `debug_npc_${state.nowMs}`,
         kind: action.kind,
         name: action.kind,
         pos,
         status: 'neutral' as const,
-        hp: 10,
+        hp: hpMax,
+        hpMax,
         language: 'DeepGnome' as const,
+        statuses: [] as GameState['floor']['npcs'][number]['statuses'],
       }
       return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
@@ -489,7 +696,7 @@ export function reduce(state: GameState, action: Action): GameState {
         floorProperties: state.floor.floorProperties,
         difficulty: normalizeFloorGenDifficulty(state.floor.difficulty),
       })
-      const playerPos = { ...gen.entrance }
+      const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
       const playerDir = 0 as const
       const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(state.render, gen.floorItems, nextSeed)
       const next: GameState = {
@@ -502,7 +709,7 @@ export function reduce(state: GameState, action: Action): GameState {
           gen,
           itemsOnFloor: spawnedOnFloor,
           floorGeomRevision: state.floor.floorGeomRevision + 1,
-          npcs: gen.npcs,
+          npcs: npcsWithDefaultStatuses(gen.npcs),
           playerPos,
           playerDir,
         },
@@ -543,6 +750,10 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'player/step': {
       const s0 = dismissNpcDialogOnMovement(state)
       if (s0.view.anim) return s0
+      if (s0.combat) {
+        const withToast = reduce(s0, { type: 'ui/toast', text: 'You cannot move during combat.', ms: 900 })
+        return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+      }
       const { playerDir, playerPos } = s0.floor
       const step = action.forward
       const v = dirVec(playerDir)
@@ -553,6 +764,10 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'player/strafe': {
       const s0 = dismissNpcDialogOnMovement(state)
       if (s0.view.anim) return s0
+      if (s0.combat) {
+        const withToast = reduce(s0, { type: 'ui/toast', text: 'You cannot move during combat.', ms: 900 })
+        return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
+      }
       const { playerDir, playerPos } = s0.floor
       const v = strafeVec(playerDir, action.side)
       const nx = playerPos.x + v.x
@@ -560,9 +775,11 @@ export function reduce(state: GameState, action: Action): GameState {
       return attemptMoveTo(s0, nx, ny)
     }
     case 'poi/use': {
+      if (state.combat) return rejectNotWhileInCombat(state)
       return applyPoiUse(state, CONTENT, action.poiId)
     }
     case 'floor/pickup':
+      if (state.combat) return rejectNotWhileInCombat(state)
       return pickupFloorItem(state, action.itemId)
     case 'drag/drop': {
       const stateAtAction = action.nowMs != null ? { ...state, nowMs: action.nowMs } : state
@@ -585,6 +802,7 @@ export function reduce(state: GameState, action: Action): GameState {
           if (srcItem && dstItem) {
             const recipe = findRecipe(srcItem.defId, dstItem.defId)
             if (recipe) {
+              if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
               const withStart = startCrafting(stateAtAction, srcItem.id, dstItem.id, recipe, { dstSlotIndex: dst })
               return reduce(reduce(withStart, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.2, ms: 90 })
             }
@@ -617,6 +835,9 @@ export function reduce(state: GameState, action: Action): GameState {
         }
 
         const item = st.party.items[itemId]
+        if (item?.defId === 'Hive' && st.combat) {
+          return reduce(pushActivityLog(st, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+        }
         if (item?.defId === 'Hive') {
           const seed = hashStr(`${st.floor.seed}:hive:${itemId}:${st.nowMs >> 9}`)
           const queenRoll = (seed % 100) + 1
@@ -639,7 +860,18 @@ export function reduce(state: GameState, action: Action): GameState {
           // Otherwise: spawn a Swarm NPC at the drop cell.
           const swarmId = `npc_swarm_${st.floor.seed}_${(seed >>> 0).toString(16)}`
           const status: 'hostile' | 'neutral' = partyHasItemDef(st, 'SwarmQueen') ? 'neutral' : 'hostile'
-          const swarm = { id: swarmId, kind: 'Swarm' as const, name: 'Swarm', pos, status, hp: 9, language: 'Zalgo' as const }
+          const smax = npcKindHpMax('Swarm')
+          const swarm = {
+            id: swarmId,
+            kind: 'Swarm' as const,
+            name: 'Swarm',
+            pos,
+            status,
+            hp: smax,
+            hpMax: smax,
+            language: 'Zalgo' as const,
+            statuses: [] as GameState['floor']['npcs'][number]['statuses'],
+          }
 
           let next = breaks ? consumeItem(st, itemId) : dropItemToFloor(st, itemId, pos)
           next = {
@@ -656,6 +888,7 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'floorItem') {
         // When dragging onto a floor item, interpret as pickup.
+        if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
         return pickupFloorItem(stateAtAction, target.itemId)
       }
 
@@ -671,6 +904,31 @@ export function reduce(state: GameState, action: Action): GameState {
           return next
         }
         if (target.target === 'hands') {
+          const itemHands = stateAtAction.party.items[itemId]
+          const shieldDef = itemHands ? CONTENT.item(itemHands.defId).combatShield : undefined
+          if (shieldDef && stateAtAction.combat) {
+            const turn = currentTurn(stateAtAction)
+            if (!turn || turn.kind !== 'pc' || turn.id !== target.characterId) {
+              return reduce(pushActivityLog(stateAtAction, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+            }
+            const pc = stateAtAction.party.chars.find((c) => c.id === target.characterId)
+            if (!pc || pc.stamina < shieldDef.staminaCost) {
+              return reduce(pushActivityLog(stateAtAction, 'Too exhausted.'), { type: 'ui/sfx', kind: 'reject' })
+            }
+            const idx = stateAtAction.party.chars.findIndex((c) => c.id === target.characterId)
+            const chars = stateAtAction.party.chars.slice()
+            chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - shieldDef.staminaCost) }
+            let next: GameState = { ...stateAtAction, party: { ...stateAtAction.party, chars } }
+            next = applyCombatFireshield(next, target.characterId as CharacterId, {
+              fireResistBonusPct: shieldDef.fireResistBonusPct,
+              shieldTurns: shieldDef.shieldTurns,
+            })
+            const name = next.party.chars.find((c) => c.id === target.characterId)?.name ?? 'PC'
+            next = pushActivityLog(next, `${name} raises a fire ward (${shieldDef.shieldTurns} turns).`)
+            next = consumeItem(next, itemId)
+            next = reduce(next, { type: 'ui/sfx', kind: 'ui' })
+            return reduce(next, { type: 'combat/advanceTurn' })
+          }
           const before = stateAtAction
           const next = equipHandsFromPortrait(before, CONTENT, target.characterId, itemId)
           if (next === before) {
@@ -682,6 +940,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       if (target.kind === 'poi') {
+        if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
         return applyItemOnPoi(stateAtAction, CONTENT, itemId, target.poiId)
       }
 
@@ -697,6 +956,9 @@ export function reduce(state: GameState, action: Action): GameState {
 
         // Special-case: Swarm Basket captures a Swarm.
         if (item.defId === 'SwarmBasket' && npc.kind === 'Swarm') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
           let next = consumeItem(stateAtAction, itemId)
           next = {
             ...next,
@@ -711,6 +973,9 @@ export function reduce(state: GameState, action: Action): GameState {
         // If the party holds a Swarm Queen, treat Swarms as non-hostile to interaction attempts.
         if (npc.kind === 'Swarm' && partyHasItemDef(stateAtAction, 'SwarmQueen')) {
           if (npc.status !== 'neutral' && npc.status !== 'friendly') {
+            if (stateAtAction.combat) {
+              return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+            }
             const npcs = stateAtAction.floor.npcs.slice()
             npcs[npcIdx] = { ...npc, status: 'neutral' }
             return pushActivityLog(
@@ -722,6 +987,9 @@ export function reduce(state: GameState, action: Action): GameState {
 
         // Special-case: Captured Swarm released onto an enemy for heavy damage.
         if (item.defId === 'CapturedSwarm' && npc.kind !== 'Swarm') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
           const seed = hashStr(`${stateAtAction.floor.seed}:releaseSwarm:${npc.id}:${itemId}`)
           const dmg = 18 + ((seed >>> 8) % 8) // 18..25
           const hp = Math.max(0, npc.hp - dmg)
@@ -743,17 +1011,83 @@ export function reduce(state: GameState, action: Action): GameState {
         }
 
         const isWeapon = CONTENT.item(item.defId).tags.includes('weapon')
-        return isWeapon
-          ? reduce(stateAtAction, { type: 'npc/attack', npcId: target.npcId, itemId })
-          : reduce(stateAtAction, { type: 'npc/give', npcId: target.npcId, itemId })
+        if (isWeapon) {
+          const turn = currentTurn(stateAtAction)
+          const actorId = turn?.kind === 'pc' ? turn.id : undefined
+          const actorOk =
+            !stateAtAction.combat ? true
+            : turn?.kind !== 'pc' ? false
+            : payload.source.kind === 'equipmentSlot' ? payload.source.characterId === actorId
+            : true
+          if (stateAtAction.combat && !actorOk) {
+            return reduce(pushActivityLog(stateAtAction, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          return reduce(stateAtAction, { type: 'npc/attack', npcId: target.npcId, itemId, actorId })
+        }
+        return reduce(stateAtAction, { type: 'npc/give', npcId: target.npcId, itemId })
       }
 
       return stateAtAction
+    }
+    case 'combat/enter': {
+      if (state.combat) return state
+      const npcIds = collectEncounterNpcIds(state, action.npcId)
+      const entered = enterCombat(state, npcIds)
+      return autoResolveNpcTurns(entered)
+    }
+    case 'combat/advanceTurn': {
+      const advanced = advanceTurnIndex(state)
+      const progressed = autoResolveNpcTurns(advanced)
+      return maybeEndCombat(progressed)
+    }
+    case 'combat/end': {
+      return endCombat(state)
+    }
+    case 'combat/fleeAttempt': {
+      if (!state.combat) return state
+      const { state: afterFlee, advanceTurn } = attemptFlee(state)
+      let next = ensureDeath(afterFlee)
+      if (advanceTurn && next.combat) {
+        next = reduce(next, { type: 'combat/advanceTurn' })
+      }
+      return next
+    }
+    case 'combat/defend': {
+      if (!state.combat) return state
+      const turn = currentTurn(state)
+      if (!turn || turn.kind !== 'pc') {
+        return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const withDef = defend(state, turn.id)
+      return reduce(withDef, { type: 'combat/advanceTurn' })
+    }
+    case 'combat/clickAttack': {
+      if (!state.combat) return state
+      const turn = currentTurn(state)
+      if (!turn || turn.kind !== 'pc') {
+        return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const npc = state.floor.npcs.find((n) => n.id === action.npcId)
+      if (!npc || npc.hp <= 0) return state
+      if (!state.combat.participants.npcs.includes(action.npcId)) {
+        return reduce(pushActivityLog(state, 'That foe is not in this fight.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const itemId = resolveWeaponItemIdForPcTurn(state, turn.id, CONTENT)
+      if (!itemId) {
+        return reduce(reduce(state, { type: 'ui/toast', text: 'No weapon available.', ms: 2000 }), { type: 'ui/sfx', kind: 'reject' })
+      }
+      return reduce(state, { type: 'npc/attack', npcId: action.npcId, itemId, actorId: turn.id })
     }
     case 'npc/attack': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
       const item = state.party.items[action.itemId]
       if (npcIdx < 0 || !item) return state
+      if (state.combat) {
+        const turn = currentTurn(state)
+        if (!turn || turn.kind !== 'pc' || (action.actorId != null && turn.id !== action.actorId)) {
+          return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+      }
       const isWeapon = CONTENT.item(item.defId).tags.includes('weapon')
       if (!isWeapon) {
         return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
@@ -766,17 +1100,62 @@ export function reduce(state: GameState, action: Action): GameState {
         return reduce(pushActivityLog(state, 'The swarm refuses to attack you.'), { type: 'ui/sfx', kind: 'reject' })
       }
 
-      const dmg =
-        item.defId === 'Firebolt' ? 10
-        : item.defId === 'Spear' ? 8
-        : item.defId === 'Club' ? 7
-        : item.defId === 'Bow' ? 6
-        : item.defId === 'Sling' ? 5
-        : item.defId === 'Bolas' ? 5
-        : item.defId === 'Stone' ? 5
-        : 4
-      const dmgBonus = Math.max(0, Number(state.run?.bonuses.damageBonusPct ?? 0))
-      const finalDmg = Math.max(1, Math.round(dmg * (1 + dmgBonus)))
+      const def = CONTENT.item(item.defId)
+      const weapon = def.weapon
+      if (!weapon) {
+        return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      if (state.combat) {
+        const actor = state.party.chars.find((c) => c.id === (action.actorId as any))
+        const cost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        if (actor && actor.stamina < cost) {
+          const withMsg = pushActivityLog(state, 'Too exhausted to attack.')
+          const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+          return reduce(withSfx, { type: 'combat/advanceTurn' })
+        }
+      }
+      const actorId = state.combat ? ((currentTurn(state)?.kind === 'pc' ? currentTurn(state)!.id : action.actorId) as any) : (action.actorId as any)
+      const out =
+        actorId != null
+          ? computePcAttackDamage({
+              state,
+              attackerId: actorId as CharacterId,
+              defenderNpcId: npc.id,
+              weaponBaseDamage: weapon.baseDamage,
+              weaponDamageType: weapon.damageType,
+              damageStat: weapon.damageStat,
+              resolveAttackRoll: Boolean(state.combat),
+            })
+          : { hit: true, crit: false, finalDmg: weapon.baseDamage }
+      if (state.combat) {
+        const atkCost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        const idx = state.party.chars.findIndex((c) => c.id === actorId)
+        if (idx >= 0 && atkCost > 0) {
+          const chars = state.party.chars.slice()
+          chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - atkCost) }
+          state = { ...state, party: { ...state.party, chars } }
+        }
+      }
+      if (state.combat && !out.hit) {
+        const attacker = actorId != null ? state.party.chars.find((c) => c.id === actorId) : undefined
+        const r = out.pcAttackRoll
+        let withMsg = state
+        if (attacker && r) {
+          const p = attacker.stats.perception
+          const ag = attacker.stats.agility
+          const spd = npcCombatTuning(npc.kind).speed
+          const acStr = `10+Spd ${spd}=${r.defense}`
+          withMsg = pushActivityLog(
+            state,
+            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — miss.`,
+          )
+        } else {
+          withMsg = pushActivityLog(state, 'Miss.')
+        }
+        const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+        return reduce(withSfx, { type: 'combat/advanceTurn' })
+      }
+      const finalDmg = out.finalDmg
       const hp = Math.max(0, npc.hp - finalDmg)
       npcs[npcIdx] = { ...npc, hp }
       const died = hp === 0
@@ -786,11 +1165,11 @@ export function reduce(state: GameState, action: Action): GameState {
       }
 
       // Spell-like items are consumed on use.
-      if (item.defId === 'Firebolt') nextState = consumeItem(nextState, action.itemId)
+      if (weapon.consumesOnUse) nextState = consumeItem(nextState, action.itemId)
 
       // On death, sometimes drop loot to the floor.
       if (died) {
-        const lootDef = pickNpcLootDefId(nextState, npc.id)
+        const lootDef = pickNpcLootDefId(nextState, npc.kind, npc.id)
         if (lootDef) {
           const lootId = `i_${lootDef}_${nextState.floor.seed}_${npc.id}`
           const jitter = makeDropJitter({
@@ -810,24 +1189,54 @@ export function reduce(state: GameState, action: Action): GameState {
           }
         }
       }
-      const withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+      if (!died && actorId && weapon.statusOnHit?.length) {
+        nextState = applyWeaponStatusOnHitFromPc(nextState, npc.id, weapon, actorId as CharacterId)
+      }
+      let withMsg: GameState
+      if (state.combat && actorId != null && out.pcAttackRoll) {
+        const attacker = nextState.party.chars.find((c) => c.id === actorId)
+        const r = out.pcAttackRoll
+        if (attacker) {
+          const p = attacker.stats.perception
+          const ag = attacker.stats.agility
+          const spd = npcCombatTuning(npc.kind).speed
+          const acStr = `10+Spd ${spd}=${r.defense}`
+          const line =
+            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — hit${out.crit ? ' (nat 20)' : ''}, ${finalDmg} dmg.` +
+            (died ? ` ${npc.name} dies.` : '')
+          withMsg = pushActivityLog(nextState, line)
+        } else {
+          withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+        }
+      } else {
+        withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
+      }
       const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
-      return reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
+      const withShake = reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
+      return state.combat ? reduce(withShake, { type: 'combat/advanceTurn' }) : withShake
     }
     case 'npc/give': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
       const item = state.party.items[action.itemId]
       if (npcIdx < 0 || !item) return state
+      if (state.combat) {
+        const turn = currentTurn(state)
+        if (!turn || turn.kind !== 'pc') {
+          return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+      }
       const npc = state.floor.npcs[npcIdx]
       const quest = npc.quest
       if (!quest) {
-        return reduce(pushActivityLog(state, `${npc.name} ignores it.`), { type: 'ui/sfx', kind: 'reject' })
+        const res = reduce(pushActivityLog(state, `${npc.name} ignores it.`), { type: 'ui/sfx', kind: 'reject' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
       if (quest.hated.includes(item.defId)) {
         const npcs = state.floor.npcs.slice()
         npcs[npcIdx] = { ...npc, status: 'hostile' }
         const withNpc = { ...state, floor: { ...state.floor, npcs, floorGeomRevision: state.floor.floorGeomRevision + 1 } }
-        return reduce(pushActivityLog(withNpc, `${npc.name} becomes hostile!`), { type: 'ui/sfx', kind: 'reject' })
+        const res = reduce(pushActivityLog(withNpc, `${npc.name} becomes hostile!`), { type: 'ui/sfx', kind: 'reject' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
       if (quest.wants === item.defId) {
         // Consume item and improve status.
@@ -836,9 +1245,11 @@ export function reduce(state: GameState, action: Action): GameState {
         npcs[npcIdx] = { ...npc, status: nextStatus }
         const withNpc = { ...state, floor: { ...state.floor, npcs, floorGeomRevision: state.floor.floorGeomRevision + 1 } }
         const withConsume = consumeItem(withNpc, action.itemId)
-        return reduce(pushActivityLog(withConsume, `${npc.name} accepts it.`), { type: 'ui/sfx', kind: 'pickup' })
+        const res = reduce(pushActivityLog(withConsume, `${npc.name} accepts it.`), { type: 'ui/sfx', kind: 'pickup' })
+        return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
       }
-      return reduce(pushActivityLog(state, `${npc.name} rejects it.`), { type: 'ui/sfx', kind: 'reject' })
+      const res = reduce(pushActivityLog(state, `${npc.name} rejects it.`), { type: 'ui/sfx', kind: 'reject' })
+      return state.combat ? reduce(res, { type: 'combat/advanceTurn' }) : res
     }
     case 'npc/pet': {
       const npc = state.floor.npcs.find((n) => n.id === action.npcId)
@@ -850,15 +1261,6 @@ export function reduce(state: GameState, action: Action): GameState {
     default:
       return state
   }
-}
-
-function pickNpcLootDefId(state: GameState, npcId: string): null | string {
-  // MVP deterministic “sometimes” drop.
-  const seed = (Math.floor(state.nowMs) ^ hashStr(npcId) ^ (state.floor.seed * 131)) >>> 0
-  const dropRoll = (seed % 100) + 1
-  if (dropRoll > 45) return null
-  const table = ['Stone', 'Stick', 'Mushrooms', 'Foodroot', 'Ash', 'Sulfur'] as const
-  return table[(seed >>> 8) % table.length]
 }
 
 function partyHasItemDef(state: GameState, defId: string) {
@@ -979,6 +1381,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
   const npcSizeRand_Skeleton = clampNpcRand(r.npcSizeRand_Skeleton ?? 0)
   const npcSize_Catoctopus = clampNpcSize(r.npcSize_Catoctopus ?? 0.65)
   const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
+  const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(r.hubInnkeeperSpriteScale ?? 1)))
   return {
     ...r,
     globalIntensity,
@@ -1046,6 +1449,7 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     npcSizeRand_Skeleton,
     npcSize_Catoctopus,
     npcSizeRand_Catoctopus,
+    hubInnkeeperSpriteScale,
   }
 }
 
@@ -1077,18 +1481,6 @@ function hashStr(s: string) {
   return h >>> 0
 }
 
-function rectContains(r: { x: number; y: number; w: number; h: number }, p: { x: number; y: number }) {
-  return p.x >= r.x && p.y >= r.y && p.x < r.x + r.w && p.y < r.y + r.h
-}
-
-function roomForCell(state: GameState, x: number, y: number) {
-  const rooms = state.floor.gen?.rooms
-  if (!rooms?.length) return null
-  for (const r of rooms) {
-    if (rectContains(r.rect, { x, y })) return r
-  }
-  return null
-}
 
 function addStatusToChar(state: GameState, characterId: string, statusId: 'Poisoned' | 'Blessed' | 'Sick' | 'Bleeding' | 'Burning' | 'Drenched' | 'Drowsy' | 'Focused' | 'Cursed' | 'Frightened' | 'Rooted' | 'Shielded' | 'Starving' | 'Dehydrated', durMs?: number) {
   const idx = state.party.chars.findIndex((c) => c.id === characterId)
@@ -1167,6 +1559,57 @@ function strafeVec(playerDir: 0 | 1 | 2 | 3, side: -1 | 1) {
   return dirVec(d)
 }
 
+function ensureDeath(state: GameState): GameState {
+  if (state.ui.death) return state
+  const wiped = state.party.chars.length > 0 && state.party.chars.every((c) => c.hp <= 0)
+  if (!wiped) return state
+  const dead: GameState = {
+    ...state,
+    combat: undefined,
+    ui: {
+      ...state.ui,
+      death: { atMs: state.nowMs, runId: state.run.runId, floorIndex: state.floor.floorIndex, level: state.run.level },
+      debugShowDeathPopup: false,
+    },
+  }
+  return pushActivityLog(dead, 'The party has fallen.')
+}
+
+function maybeEndCombat(state: GameState): GameState {
+  if (!state.combat) return state
+  const combat = pruneCombatTurnQueue(state, state.combat)
+  const aliveNpc = combat.participants.npcs.some((id) => state.floor.npcs.some((n) => n.id === id && n.hp > 0))
+  if (!aliveNpc) {
+    const enemyCount = Math.max(1, combat.participants.npcs.length)
+    const xp = 10 * enemyCount
+    const { state: withXp, leveledUp, gainedLevels } = applyXp({ ...state, combat: undefined }, xp)
+    const msg = leveledUp ? `Encounter won. +${xp} XP (level +${gainedLevels}).` : `Encounter won. +${xp} XP.`
+    return pushActivityLog(withXp, msg)
+  }
+  return { ...state, combat }
+}
+
+function autoResolveNpcTurns(state: GameState): GameState {
+  let st: GameState = state
+  st = maybeEndCombat(st)
+  if (!st.combat) return st
+
+  // Ensure combat state is pruned before stepping.
+  st = { ...st, combat: pruneCombatTurnQueue(st, st.combat) }
+
+  for (let i = 0; i < 32; i++) {
+    if (!st.combat) break
+    const turn = currentTurn(st)
+    if (!turn || turn.kind !== 'npc') break
+    st = npcTakeTurn(st, turn.id)
+    st = ensureDeath(st)
+    if (st.ui.death) break
+    st = advanceTurnIndex(st)
+    st = maybeEndCombat(st)
+  }
+  return st
+}
+
 function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   if (state.view.anim) return state
   const { w, tiles } = state.floor
@@ -1179,12 +1622,12 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   if (tile !== 'floor') return bump(state)
 
   const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
-  if (npc) {
-    if (npc.status === 'hostile') {
-      const withToast = reduce(state, { type: 'ui/toast', text: `${npc.name} blocks your way!`, ms: 900 })
-      return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
-    }
-    return reduce(state, { type: 'ui/openNpcDialog', npcId: npc.id })
+  if (npc?.status === 'hostile') {
+    return reduce(state, { type: 'combat/enter', npcId: npc.id })
+  }
+
+  if (poiOccupiesCell(state.floor.pois, nx, ny)) {
+    return bump(state, 'Something is in the way.')
   }
 
   const startedAtMs = state.nowMs
@@ -1211,8 +1654,8 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
 }
 
-function bump(state: GameState): GameState {
-  const withMsg = pushActivityLog(state, 'Solid stone.')
+function bump(state: GameState, message = 'Solid stone.'): GameState {
+  const withMsg = pushActivityLog(state, message)
   const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'bump' })
   return reduce(withSfx, { type: 'ui/shake', magnitude: 0.25, ms: 90 })
 }

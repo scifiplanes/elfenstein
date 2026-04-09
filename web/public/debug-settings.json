@@ -34,8 +34,8 @@
     "fogEnabled": 0,
     "fogDensity": 0,
     "camEyeHeight": 0.38,
-    "camForwardOffset": -1.2,
-    "camFov": 29,
+    "camForwardOffset": -1.03,
+    "camFov": 36,
     "camPitchDeg": 0,
     "camShakePosAmp": 0.12,
     "camShakeRollDeg": 0.35,
@@ -88,6 +88,7 @@
     "npcSizeRand_Skeleton": 0,
     "npcSize_Catoctopus": 0.65,
     "npcSizeRand_Catoctopus": 0,
+    "hubInnkeeperSpriteScale": 1,
     "ambientIntensity": 0,
     "sunIntensity": 0
   },
@@ -109,5 +110,43 @@
     "munchThumpHz": 48,
     "munchTremDepth": 0.89,
     "munchTremHz": 13
+  },
+  "hubHotspots": {
+    "village": {
+      "tavern": {
+        "x": 0.12,
+        "y": 0.55,
+        "w": 0.22,
+        "h": 0.18
+      },
+      "cave": {
+        "x": 0.68,
+        "y": 0.52,
+        "w": 0.2,
+        "h": 0.2
+      }
+    },
+    "tavern": {
+      "innkeeper": {
+        "x": 0.38,
+        "y": 0.35,
+        "w": 0.24,
+        "h": 0.28
+      },
+      "exit": {
+        "x": 0.08,
+        "y": 0.72,
+        "w": 0.16,
+        "h": 0.14
+      }
+    }
+  },
+  "debugUi": {
+    "debugBgTrack": null,
+    "procgenDebugOverlay": null,
+    "roomTelegraphMode": "auto",
+    "roomTelegraphStrength": 0.22,
+    "debugShowNpcDialogPopup": false,
+    "debugShowDeathPopup": false
   }
 }
