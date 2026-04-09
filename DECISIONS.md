@@ -3058,7 +3058,6 @@ A flat **three-column** root widened the **1fr** portrait and **0.75fr** map/nav
 
 ---
 
-<<<<<<< HEAD
 ## ADR-0205 — Title, death, paperdoll: HUD capture + body hit layer (dither parity)
 Date: 2026-04-09
 
@@ -3086,8 +3085,10 @@ The death screen should sit **on the 3D game widget**, not over the **entire HUD
 
 ### Consequences
 **Death** and **NPC** **capture** previews are **mutually exclusive** when death is active; **`DESIGN.md`** § frame pipeline updated accordingly.
-=======
-## ADR-0205 — Overgrown rooms: selective env texture swap
+
+---
+
+## ADR-0207 — Overgrown rooms: selective env texture swap
 Date: 2026-04-09
 
 ### Decision
@@ -3106,4 +3107,45 @@ The `Overgrown` floor property should have a strong local visual identity withou
 - Slightly more materials/texture loads; no new `GameState` fields.
 - Overgrown boundaries on walls are adjacency-based (not a separate wall-tagging pass).
 - **`DESIGN.md`** §11 and §13 updated to reflect selective overgrown env textures and Content-only `/content/*` serving.
->>>>>>> origin/main
+
+---
+
+## ADR-0208 — Inventory: fixed two rows (20 slots)
+Date: 2026-04-09
+
+### Decision
+Initialize party inventory as **10** columns × **2** rows (**20** slots). Remove endurance-derived cell count and the previous minimum of three rows.
+
+### Rationale
+A **compact HUD** inventory reads faster and matches a deliberate **small-bag** feel for the jam scope.
+
+### Consequences
+Lower carry capacity than the old endurance-scaled grid; **`makeInitialState`** item placements must stay within **20** indices. **`DESIGN.md`** §7.2 updated (fixed capacity; removed paging/scroll copy tied to the old large grid).
+
+---
+
+## ADR-0209 — HUD inventory: 20 px downward offset
+Date: 2026-04-09
+
+### Decision
+Add **`margin-top: 20px`** to the **`HudLayout`** **`.inventory`** panel so the widget sits **20 CSS px** lower in the bottom HUD row.
+
+### Rationale
+Nudges the inventory grid to align better with the chrome / neighboring widgets without changing slot layout or padding.
+
+### Consequences
+**`DESIGN.md`** §7.2 notes the offset; slightly less vertical room inside the **285 px** bottom row before clip (**`overflow: hidden`** on **`panel`**).
+
+---
+
+## ADR-0210 — HUD inventory grid: 5% smaller
+Date: 2026-04-09
+
+### Decision
+Make the **`InventoryPanel`** root grid **95%** of the inventory panel’s inner width (**`.inventory`** **`display: flex`** + **`justify-content` / `align-items: center`** and **`.inventory > *`** **`width` / `max-width: 95%`** in **`HudLayout.module.css`**).
+
+### Rationale
+Slightly reduces slot size so the block reads lighter on the bar while keeping hit targets and aspect-ratio cells aligned (no **`transform: scale`**).
+
+### Consequences
+**`DESIGN.md`** §7.2 updated. Slot **emoji** size in CSS stays **~55 px** but renders smaller because cells are narrower.
