@@ -90,7 +90,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const presentCanvasRef = useRef<HTMLCanvasElement | null>(null)
   const interactiveHudRef = useRef<HTMLDivElement | null>(null)
   const captureWrapperRef = useRef<HTMLDivElement | null>(null)
+  const captureRootRef = useRef<HTMLDivElement | null>(null)
   const captureHudRef = useRef<HTMLDivElement | null>(null)
+  const captureGameViewportRef = useRef<HTMLDivElement | null>(null)
   const gameViewportRef = useRef<HTMLDivElement | null>(null)
   const [layoutTick, setLayoutTick] = useState(0)
 
@@ -151,6 +153,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     latestStateRef.current = state
     latestContentRef.current = content
   }, [state, content])
+
+  useEffect(() => {
+    void state.ui.npcDialogFor
+    lastCaptureMsRef.current = 0
+  }, [state.ui.npcDialogFor])
 
   useEffect(() => {
     let raf = 0
@@ -318,7 +325,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       lastCaptureMsRef.current = 0
     }
 
-    const captureEl = captureHudRef.current
+    const captureEl = captureRootRef.current
     const wrap = captureWrapperRef.current
     if (wrap) {
       // Force capture layout to match presenter CSS size exactly.
@@ -853,7 +860,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         />
       </div>
 
-      {state.ui.screen === 'title' || state.ui.paperdollFor || state.ui.npcDialogFor || state.ui.death ? (
+      {state.ui.screen === 'title' ||
+      state.ui.paperdollFor ||
+      state.ui.npcDialogFor ||
+      state.ui.death ||
+      (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ||
+      (state.ui.screen === 'game' && state.ui.debugShowDeathPopup) ? (
         <div className={styles.stageModalLayer}>
           <TitleScreen state={state} dispatch={dispatch} />
           <DeathModal state={state} dispatch={dispatch} />
@@ -870,7 +882,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
               data-capture-wrap="true"
               style={{ width: STAGE_CSS_WIDTH, height: STAGE_CSS_HEIGHT }}
             >
-              <div data-capture-root="true" style={{ width: '100%', height: '100%' }}>
+              <div data-capture-root="true" ref={captureRootRef} style={{ width: '100%', height: '100%', position: 'relative' }}>
                 <HudLayout
                   state={state}
                   dispatch={noopDispatch}
@@ -879,9 +891,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
                   captureForPostprocess={true}
                   world={null}
                   rootRef={captureHudRef}
+                  gameViewportRef={captureGameViewportRef}
                   webglError={null}
                   navPadPressedId={navPadPressedId}
                   onNavPadVisualPress={onNavPadVisualPress}
+                  captureNpcOverlay={
+                    state.ui.npcDialogFor ||
+                    (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
+                      <NpcDialogModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
+                    ) : null
+                  }
                 />
               </div>
             </div>,

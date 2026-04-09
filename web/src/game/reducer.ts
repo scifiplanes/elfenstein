@@ -99,6 +99,10 @@ export type Action =
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
   | { type: 'render/set'; key: keyof GameState['render']; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
+  /** F2: preview the NPC dialog modal (first NPC on the floor) without affecting real dialog state. */
+  | { type: 'debug/setShowNpcDialogPopupPreview'; show: boolean }
+  /** F2: preview the death modal without killing the party. */
+  | { type: 'debug/setShowDeathPopupPreview'; show: boolean }
   | { type: 'floor/toggleChest'; poiId: string }
   | { type: 'npc/attack'; npcId: string; itemId: ItemId }
   | { type: 'npc/give'; npcId: string; itemId: ItemId }
@@ -123,6 +127,8 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/setShowNpcDialogPopupPreview':
+      case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
         break
       default:
@@ -142,6 +148,8 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'render/set':
       case 'debug/loadTuning':
+      case 'debug/setShowNpcDialogPopupPreview':
+      case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
         break
       default:
@@ -151,7 +159,17 @@ export function reduce(state: GameState, action: Action): GameState {
 
   switch (action.type) {
     case 'ui/goTitle': {
-      return { ...state, ui: { ...state.ui, screen: 'title', paperdollFor: undefined, npcDialogFor: undefined } }
+      return {
+        ...state,
+        ui: {
+          ...state.ui,
+          screen: 'title',
+          paperdollFor: undefined,
+          npcDialogFor: undefined,
+          debugShowNpcDialogPopup: false,
+          debugShowDeathPopup: false,
+        },
+      }
     }
     case 'run/new': {
       const fresh = makeInitialState(CONTENT)
@@ -160,7 +178,13 @@ export function reduce(state: GameState, action: Action): GameState {
         ...fresh,
         render: state.render,
         audio: state.audio,
-        ui: { ...fresh.ui, screen: 'game', debugOpen: state.ui.debugOpen },
+        ui: {
+          ...fresh.ui,
+          screen: 'game',
+          debugOpen: state.ui.debugOpen,
+          debugShowNpcDialogPopup: false,
+          debugShowDeathPopup: false,
+        },
       }
       return pushActivityLog(preserved, 'New run.')
     }
@@ -196,6 +220,8 @@ export function reduce(state: GameState, action: Action): GameState {
           portraitIdlePulse: undefined,
           crafting: undefined,
           sfxQueue: [],
+          debugShowNpcDialogPopup: false,
+          debugShowDeathPopup: false,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
@@ -249,7 +275,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     }
     case 'ui/closeNpcDialog':
-      return { ...state, ui: { ...state.ui, npcDialogFor: undefined } }
+      return { ...state, ui: { ...state.ui, npcDialogFor: undefined, debugShowNpcDialogPopup: false } }
     case 'ui/toast':
       return pushActivityLog(state, action.text)
     case 'ui/shake': {
@@ -304,7 +330,11 @@ export function reduce(state: GameState, action: Action): GameState {
         if (wiped && !updated.ui.death) {
           const dead = {
             ...updated,
-            ui: { ...updated.ui, death: { atMs: updated.nowMs, runId: updated.run.runId, floorIndex: updated.floor.floorIndex, level: updated.run.level } },
+            ui: {
+              ...updated.ui,
+              death: { atMs: updated.nowMs, runId: updated.run.runId, floorIndex: updated.floor.floorIndex, level: updated.run.level },
+              debugShowDeathPopup: false,
+            },
           }
           return pushActivityLog(dead, 'The party has fallen.')
         }
@@ -314,7 +344,11 @@ export function reduce(state: GameState, action: Action): GameState {
       if (wiped && !withAnim.ui.death) {
         const dead = {
           ...withAnim,
-          ui: { ...withAnim.ui, death: { atMs: withAnim.nowMs, runId: withAnim.run.runId, floorIndex: withAnim.floor.floorIndex, level: withAnim.run.level } },
+          ui: {
+            ...withAnim.ui,
+            death: { atMs: withAnim.nowMs, runId: withAnim.run.runId, floorIndex: withAnim.floor.floorIndex, level: withAnim.run.level },
+            debugShowDeathPopup: false,
+          },
         }
         return pushActivityLog(dead, 'The party has fallen.')
       }
@@ -343,6 +377,12 @@ export function reduce(state: GameState, action: Action): GameState {
         next = applyCamEyeHeight(next, render.camEyeHeight)
       }
       return next
+    }
+    case 'debug/setShowNpcDialogPopupPreview': {
+      return { ...state, ui: { ...state.ui, debugShowNpcDialogPopup: action.show } }
+    }
+    case 'debug/setShowDeathPopupPreview': {
+      return { ...state, ui: { ...state.ui, debugShowDeathPopup: action.show } }
     }
     case 'floor/toggleChest': {
       const poi = state.floor.pois.find((p) => p.id === action.poiId)

@@ -5,6 +5,14 @@
   z-index: 9999;
 }
 
+/*
+ * Children default to `pointer-events: auto`, which would steal clicks from UI below this layer
+ * (e.g. NPC dialog hit layer above this layer). The hand and overlays are visual-only.
+ */
+.layer * {
+  pointer-events: none;
+}
+
 .handWrap {
   position: absolute;
   will-change: transform;

@@ -1,105 +1,76 @@
 .backdrop {
   position: fixed;
   inset: 0;
-  background: rgba(0, 0, 0, 0.55);
-  z-index: 2200;
+  /* Above `CursorLayer` (9999) so the invisible hit layer wins stacking even if any child regains `pointer-events`. */
+  z-index: 10100;
   pointer-events: auto;
 }
 
-.modal {
-  /* Default when no game viewport ref / measure yet (e.g. tests). */
+/*
+ * Hit layer only: the dithered dialog is rasterized from the offscreen capture tree into the
+ * presenter canvas; this DOM copy stays invisible but receives clicks/drag-drop.
+ */
+.backdropHitLayer {
+  opacity: 0;
+}
+
+/* Fills `HudLayout`’s `.npcCaptureLayer` so top + bottom anchors match the game cell. */
+.captureInGameCell {
   box-sizing: border-box;
+  width: 100%;
+  align-self: stretch;
+  min-height: 100%;
+  pointer-events: none;
+}
+
+.captureRoot {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  pointer-events: none;
+}
+
+.capturePanelTop {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 100%;
+}
+
+.captureSpeech {
+  position: absolute;
+  /* Fallback before `captureRoot` measure; overridden inline as % of game cell height. */
+  bottom: 5%;
+  left: 50%;
+  transform: translateX(-50%);
+}
+
+.speechStrip {
+  box-sizing: border-box;
+  background: #000;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  padding: 12px 12px 14px;
+  width: fit-content;
+  max-width: min(620px, calc(var(--stage-w, 1920px) - 24px), 100%);
+  text-align: center;
+}
+
+/* Brief fallback before `gameViewportRef` measures (~25px at 1080px-tall viewport when game fills height). */
+.speechInteractiveFallback {
   position: fixed;
   left: 50%;
-  /* Mirrors TS: ~(100−30)/1080 of viewport height vs 18% baseline; at 1080px-tall vh, −9.259vh+2.778vh ≈ −70px from 18% */
-  top: calc(18% - 9.259vh + 2.778vh);
+  bottom: 2.315%;
   transform: translateX(-50%);
-  width: min(620px, calc(var(--stage-w, 1920px) - 24px));
-  background: rgba(18, 20, 28, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 0;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
-  padding: 12px 12px 14px;
 }
 
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 12px;
-  margin-bottom: 10px;
+.modal {
+  /* Default when no game viewport ref / measure yet (e.g. tests): top band, centered horizontally. */
+  position: fixed;
+  left: 50%;
+  top: 10%;
+  transform: translateX(-50%);
 }
-
-.titleRow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-}
-
-.portrait {
-  width: 38px;
-  height: 38px;
-  object-fit: contain;
-  image-rendering: pixelated;
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.45));
-  flex: 0 0 auto;
-}
-
-.title {
-  font-family: var(--fontInventoryTooltip);
-  font-size: 37px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  line-height: 1.2;
-  color: rgba(255, 255, 255, 0.92);
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 12px rgba(0, 0, 0, 0.22);
-  min-width: 0;
-}
-
-.close {
-  cursor: none;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.28);
-  color: rgba(255, 255, 255, 0.85);
-  border-radius: 10px;
-  padding: 6px 10px;
-}
-
-.body {
-  font-family: var(--mono);
-  font-size: 13px;
-  color: rgba(255, 255, 255, 0.86);
-  line-height: 1.45;
-  white-space: pre-wrap;
-}
-
-.hint {
-  margin-top: 10px;
-  font-family: var(--mono);
-  font-size: 11px;
-  color: rgba(255, 255, 255, 0.6);
-}
-
-.footer {
-  margin-top: 14px;
-  display: flex;
-  justify-content: flex-start;
-}
-
-.pet {
-  cursor: none;
-  box-sizing: border-box;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  background: rgba(0, 0, 0, 0.28);
-  border-radius: 10px;
-  padding: 8px 12px;
-  font-family: var(--buttonTitleFontFamily);
-  font-size: var(--buttonTitleFontSize);
-  font-weight: var(--buttonTitleFontWeight);
-  letter-spacing: var(--buttonTitleLetterSpacing);
-  line-height: var(--buttonTitleLineHeight);
-  color: var(--buttonTitleColor);
-  text-shadow: var(--buttonTitleTextShadow);
-}
-

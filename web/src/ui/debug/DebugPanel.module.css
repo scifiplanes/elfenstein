@@ -109,6 +109,22 @@
   text-align: right;
 }
 
+.popupPreviewValue {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  text-align: right;
+}
+
+.popupPreviewHint {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.55);
+  line-height: 1.2;
+  max-width: 200px;
+}
+
 .slider {
   grid-column: 1 / -1;
   width: 100%;
