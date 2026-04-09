@@ -19,6 +19,7 @@ export const BG_NOISE_LABELS: Record<string, string> = {
 export const BG_SFX_TRACKS = [
   '/sounds/background/creak_1.mp3',
   '/sounds/background/weird_bells.mp3',
+  '/sounds/background/crackle.mp3',
 ]
 
 /**
