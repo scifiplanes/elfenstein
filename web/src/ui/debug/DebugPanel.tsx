@@ -287,6 +287,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   if (!state.ui.debugOpen) return null
 
+  const formatSliderValue = (s: Slider, v: number) => {
+    try {
+      return s.format ? s.format(v) : String(Math.round(v * 100) / 100)
+    } catch {
+      return '—'
+    }
+  }
+
   const q = query.trim().toLowerCase()
   const visibleCamera = q ? cameraSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : cameraSliders
   const visiblePortrait = q ? portraitSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : portraitSliders
@@ -909,11 +917,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Camera</div>
         {visibleCamera.map((s) => {
-          const v = state.render[s.key]
+          const raw = state.render[s.key]
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
           return (
             <div key={s.key} className={styles.row}>
               <div className={styles.label}>{s.label}</div>
-              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <div className={styles.value}>{formatSliderValue(s, v)}</div>
               <input
                 className={styles.slider}
                 type="range"
@@ -931,11 +940,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Portrait</div>
         {visiblePortrait.map((s) => {
-          const v = state.render[s.key]
+          const raw = state.render[s.key]
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
           return (
             <div key={s.key} className={styles.row}>
               <div className={styles.label}>{s.label}</div>
-              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <div className={styles.value}>{formatSliderValue(s, v)}</div>
               <input
                 className={styles.slider}
                 type="range"
@@ -964,11 +974,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             />
           </div>
           {visibleCursor.map((s) => {
-            const v = state.render[s.key]
+            const raw = state.render[s.key]
+            const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
             return (
               <div key={s.key} className={styles.row}>
                 <div className={styles.label}>{s.label}</div>
-                <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+                <div className={styles.value}>{formatSliderValue(s, v)}</div>
                 <input
                   className={styles.slider}
                   type="range"
@@ -999,11 +1010,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </div>
         )}
         {visibleRender.map((s) => {
-          const v = state.render[s.key]
+          const raw = state.render[s.key]
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
           return (
             <div key={s.key} className={styles.row}>
               <div className={styles.label}>{s.label}</div>
-              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <div className={styles.value}>{formatSliderValue(s, v)}</div>
               <input
                 className={styles.slider}
                 type="range"
@@ -1021,11 +1033,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       <div className={styles.section}>
         <div className={styles.sectionTitle}>NPCs</div>
         {visibleNpc.map((s) => {
-          const v = state.render[s.key]
+          const raw = state.render[s.key]
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
           return (
             <div key={s.key} className={styles.row}>
               <div className={styles.label}>{s.label}</div>
-              <div className={styles.value}>{s.format ? s.format(v) : String(Math.round(v * 100) / 100)}</div>
+              <div className={styles.value}>{formatSliderValue(s, v)}</div>
               <input
                 className={styles.slider}
                 type="range"

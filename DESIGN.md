@@ -316,7 +316,7 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 
 ## 11) Graphics & rendering spec
 - Three.js WebGL with `MeshLambertMaterial` on dungeon geometry (diffuse + emissive; no PBR metalness/roughness).
-- **Dungeon albedo**: floor / wall / ceiling voxels use tiled PNGs from `Content/` (stable **`/content/…`** URLs; Vite also serves the repo **`Content/`** tree in dev and copies it into **`dist/content/`** on build). **`FloorType` `Dungeon`** uses **`dungeon_floor.png`**, **`dungon_wall.png`**, and **`dungon_ceiling.png`**. **`Cave`** uses **`cave_floor.png`**, **`cave_wall.png`**, and **`cave_ceiling.png`**. **`Ruins`** uses **`ruins_floor.png`**, **`ruins_wall.png`**, and **`ruins_ceiling.png`**. Textures use **repeat wrapping** (~one repeat per 1×1 world-unit face).
+- **Dungeon albedo**: floor / wall / ceiling voxels use tiled PNGs from `Content/` (stable **`/content/…`** URLs; Vite serves the repo **`Content/`** tree in dev and copies it into **`dist/content/`** on build). **`FloorType` `Dungeon`** uses **`dungeon_floor.png`**, **`dungon_wall.png`**, and **`dungon_ceiling.png`**. **`Cave`** uses **`cave_floor.png`**, **`cave_wall.png`**, and **`cave_ceiling.png`**. **`Ruins`** uses **`ruins_floor.png`**, **`ruins_wall.png`**, and **`ruins_ceiling.png`**. Textures use **repeat wrapping** (~one repeat per 1×1 world-unit face).\n+- **Overgrown rooms (selective env swap)**: procgen rooms with `roomStatus: Overgrown` render their **floor + ceiling** using **`overgrown_floor.png`** and **`overgrown_ceiling.png`** (served at `/content/overgrown_*.png`). **Walls** bordering an overgrown walkable tile use **`overgrown_wall.png`** (4-neighbor adjacency) so room boundaries read clearly without changing the core geometry pipeline.
 - Anti-aliasing **off**; pixel ratio capped at **1.5×** (sharp edges, dither-friendly).
 - Lighting:
   - warm **PointLight** on camera (“lantern”)
@@ -355,9 +355,9 @@ Volume controls: `masterMusic` (music layer) and `masterSfx` (SFX + spatial) are
 - Also includes: light/render/audio sliders, distance audio, **telegraph preview** (force Burning/Flooded/Infected/off and strength), procgen tools, spawn helpers, and readouts (pose, cell, perf).
 
 ## 13) Content pipeline (placeholders-first)
-Canonical placeholder NPC art lives at **`Placeholders/Placeholder_NPC.png`**. Ship **copies** into `web/public/content/` for any runtime URL the code expects (NPC or POI) until final assets replace them.
+Canonical placeholder NPC art lives at **`Placeholders/Placeholder_NPC.png`**. Keep placeholder files under `Content/` at the runtime paths the code expects (NPC or POI) until final assets replace them.
 
-The **canonical** art folder is `Content/`. For the web client, PNGs are **mirrored** into `web/public/content/` so they can be loaded via stable `'/content/...'` URLs (no cache-busting query params). In particular, **`Content/poi_placeholder.png`** is the canonical copy of the POI placeholder and is mirrored to `web/public/content/poi_placeholder.png`.
+The **canonical** art folder is `Content/`. The web client loads PNGs via stable `'/content/...'` URLs (no cache-busting query params). Vite serves the repo-level `Content/` at `/content/*` in dev and copies `Content/` into `dist/content/` on build.
 
 Asset types:
 - Item PNG (transparent)
@@ -369,7 +369,7 @@ Asset types:
 - HUD shell PNG (transparent): `Content/ui/hud/ui_hud_background.png`
 
 ### 13.1 Asset serving & caching (web)
-- Runtime-served assets (portraits, NPC sprites, UI art, cursor sprites) live under `web/public/content/` and are referenced via **stable** `/content/...` URLs.
+- Runtime-served assets (portraits, NPC sprites, UI art, cursor sprites) live under repo-level `Content/` and are referenced via **stable** `/content/...` URLs.
 - The game relies on **browser HTTP caching** for these static URLs; avoid cache-busting query params for runtime art.
 - Imperative image loads (e.g., measuring portrait aspect ratio or preloading sprite layers) go through a small shared **in-app image cache** (`web/src/ui/assets/imageCache.ts`) to dedupe concurrent loads and reduce repeated decodes/revalidation requests.
 

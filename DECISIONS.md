@@ -3053,3 +3053,25 @@ A flat **three-column** root widened the **1fr** portrait and **0.75fr** map/nav
 
 ### Consequences
 **`DESIGN.md`** §6.4 describes merged **game** span + original track list. **ADR-0203** column summary is superseded for layout structure; statue **components** remain removed.
+
+---
+
+## ADR-0205 — Overgrown rooms: selective env texture swap
+Date: 2026-04-09
+
+### Decision
+- Add a second dungeon environment texture triple served from repo `Content/` as stable URLs:
+  - **`/content/overgrown_floor.png`**
+  - **`/content/overgrown_wall.png`**
+  - **`/content/overgrown_ceiling.png`**
+- In **`WorldRenderer.buildGeometry`**, apply those textures **selectively**:
+  - **Floor + ceiling**: for walkable tiles inside procgen rooms tagged **`roomStatus: Overgrown`** (rect intersection with walkable tiles).
+  - **Walls**: for wall tiles that are **4-neighbor adjacent** to any overgrown walkable tile (so room boundaries read clearly).
+
+### Rationale
+The `Overgrown` floor property should have a strong local visual identity without requiring a full meshing rewrite or globally replacing a floor type’s environment textures.
+
+### Consequences
+- Slightly more materials/texture loads; no new `GameState` fields.
+- Overgrown boundaries on walls are adjacency-based (not a separate wall-tagging pass).
+- **`DESIGN.md`** §11 and §13 updated to reflect selective overgrown env textures and Content-only `/content/*` serving.

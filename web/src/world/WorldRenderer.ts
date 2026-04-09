@@ -97,8 +97,13 @@ export class WorldRenderer {
   private wallMat: THREE.MeshLambertMaterial | null = null
   private ceilMat: THREE.MeshLambertMaterial | null = null
 
+  private overgrownFloorMat: THREE.MeshLambertMaterial | null = null
+  private overgrownWallMat: THREE.MeshLambertMaterial | null = null
+  private overgrownCeilMat: THREE.MeshLambertMaterial | null = null
+
   private readonly envTex: Partial<Record<FloorType, { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture }>> =
     {}
+  private overgrownEnvTex: { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } | null = null
 
   private readonly textureLoader = new THREE.TextureLoader()
   private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
@@ -508,6 +513,23 @@ export class WorldRenderer {
     return bundle
   }
 
+  private getOvergrownEnvTextures(): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
+    if (this.overgrownEnvTex) return this.overgrownEnvTex
+
+    const floor = this.textureLoader.load('/content/overgrown_floor.png')
+    const wall = this.textureLoader.load('/content/overgrown_wall.png')
+    const ceiling = this.textureLoader.load('/content/overgrown_ceiling.png')
+
+    for (const tex of [floor, wall, ceiling]) {
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+      tex.repeat.set(1, 1)
+    }
+
+    this.overgrownEnvTex = { floor, wall, ceiling }
+    return this.overgrownEnvTex
+  }
+
   private buildGeometry(state: GameState, content: ContentDB) {
     const g = new THREE.Group()
     this.pickables = []
@@ -519,6 +541,11 @@ export class WorldRenderer {
     const wallTex = env.wall
     const floorTex = env.floor
     const ceilTex = env.ceiling
+
+    const overgrownEnv = this.getOvergrownEnvTextures()
+    const overgrownWallTex = overgrownEnv.wall
+    const overgrownFloorTex = overgrownEnv.floor
+    const overgrownCeilTex = overgrownEnv.ceiling
 
     // Small emissive lift so the scene never becomes pure-black,
     // but low enough that the lantern still changes visibility.
@@ -542,34 +569,92 @@ export class WorldRenderer {
       emissiveIntensity: base * 0.6,
     })
 
+    this.overgrownFloorMat = new THREE.MeshLambertMaterial({
+      map: overgrownFloorTex,
+      color: new THREE.Color('#ffffff'),
+      emissive: new THREE.Color('#101018'),
+      emissiveIntensity: base * 1.0,
+    })
+    this.overgrownWallMat = new THREE.MeshLambertMaterial({
+      map: overgrownWallTex,
+      color: new THREE.Color('#ffffff'),
+      emissive: new THREE.Color('#161210'),
+      emissiveIntensity: base * 0.8,
+    })
+    this.overgrownCeilMat = new THREE.MeshLambertMaterial({
+      map: overgrownCeilTex,
+      color: new THREE.Color('#ffffff'),
+      emissive: new THREE.Color('#05050a'),
+      emissiveIntensity: base * 0.6,
+    })
+
     const floorGeo = new THREE.BoxGeometry(1, 0.1, 1)
     const wallGeo = new THREE.BoxGeometry(1, 1.2, 1)
     const ceilGeo = new THREE.BoxGeometry(1, 0.1, 1)
 
     const { w, h, tiles } = state.floor
+
+    // Overgrown env application: rooms tagged `roomStatus: 'Overgrown'` (bounded by `room.rect`)
+    // are intersected with actual walkable tiles to avoid relying on rect semantics.
+    const overgrownWalkable = new Set<number>()
+    const rooms = state.floor.gen?.rooms as GenRoom[] | undefined
+    if (rooms?.length) {
+      for (const r of rooms) {
+        if (r.tags?.roomStatus !== 'Overgrown') continue
+        const { x: rx, y: ry, w: rw, h: rh } = r.rect
+        for (let y = ry; y < ry + rh; y++) {
+          for (let x = rx; x < rx + rw; x++) {
+            if (x < 0 || y < 0 || x >= w || y >= h) continue
+            const i = x + y * w
+            const t = tiles[i]
+            if (t === 'floor' || t === 'door' || t === 'lockedDoor') overgrownWalkable.add(i)
+          }
+        }
+      }
+    }
+
+    const wallTouchesOvergrown = (x: number, y: number) => {
+      // Only meaningful for wall tiles, but safe for any coords.
+      for (const [dx, dy] of [
+        [1, 0],
+        [-1, 0],
+        [0, 1],
+        [0, -1],
+      ] as const) {
+        const nx = x + dx
+        const ny = y + dy
+        if (nx < 0 || ny < 0 || nx >= w || ny >= h) continue
+        if (overgrownWalkable.has(nx + ny * w)) return true
+      }
+      return false
+    }
+
     for (let y = 0; y < h; y++) {
       for (let x = 0; x < w; x++) {
-        const t = tiles[x + y * w]
+        const idx = x + y * w
+        const t = tiles[idx]
         const wx = x - w / 2
         const wz = y - h / 2
         if (t === 'floor') {
-          const m = new THREE.Mesh(floorGeo, this.floorMat)
+          const isOvergrown = overgrownWalkable.has(idx)
+          const m = new THREE.Mesh(floorGeo, isOvergrown ? this.overgrownFloorMat : this.floorMat)
           m.position.set(wx, -0.05, wz)
           m.receiveShadow = true
           g.add(m)
 
-          const c = new THREE.Mesh(ceilGeo, this.ceilMat)
+          const c = new THREE.Mesh(ceilGeo, isOvergrown ? this.overgrownCeilMat : this.ceilMat)
           c.position.set(wx, 1.25, wz)
           c.receiveShadow = true
           g.add(c)
         } else if (t === 'door' || t === 'lockedDoor') {
+          const isOvergrown = overgrownWalkable.has(idx)
           // Door occupies a floor tile position.
-          const m = new THREE.Mesh(floorGeo, this.floorMat)
+          const m = new THREE.Mesh(floorGeo, isOvergrown ? this.overgrownFloorMat : this.floorMat)
           m.position.set(wx, -0.05, wz)
           m.receiveShadow = true
           g.add(m)
 
-          const c = new THREE.Mesh(ceilGeo, this.ceilMat)
+          const c = new THREE.Mesh(ceilGeo, isOvergrown ? this.overgrownCeilMat : this.ceilMat)
           c.position.set(wx, 1.25, wz)
           c.receiveShadow = true
           g.add(c)
@@ -580,7 +665,7 @@ export class WorldRenderer {
           g.add(d)
           this.pickables.push(d)
         } else {
-          const m = new THREE.Mesh(wallGeo, this.wallMat)
+          const m = new THREE.Mesh(wallGeo, wallTouchesOvergrown(x, y) ? this.overgrownWallMat : this.wallMat)
           m.position.set(wx, 0.55, wz)
           m.castShadow = true
           m.receiveShadow = true
@@ -694,7 +779,14 @@ export class WorldRenderer {
 
     g.userData = {
       disposableBoxGeoms: [floorGeo, wallGeo, ceilGeo],
-      disposableMeshMats: [this.floorMat!, this.wallMat!, this.ceilMat!],
+      disposableMeshMats: [
+        this.floorMat!,
+        this.wallMat!,
+        this.ceilMat!,
+        this.overgrownFloorMat!,
+        this.overgrownWallMat!,
+        this.overgrownCeilMat!,
+      ],
     }
 
     return g
@@ -767,6 +859,9 @@ export class WorldRenderer {
     if (this.floorMat) this.floorMat.emissiveIntensity = base * 1.0
     if (this.wallMat) this.wallMat.emissiveIntensity = base * 0.8
     if (this.ceilMat) this.ceilMat.emissiveIntensity = base * 0.6
+    if (this.overgrownFloorMat) this.overgrownFloorMat.emissiveIntensity = base * 1.0
+    if (this.overgrownWallMat) this.overgrownWallMat.emissiveIntensity = base * 0.8
+    if (this.overgrownCeilMat) this.overgrownCeilMat.emissiveIntensity = base * 0.6
 
     const torchKey = `${state.floor.floorGeomRevision}|${state.floor.playerPos.x},${state.floor.playerPos.y}|${state.render.torchPoiLightMax}`
     if (torchKey !== this.lastTorchPickKey) {
