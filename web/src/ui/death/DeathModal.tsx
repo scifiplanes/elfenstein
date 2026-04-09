@@ -3,6 +3,7 @@ import { useLayoutEffect, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
+import { useCursor } from '../cursor/useCursor'
 import popup from '../shared/GamePopup.module.css'
 import styles from './DeathModal.module.css'
 
@@ -26,14 +27,15 @@ export function DeathModal(props: {
 }) {
   const { state, dispatch, variant = 'interactive', gameViewportRef } = props
   const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
+  const cursor = useCursor()
 
   const death = state.ui.death
   const preview =
     !death && Boolean(state.ui.debugShowDeathPopup) && state.ui.screen === 'game'
-  if (!death && !preview) return null
+  const visible = Boolean(death) || Boolean(preview)
 
   useLayoutEffect(() => {
-    if (variant !== 'interactive') {
+    if (variant !== 'interactive' || !visible) {
       setViewportRect(null)
       return
     }
@@ -60,7 +62,9 @@ export function DeathModal(props: {
       window.visualViewport?.removeEventListener('scroll', sync)
       window.removeEventListener('scroll', sync, true)
     }
-  }, [variant, gameViewportRef])
+  }, [variant, gameViewportRef, visible])
+
+  if (!visible) return null
 
   const deathData =
     death ??
@@ -72,6 +76,14 @@ export function DeathModal(props: {
   const log = state.ui.activityLog ?? []
   const recent = log.slice(Math.max(0, log.length - 6))
   const hasCheckpoint = !!state.run.checkpoint
+
+  const pointerHandlers =
+    variant === 'interactive'
+      ? {
+          onPointerMove: cursor.onPointerMove,
+          onPointerCancel: cursor.cancelDrag,
+        }
+      : {}
 
   const inner = (
     <div className={`${styles.backdrop} ${popup.backdropDim}`}>
@@ -150,11 +162,14 @@ export function DeathModal(props: {
           width: viewportRect.width,
           height: viewportRect.height,
         }}
+        {...pointerHandlers}
       >
         {inner}
       </div>
     ) : (
-      <div className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`}>{inner}</div>
+      <div className={`${styles.gameViewportShell} ${styles.gameViewportShellFallback}`} {...pointerHandlers}>
+        {inner}
+      </div>
     )
 
   if (typeof document !== 'undefined' && document.body) {
