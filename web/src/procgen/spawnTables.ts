@@ -85,18 +85,21 @@ export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
   'ClothScrap',
   'Foodroot',
   'GlassVial',
+  'HerbCirclet',
   'HerbLeaf',
   'HerbPoultice',
   'Hive',
   'MortarMeal',
   'Mushrooms',
   'Sling',
+  'SporeCap',
   'Stone',
   'StoneShard',
   'Stick',
   'Sulfur',
   'Twine',
   'WaterbagEmpty',
+  'WoolCap',
 ]
 
 /** NPC kinds the default table + overrides can produce (Swarm via Infested rules only). */
@@ -187,6 +190,18 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   }
   if (fp.includes('Infested') && func === 'Workshop' && rng.next() < 0.12) defId = 'Hive'
   if (ctx.room.district === 'WestWing' && rng.next() < 0.18) defId = 'HerbLeaf'
+
+  // Headwear: low chance in cloth- / gathering-adjacent room functions.
+  if (func === 'Passage' && rng.next() < 0.07) {
+    const h = rng.next()
+    if (h < 0.34) defId = 'WoolCap'
+    else if (h < 0.67) defId = 'HerbCirclet'
+    else defId = 'SporeCap'
+  } else if (func === 'Communal' && rng.next() < 0.05) {
+    defId = rng.next() < 0.5 ? 'WoolCap' : 'HerbCirclet'
+  } else if (func === 'Habitat' && rng.next() < 0.06) {
+    defId = rng.next() < 0.55 ? 'SporeCap' : 'HerbCirclet'
+  }
 
   return defId
 }

@@ -38,6 +38,11 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'MortarMeal', b: 'WaterbagFull', result: 'Flourball', craftMs: 1600, failDestroyChancePct: 18, skill: 'cooking', dc: 12 },
   { a: 'HerbLeaf', b: 'WaterbagFull', result: 'HerbTea', craftMs: 1100, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
 
+  // Headwear (hat slot).
+  { a: 'ClothScrap', b: 'Twine', result: 'WoolCap', craftMs: 1100, failDestroyChancePct: 12, skill: 'weaving', dc: 10 },
+  { a: 'HerbLeaf', b: 'Twine', result: 'HerbCirclet', craftMs: 1000, failDestroyChancePct: 11, skill: 'weaving', dc: 9 },
+  { a: 'Mushrooms', b: 'ClothScrap', result: 'SporeCap', craftMs: 1150, failDestroyChancePct: 12, skill: 'foraging', dc: 10 },
+
   // A few extra “breadth” combos (directional flavor, order-sensitive by design).
   { a: 'Mushrooms', b: 'Ash', result: 'BitterHerb', craftMs: 900, failDestroyChancePct: 10, skill: 'foraging', dc: 10 },
   { a: 'Ash', b: 'Mushrooms', result: 'HerbLeaf', craftMs: 900, failDestroyChancePct: 10, skill: 'foraging', dc: 10 },

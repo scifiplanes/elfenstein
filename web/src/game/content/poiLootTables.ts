@@ -25,6 +25,9 @@ export const CHEST_LOOT_DEF_IDS = [
   'MortarMeal',
   'HerbTea',
   'WaterbagEmpty',
+  'WoolCap',
+  'HerbCirclet',
+  'SporeCap',
 ] as const satisfies readonly ItemDefId[]
 
 /**
@@ -49,4 +52,7 @@ export const CONTAINER_LOOT_DEF_IDS = [
   'Bolas',
   'WaterbagEmpty',
   'GlassVial',
+  'WoolCap',
+  'HerbCirclet',
+  'SporeCap',
 ] as const satisfies readonly ItemDefId[]
