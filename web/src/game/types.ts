@@ -238,6 +238,11 @@ export type UiState = {
   }
   /** Discovered crafting recipes (order-sensitive). */
   knownRecipes?: Record<string, true>
+  /**
+   * While set and `nowMs < bobrIntroUntilMs`, a full-screen Bobr intro is drawn above the presenter
+   * (`run/new` with **`playBobrIntro`** from the title **Start** path); hub runs underneath (**ADR-0328**).
+   */
+  bobrIntroUntilMs?: number
 }
 
 export type CheckpointSnapshot = {

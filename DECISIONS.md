@@ -5304,7 +5304,7 @@ Date: 2026-04-10
 - Add **`@playwright/test`** under **`web/`** with **`playwright.config.ts`**: **`testDir`** **`e2e/`**, **`webServer`** runs **`npm run build && npm run preview`** on **`127.0.0.1:4173`** with **`strictPort`**, **`reuseExistingServer`** off in CI.
 - Set **`PLAYWRIGHT_BROWSERS_PATH`** to **`web/node_modules/.cache/ms-playwright`** in config (and **`scripts/playwright-install.mjs`**) so installs are project-local and predictable when a parent sets a broken global cache.
 - **`npm run playwright:install`**: install Chromium; append **`--with-deps`** when **`CI`** is set (Linux agents).
-- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → click Bobr → no title dialogs.
+- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → wait for Bobr intro → village hub (**ADR-0329**: no skip click).
 - GitHub Actions **`.github/workflows/web.yml`**: **`npm ci`**, **`npm test`** (Vitest), **`npm run playwright:install`**, **`npm run test:e2e`**.
 
 ### Rationale
@@ -5320,7 +5320,7 @@ Date: 2026-04-10
 
 ### Decision
 - **`HubViewport`** **`HotspotBox`**: optional **`dataTestId`** (alongside **`dataDropKind`** / **`fixedTopPx`** for tavern trade); interactive buttons set **`data-testid`** **`hub-hotspot-tavern`**, **`hub-hotspot-cave`**, **`hub-hotspot-innkeeper-trade`** (capture **`div`** hotspots unchanged).
-- **`web/e2e/helpers.ts`**: **`interactiveHud`**, **`interactiveSettingsDialog`**, **`goToVillageHub`** (title → **Start** → skip Bobr → assert **`/content/village.png`** in interactive HUD).
+- **`web/e2e/helpers.ts`**: **`interactiveHud`**, **`interactiveSettingsDialog`**, **`goToVillageHub`** (title → **Start** → full Bobr duration → assert **`/content/village.png`** in interactive HUD; **`bobrIntroSettleMs`**).
 - **`web/e2e/hub.spec.ts`**: cave → **Step forward** enabled; tavern → **Leave tavern** → village; tavern → trade → **Close** (assert **Trade · Innkeeper**).
 - Refactor **`web/e2e/smoke.spec.ts`** to import shared helpers from **`helpers.ts`**.
 
@@ -5373,3 +5373,85 @@ Two **`renderOnce`** invocations in quick succession (effect + conditional inner
 Slightly more deferrable HUD texture updates during interaction bursts (capped by rIC **timeout**). **`DESIGN.md`** renderer bullet documents the single-rAF model. Resize **`ResizeObserver`** path no longer forces an extra React state bump for compositor pacing.
 
 ---
+
+## ADR-0324 — Hub/title: hide minimap + nav; inventory width unchanged
+Date: 2026-04-10
+
+### Decision
+When **`ui.screen`** is **`title`** or **`hub`**, **`HudLayout`** does **not** render the **minimap** or **on-screen navigation** sections. The **bottom row** CSS grid is **unchanged**; only the **inventory** `<section>` is present, still using **`grid-area: inventory`**, so the **center band** (**120px + 1.62fr + 120px**) matches dungeon layout and the inventory panel does **not** grow into the side tracks.
+
+### Rationale
+Town/hub does not need dungeon navigation chrome; keeping the **same** inventory footprint avoids layout shift when entering the dungeon.
+
+### Consequences
+- **`web/src/ui/hud/HudLayout.tsx`**, **`DESIGN.md`** §5.1 / §6.4.
+
+---
+
+## ADR-0325 — Title screen: `ui_logo.png` + copyright stack
+Date: 2026-04-10
+
+### Decision
+**`TitleScreen`** replaces the **Elfenstein** text title with **`Content/ui/ui_logo.png`** (served as **`/content/ui/ui_logo.png`**, mirrored under **`web/public/content/ui/`** for Vite). The logo and **Copyright 1995-2026 Mafra Studios** are **centered horizontally** and **vertically centered** in the **flex** area above the footer (**copyright** sits **below** the logo).
+
+### Rationale
+Brand reads from authored logo art instead of live text; layout keeps the **footer** actions at the **bottom** of the stage.
+
+### Consequences
+- **`web/src/ui/title/TitleScreen.tsx`**, **`TitleScreen.module.css`**, **`Content/ui/ui_logo.png`**, **`web/public/content/ui/ui_logo.png`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0326 — Title→hub: no stale title `uiTex` after Bobr intro
+Date: 2026-04-10
+
+### Decision
+In **`DitheredFrameRoot` `renderOnce`**, when **`ui.screen`** is **`hub`** but **`lastHudKeyRef`** (last successful **`html2canvas`** commit) still encodes **`screen=title`**, use the existing **village boot** **`CanvasTexture`** (**`titleBootPlaceholderTexRef`**) as **`uiTex`** instead of **`uiTexRef`** until the next capture updates both the texture and the committed key.
+
+### Rationale
+The **Bobr** intro is rendered in a **portal** above **`presentCanvas`**, not inside the captured HUD. When **`run/new`** runs, the portal unmounts immediately while **`uiTexRef`** still holds the **title** bitmap until async capture finishes—one or more frames of the **main menu** were visible without Bobr.
+
+### Consequences
+- **`web/src/ui/frame/DitheredFrameRoot.tsx`**, **`DESIGN.md`** §3 / §5.1.
+
+---
+
+## ADR-0327 — Title→hub boot `uiTex`: track last captured screen + never fall back to stale title
+Date: 2026-04-10
+
+### Decision
+**`DitheredFrameRoot`** stores **`lastCapturedHudScreenRef`** (set on every successful **`html2canvas` `.then`** alongside **`uiTex`**). **`renderOnce`** uses the **village boot** texture when **`ui.screen === 'hub'`** and **`lastCapturedHudScreenRef` is `'title'`**, or when it is **`null`** and **`lastHudKeyRef` is still empty** (no committed capture yet). The boot texture is **not** followed by **`?? uiTexRef.current`** (never re-show the stale title bitmap while this guard applies).
+
+### Rationale
+Parsing **`screen=`** from **`lastHudKeyRef`** was fragile; requiring **`uiTexRef != null`** skipped the guard when **`uiTex` was disposed** during a capture **scale** change while **`lastHudKeyRef` still reflected **title**, letting **`tUi`** go **null** and/or sample a **stale** GPU texture—players still saw a **main menu** flash after **Bobr**.
+
+### Consequences
+- **`web/src/ui/frame/DitheredFrameRoot.tsx`**, **`DESIGN.md`** §3 / §5.1.
+
+---
+
+## ADR-0328 — Bobr intro over an already-active hub (`bobrIntroUntilMs`)
+Date: 2026-04-10
+
+### Decision
+**Start** dispatches **`run/new`** with **`playBobrIntro: true`**, which sets **`screen: 'hub'`** immediately and stores **`ui.bobrIntroUntilMs`** (absolute **`nowMs` + `BOBR_INTRO_TOTAL_MS`**). **`BobrIntroPortal`** in **`DitheredFrameRoot`** renders the Bobr **`createPortal`** while that deadline is in the future; **`time/tick`** past the deadline, **`animationend`**, the **8.6s** timer, or **`ui/dismissBobrIntro`** from those automated paths clear it—**not** pointer skip (**ADR-0329**). Other **`run/new`** call sites omit **`playBobrIntro`**.
+
+### Rationale
+The **title** **`TitleScreen`** unmounts as soon as **`screen !== 'title'`**, so Bobr could not stay on screen if **`run/new`** ran only at intro end. Running **hub** under the full-screen Bobr avoids a visible transition at intro completion.
+
+### Consequences
+- **`web/src/game/types.ts`**, **`web/src/game/reducer.ts`**, **`web/src/game/bobrIntroMs.ts`**, **`web/src/ui/title/TitleScreen.tsx`**, **`web/src/ui/title/BobrIntroPortal.tsx`**, **`web/src/ui/frame/DitheredFrameRoot.tsx`**, **`web/e2e/helpers.ts`**, **`web/e2e/smoke.spec.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0329 — Bobr intro: no pointer skip
+Date: 2026-04-10
+
+### Decision
+**`BobrIntroPortal`** **does not** attach **`onPointerDown`** (or other skip gestures) on the intro overlay. The overlay still uses **`pointer-events: auto`** so clicks do **not** reach the **hub** underneath. **ADR-0303**’s Bobr click-to-skip behavior is **revoked** for this flow only (the duplicate **ADR-0303** entry about **3D** **`floorDrop`** remains unrelated).
+
+### Rationale
+Authors want the full Bobr beat to play every time.
+
+### Consequences
+- **`web/src/ui/title/BobrIntroPortal.tsx`**, **`web/e2e/helpers.ts`** (**`bobrIntroSettleMs`** wait), **`web/e2e/smoke.spec.ts`**, **`DESIGN.md`** §3 / §5.1.

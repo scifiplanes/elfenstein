@@ -93,6 +93,8 @@ export function HudLayout(props: {
     interactive &&
     !captureForPostprocess &&
     (state.ui.screen === 'title' || Boolean(state.ui.paperdollFor))
+  /** Minimap + on-screen nav only in dungeon; bottom-row grid keeps the same `inventory` span (middle columns). */
+  const showDungeonHud = state.ui.screen === 'game'
   /** Portrait-frame tap: handled at HUD root capture so it runs before child `pointerup`/`endPointerUp` and survives lost synthetic `click`. */
   const portraitTapRef = useRef<{ characterId: string; pointerId: number; x: number; y: number } | null>(null)
   const PORTRAIT_TAP_SLOP_PX = 28
@@ -355,9 +357,11 @@ export function HudLayout(props: {
       </section>
 
       <div className={styles.bottomRow}>
-        <section className={`${styles.panel} ${styles.map}`}>
-          <MinimapPanel state={state} />
-        </section>
+        {showDungeonHud ? (
+          <section className={`${styles.panel} ${styles.map}`}>
+            <MinimapPanel state={state} />
+          </section>
+        ) : null}
 
         <section className={`${styles.panel} ${styles.inventory}`}>
           <InventoryPanel
@@ -370,14 +374,16 @@ export function HudLayout(props: {
           />
         </section>
 
-        <section className={`${styles.panel} ${styles.navigation}`}>
-          <NavigationPanel
-            state={state}
-            dispatch={dispatch}
-            pressedButtonId={navPadPressedId}
-            onNavPadVisualPress={onNavPadVisualPress}
-          />
-        </section>
+        {showDungeonHud ? (
+          <section className={`${styles.panel} ${styles.navigation}`}>
+            <NavigationPanel
+              state={state}
+              dispatch={dispatch}
+              pressedButtonId={navPadPressedId}
+              onNavPadVisualPress={onNavPadVisualPress}
+            />
+          </section>
+        ) : null}
       </div>
 
       {fullHudModalInteractiveOpen ? (
