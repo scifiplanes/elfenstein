@@ -44,8 +44,10 @@
   cursor: none;
   -webkit-appearance: none;
   appearance: none;
-  display: grid;
-  place-items: center;
+  /* Entire slot square is the hit target (centered glyph). */
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .item:disabled,

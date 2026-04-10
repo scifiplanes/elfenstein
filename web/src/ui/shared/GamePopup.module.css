@@ -59,6 +59,13 @@
   color: var(--buttonTitleColor);
   text-shadow: var(--buttonTitleTextShadow);
   flex: 0 0 auto;
+  /* Hit target = full border + padding box (not just glyph bounds). */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .body {
@@ -117,6 +124,12 @@
   line-height: var(--buttonTitleLineHeight);
   color: var(--buttonTitleColor);
   text-shadow: var(--buttonTitleTextShadow);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .actionBtn:hover {
@@ -136,6 +149,12 @@
   opacity: 0.55;
   filter: saturate(0.6);
   cursor: not-allowed;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0;
+  appearance: none;
+  -webkit-appearance: none;
 }
 
 .actionBtnDisabled:hover {

@@ -4354,3 +4354,288 @@ Settings and other stage modals are siblings of **`.interactiveHud`**; pointer m
 ### Consequences
 - **`web/src/ui/cursor/CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`cursorHandActiveAttr.ts`**, **`HudLayout.tsx`**, **`TitleScreen.tsx`**, **`SettingsMenu.tsx`**, and removal of move forwarding from **viewport / inventory / portraits / trade / death / NPC dialog / paperdoll / debug** panels. **`DESIGN.md`** §6.1 / §6.2.
 
+---
+
+## ADR-0278 — Innkeeper trade layout, chrome, mojibake speech, expanded Trade outcomes
+Date: 2026-04-10
+
+### Decision
+- **`TradeModal`**: single **row** for **their stock** + **your offer** + **you request**; **offer/request** slots match **inventory** slot visuals and cell sizing (measured from the stock grid width). **Trade** stays in the **footer**; **Close** in the **header**; both use **`GamePopup.close`** styling with **inventory-slot** border color.
+- **`ui.hubInnkeeperSpeech`**: mojibake lines for **hub/camp innkeeper** when setting **you request** (3 vs 5 “words” + template variants) and on **Trade** (**4-word** templates; **gift** path includes a **garbled heart**). **Floor NPC** trade uses the same **execute** mechanics but **no** speech.
+- **`trade/execute`**: **no-op** if both slots empty; **speech-only** if only request; **consume offer only** if only offer; **full barter** if both (existing stock decrement + mint item). **`tryConsumeStagedOfferOnly`** in **`trade.ts`**.
+
+### Rationale
+Clearer shop layout; innkeeper feedback matches the NPC **speech strip** aesthetic; **Trade** always clickable; **gift** supports offering payment without picking stock.
+
+### Consequences
+- **`TradeModal.tsx` / `.module.css`**, **`types.ts`**, **`trade.ts`**, **`reducer.ts`**, **`floorProgression.ts`**, **`gibberish.ts`**, **`innkeeperTradeMojibake.ts`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0279 — Innkeeper trade speech: `document.body` portal (no HUD hit blocking)
+Date: 2026-04-10
+
+### Decision
+Render **hub innkeeper** **`ui.hubInnkeeperSpeech`** via **`createPortal`** to **`document.body`** (**`InnkeeperTradeSpeechPortal.tsx`**: **`position: fixed`**, **`z-index: 10050`**, **`pointer-events: none`**, same **`npcCaptureInteractiveRectFromGameViewportEl`** bottom anchoring as **NPC dialog** speech). Do **not** mount a full-bleed layer inside **`.panel.game`**.
+
+### Rationale
+**`DitheredFrameRoot`’s** **`interactiveHud`** is **`opacity: 0`** but receives hits; a full-screen speech layer inside the game cell risked blocking **Trade** / **Close** despite **`pointer-events: none`** on the wrapper. Portaling only the caption strip keeps the invisible HUD hit tree unobstructed while keeping speech above the composited canvas visually.
+
+### Consequences
+- **`InnkeeperTradeSpeechPortal.tsx`**, **`HudLayout.tsx`**, **`TradeModal.tsx` / `.module.css`** (capture-only speech), **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0280 — Global `pointerup` microtask retarget for `[data-modal-chrome-hit]`
+Date: 2026-04-10
+
+### Decision
+Remove the **`hadPointerSession`** gate from **`endPointerUp`’s** modal-chrome **`click()`** synthesis (and remove that microtask entirely). Register a **`window` `pointerup` (capture)** listener in **`CursorProvider`** that **`queueMicrotask`s** an **`elementFromPoint`** test: if the top hit under the release coordinates is an enabled **`HTMLButtonElement`** matching **`[data-modal-chrome-hit]`** and the **`pointerup`’s `target`** is **not** contained in that button, call **`chromeBtn.click()`**. If the target **is** inside that button, do nothing so normal **`pointerup` + `modalChromePointerUpActivate`** paths do not double-fire.
+
+### Rationale
+Retargeting only when **`pendingPayload != null`** missed cases where **`pointerup` never reached** the chrome control (capture / stacking) **without** a drag session, and **`endPointerUp`’s** microtask never ran when chrome **`stopPropagation`** prevented **`HudLayout`** / panel handlers from running. A **single global** post-**`pointerup`** microtask matches release **coordinates** to chrome regardless of which node received the event, while **`contains(origTarget)`** preserves deduping when the button already got the real **`pointerup`**.
+
+### Consequences
+- **`CursorProvider.tsx`**, **`modalChromeActivate.ts`** (remove debug ingest **`fetch`**), **`DESIGN.md`** §11 modal bullet.
+
+---
+
+## ADR-0281 — Innkeeper speech TTL, MBA trade log, barter remainder, log stacking
+Date: 2026-04-10
+
+### Decision
+- **`InnkeeperTradeSpeechPortal`**: after **2 s** with the same **`text`**, dispatch **`ui/clearHubInnkeeperSpeech`** (innkeeper/camp strip only).
+- **`run.hubInnkeeperTradesCompleted`**: increment on each successful **hub** **`trade/execute`** full barter; **`pushActivityLog`** uses **`innkeeperBarterActivityLogLine(1..10)`** then **`Deal has been done.`** for **11+** (**`innkeeperBarterLog.ts`**). **Floor NPC** barter keeps **`Trade complete.`**
+- **`tryExecuteTrade`**: if **`consumeItem`** leaves a **remainder stack** in **`party.items`**, keep **`offerItemId`** on the session instead of forcing **`null`** (avoids orphaned items when **qty > 1**).
+- **`HudLayout`**: **`gameCornerStackAboveTrade`** (**z-index: 8**) when **hub** + interactive trade is open so the log is visible over the trade overlay (default stack stays **z-index: 2** so **death** at **7** still wins).
+
+### Rationale
+Players need readable **activity** feedback during tavern trade; timed speech avoids clutter; MBA lines reward repeat barter; remainder fix matches **1 unit per Trade** semantics; z-index targets innkeeper trade without covering **death**.
+
+### Consequences
+- **`innkeeperBarterLog.ts`**, **`types.ts`**, **`trade.ts`**, **`reducer.ts`**, **`InnkeeperTradeSpeechPortal.tsx`**, **`HudLayout.tsx` / `.module.css`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0282 — Activity log descendants `pointer-events: none` when stacked above trade
+Date: 2026-04-10
+
+### Decision
+In **`ActivityLog.module.css`**, set **`.wrap * { pointer-events: none }`** in addition to **`.wrap { pointer-events: none }`**.
+
+### Rationale
+With **`gameCornerStackAboveTrade`** (**z-index: 8** over trade’s **6**), log **lines** still used the initial **`pointer-events: auto`** and could sit above the **Trade** button after **long** entries (e.g. MBA copy). Clicks hit the **log** instead of **`[data-modal-chrome-hit]`**, so **Trade** failed once **offer** + **request** were set and the player tried to finish—exactly when the log was busiest. **`CombatIndicator`** is a **sibling** (not under **`.wrap`**) and keeps its own **Defend** / **Flee** **`pointer-events: auto`** on **`.actions`**.
+
+### Consequences
+- **`ActivityLog.module.css`**, **`DESIGN.md`** §6.3 activity bullet.
+
+---
+
+## ADR-0283 — Trade UI: drop “you request” slot; stock is click-only selection
+Date: 2026-04-10
+
+### Decision
+Remove the **You request** column and **`data-drop-kind="tradeAskSlot"`** from **`TradeModal`**. **Their stock** uses **`onClick`** → **`trade/selectStock`** only (no **`beginPointerDown`** / drag from stock). Remove **`DragSource` `tradeStockSlot`** and **`DragTarget` `tradeAskSlot`** from **`types.ts`**; delete reducer **`drag/drop`** branches and **`CursorProvider` / `CursorLayer`** affordances tied to stock→ask. **Selected** stock keeps **`askStockIndex`** in session; **`.stockSlotSelected`** uses **`outline: 1px`** + **`outline-offset: 3px`**. **`trade/selectStock`** on the **same** index as the current selection dispatches **`tryClearTradeAsk`** (toggle off); **`trade/clearAsk`** retained.
+
+### Rationale
+One less column and no drag-to-slot flow; selection is explicit click; borders match the requested **1 px / 3 px** treatment via outline + offset.
+
+### Consequences
+- **`TradeModal.tsx` / `.module.css`**, **`types.ts`**, **`reducer.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1 / §6.2.
+
+---
+
+## ADR-0284 — Trade stock selection: visible 4px border + copy tweak
+Date: 2026-04-10
+
+### Decision
+**`.stockSlotSelected`**: **4 px** solid bright border + soft outer glow (higher-specificity selector **`.tradeStockGridInv .stockSlotSelected`** so it overrides **`InventoryPanel` `.slot`**’s **2 px** border). Section label: **“Their stock — Click to choose what you want to barter”**.
+
+### Rationale
+Outline-only styling was easy to miss against the default slot chrome; explicit **4 px** + brighter color makes selection obvious.
+
+### Consequences
+- **`TradeModal.tsx`**, **`TradeModal.module.css`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0285 — Trade: prune zero-qty stock rows; shorter innkeeper trade speech
+Date: 2026-04-10
+
+### Decision
+After **`tryExecuteTrade`** decrements a merchant row, **`filter((r) => r.qty > 0)`** updates persisted **hub** stock and **floor NPC** **`trade.stock`** (and the open **`hub_innkeeper`** session’s **`stock`** snapshot). **Innkeeper** trade mojibake helpers emit **at most two** procedural words (no multi-word paragraphs; gift line no longer adds a heart symbol).
+
+### Rationale
+A single-unit offer should disappear from **their stock** instead of leaving a dead **qty 0** cell. Shorter gibberish matches the requested **1–2 word** feel for innkeeper reactions.
+
+### Consequences
+- **`trade.ts`**, **`innkeeperTradeMojibake.ts`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0286 — Innkeeper welcome speech when opening trade
+Date: 2026-04-10
+
+### Decision
+**`hub/openTavernTrade`** sets **`hubInnkeeperSpeech`** to **`Welcome. I take …`** plus a **mojibake** token for each **`tradeSession.wants`** entry (order matches **They want**). **`mojibakeFromUtf8Text`** is used when the display name already gains a mojibake look; **ASCII-only** names fall back to a **`mojibakeFakeWord`** seeded from **`ItemDefId` + label**.
+
+### Rationale
+Greets the player on enter and ties the strip to the same buy list as the modal without spelling item names in plain English.
+
+### Consequences
+- **`gibberish.ts`** (**`mojibakeFromUtf8Text`**), **`innkeeperTradeMojibake.ts`** (**`innkeeperSpeechWelcome`**), **`reducer.ts`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0287 — Innkeeper welcome speech TTL 4s
+Date: 2026-04-10
+
+### Decision
+Add **`ui.hubInnkeeperSpeechTtlMs`** (optional). **`hub/openTavernTrade`** sets **`4000`** for the welcome line; other innkeeper lines leave it **unset** (**2000** default in **`InnkeeperTradeSpeechPortal`**). Shared constants live in **`innkeeperSpeechTiming.ts`**.
+
+### Rationale
+The first trade message should stay readable longer than reaction blurbs.
+
+### Consequences
+- **`types.ts`**, **`innkeeperSpeechTiming.ts`**, **`InnkeeperTradeSpeechPortal.tsx`**, **`HudLayout.tsx`**, **`reducer.ts`**, **`trade.ts`**, **`floorProgression.ts`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0288 — Trade merchant stock: same name tooltip as inventory
+Date: 2026-04-10
+
+### Decision
+**`DragTarget`**: **`tradeStockSlot` { stockIndex }**; **`TradeModal`** stock cells use **`data-drop-kind="tradeStockSlot"`** + **`data-trade-stock-index`**. **`CursorLayer`** resolves the item **`defId`** via **`tradeStockRows`** and shows the same **`itemNameTooltip`** styling as **`inventorySlot`**. **`drag/drop`** onto **`tradeStockSlot`** rejects (not a drop target).
+
+### Rationale
+Parity with bottom inventory UX; stock is click-to-select only.
+
+### Consequences
+- **`types.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`TradeModal.tsx`**, **`reducer.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0289 — Trade “your offer” slot: inventory-style name tooltip
+Date: 2026-04-10
+
+### Decision
+**`CursorLayer`** **`itemNameTooltipHover`**: when **`hoverTarget.kind === 'tradeOfferSlot'`** and **`tradeSession.offerItemId`** is set, show **`content.item(defId).name`** (same strip as inventory / merchant stock). Empty offer slot: no tooltip.
+
+### Rationale
+Matches **their stock** and bottom-inventory affordance; **`TradeModal`** already exposes **`data-drop-kind="tradeOfferSlot"`**.
+
+### Consequences
+- **`CursorLayer.tsx`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0290 — Activity log on opening village innkeeper trade
+Date: 2026-04-10
+
+### Decision
+**`hub/goTavern`** (village → tavern, **`hubKind !== camp`**) calls **`pushActivityLog(..., INNKEEPER_OPEN_TRADE_ACTIVITY_LOG)`** so the line appears when the innkeeper **scene** is shown, not when **`hub/openTavernTrade`** opens the modal.
+
+### Rationale
+Flavor as soon as the player sees the tavern / innkeeper; **camp** hub skips the line.
+
+### Consequences
+- **`innkeeperBarterLog.ts`** (export), **`reducer.ts`**, **`trade.test.ts`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0291 — Hub tavern: separate trade click rect from bartender sprite frame
+Date: 2026-04-10
+
+### Decision
+**`HubHotspotConfig.tavern`**: add **`innkeeperTrade`** (normalized rect). **`innkeeper`** frames **`bartender_*.png`**; **`HotspotBox`** for **`hub/openTavernTrade`** uses **`innkeeperTrade`** only. Default **`innkeeperTrade`** is tighter and centered on the character silhouette.
+
+### Rationale
+Full sprite frame was too large a click target; trade should read as clicking the central NPC (“bear”) figure.
+
+### Consequences
+- **`types.ts`**, **`hubHotspotDefaults.ts`**, **`initialState.ts`**, **`HubViewport.tsx`**, **`reducer.ts`** (**`hubHotspot/setAxis`**), **`DebugPanel.tsx`**, **`debugSettingsPersistence.ts`**, **`public/debug-settings.json`**, **`combat.test.ts`**, **`DESIGN.md`** §5.1 / debug.
+
+---
+
+## ADR-0292 — Tavern: larger trade hit; LEAVE button; remove exit hotspot
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** default: **w = 0.28**, **h = 0.4** (40% viewport height), centered (**x/y** adjusted). Remove **`hubHotspots.tavern.exit`**; **`HubViewport`** adds a bottom-left **`LEAVE`** button (**`GamePopup.close`** + **`hub/goVillage`**).
+
+### Rationale
+Trade target should be clearly large; leaving the tavern is explicit UI instead of an invisible second hotspot.
+
+### Consequences
+- **`types.ts`**, **`hubHotspotDefaults.ts`**, **`initialState.ts`**, **`HubViewport.tsx`**, **`HubViewport.module.css`**, **`reducer.ts`**, **`DebugPanel.tsx`**, **`debugSettingsPersistence.ts`**, **`public/debug-settings.json`**, **`combat.test.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0293 — Tavern trade hotspot: much larger default + stack above foreground
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** default rect is **`x: 0.14`**, **`y: 0.14`**, **`w: 0.68`**, **`h: 0.58`** (~**3×** the prior click area). **`HubViewport`** renders the trade **`HotspotBox` after** the tavern **`foreground`** image and applies **`.hotspotTrade`** (**`z-index: 4`**) so the hit target is not visually “under” the fg layer in paint order. **`public/debug-settings.json`** matches so fresh loads and **Save to project** stay aligned.
+
+### Rationale
+Players still perceived the trade target as too small; the previous **0.28 × 0.4** rect was only a modest bump. DOM order + z-index removes ambiguity about which layer receives clicks.
+
+### Consequences
+- **`hubHotspotDefaults.ts`**, **`HubViewport.tsx`**, **`HubViewport.module.css`**, **`public/debug-settings.json`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0294 — Tavern trade hotspot: half default width + 40px lower
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** default **`w`** is **half** the prior **0.68** (**`0.34`**), **`x`** recenters (**`0.31`**). **`.hotspotTrade`** adds **`transform: translateY(40px)`** so the trade hit sits **40px** lower than the normalized **`y`** (F2 sliders still edit **`y`** in 0–1; the **40px** offset is layout CSS).
+
+### Rationale
+Player tuning: narrower target, shifted down to align with the bartender figure.
+
+### Consequences
+- **`hubHotspotDefaults.ts`**, **`HubViewport.module.css`**, **`public/debug-settings.json`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0295 — Tavern trade hotspot: no visible outline
+Date: 2026-04-10
+
+### Decision
+**`.hotspotTrade`** sets **`border: none`** so the trade click region is invisible; village **Tavern** / **Cave** **`HotspotBox`**es keep the red debug outline.
+
+### Rationale
+Cleaner tavern presentation; the trade area remains fully clickable.
+
+### Consequences
+- **`HubViewport.module.css`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0296 — Hub tavern: “Leave tavern” button label
+Date: 2026-04-10
+
+### Decision
+The bottom-left tavern chrome label is **“Leave tavern”** (visible text and **`aria-label`** were already **Leave tavern**); **`DESIGN.md`** and **`types.ts`** comments refer to **Leave tavern** instead of **LEAVE**.
+
+### Rationale
+Clearer than a single-word **LEAVE** at a glance.
+
+### Consequences
+- **`HubViewport.tsx`**, **`HubViewport.module.css`** (comments), **`types.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0297 — Hub: clear activity log when leaving tavern
+Date: 2026-04-10
+
+### Decision
+**`hub/goVillage`** sets **`ui.activityLog`** to **`[]`** so the corner log does not carry tavern/innkeeper lines back onto the village hub scene.
+
+### Rationale
+Cleaner village presentation; tavern feedback is scoped to the tavern visit.
+
+### Consequences
+- **`reducer.ts`** (**`hub/goVillage`**), **`trade.test.ts`**, **`DESIGN.md`**.
+

@@ -35,7 +35,10 @@ export function closeTradeSession(state: GameState): GameState {
   const ts = state.ui.tradeSession
   if (!ts) return state
   const next = restowTradeOffer(state, ts.offerItemId)
-  return { ...next, ui: { ...next.ui, tradeSession: undefined } }
+  return {
+    ...next,
+    ui: { ...next.ui, tradeSession: undefined, hubInnkeeperSpeech: undefined, hubInnkeeperSpeechTtlMs: undefined },
+  }
 }
 
 export function openHubInnkeeperTrade(state: GameState): GameState {
@@ -51,7 +54,10 @@ export function openHubInnkeeperTrade(state: GameState): GameState {
     stock,
     wants,
   }
-  return { ...state, ui: { ...state.ui, tradeSession: session } }
+  return {
+    ...state,
+    ui: { ...state.ui, tradeSession: session, hubInnkeeperSpeech: undefined, hubInnkeeperSpeechTtlMs: undefined },
+  }
 }
 
 export function openFloorNpcTrade(state: GameState, npcId: string): GameState {
@@ -157,7 +163,40 @@ export function trySetTradeAsk(state: GameState, ts: TradeSession, stockIndex: n
 export function tryClearTradeAsk(state: GameState, ts: TradeSession): GameState {
   const nextSession: TradeSession =
     ts.kind === 'hub_innkeeper' ? { ...ts, askStockIndex: null } : { ...ts, askStockIndex: null }
-  return { ...state, ui: { ...state.ui, tradeSession: nextSession } }
+  return {
+    ...state,
+    ui: {
+      ...state.ui,
+      tradeSession: nextSession,
+      ...(ts.kind === 'hub_innkeeper'
+        ? { hubInnkeeperSpeech: undefined, hubInnkeeperSpeechTtlMs: undefined }
+        : {}),
+    },
+  }
+}
+
+export function tradeHasValidAsk(state: GameState, ts: TradeSession): boolean {
+  if (ts.askStockIndex == null) return false
+  const rows = tradeStockRows(state, ts)
+  const row = rows[ts.askStockIndex]
+  return row != null && row.qty > 0
+}
+
+/** Consume staged offer only (gift); leaves stock and ask unchanged. */
+export function tryConsumeStagedOfferOnly(state: GameState, ts: TradeSession): GameState | null {
+  const offerId = ts.offerItemId
+  if (offerId == null) return null
+  const offer = state.party.items[offerId]
+  if (!offer) return null
+  const wants = tradeWants(state, ts)
+  if (!wants.includes(offer.defId)) return null
+
+  const next = consumeItem(state, offerId)
+  const nextSession: TradeSession =
+    ts.kind === 'hub_innkeeper'
+      ? { ...ts, offerItemId: null }
+      : { kind: 'floor_npc', npcId: ts.npcId, offerItemId: null, askStockIndex: ts.askStockIndex }
+  return { ...next, ui: { ...next.ui, tradeSession: nextSession } }
 }
 
 export function tryExecuteTrade(state: GameState, ts: TradeSession, nowMs: number): GameState | null {
@@ -176,8 +215,13 @@ export function tryExecuteTrade(state: GameState, ts: TradeSession, nowMs: numbe
   if (row.qty < 1) return null
 
   let next = consumeItem(state, offerId)
+  const offerStillInParty = Boolean(next.party.items[offerId])
+  const nextOfferId: ItemId | null = offerStillInParty ? offerId : null
+
   const gainDefId = row.defId
-  const newRows = rows.map((r, i) => (i === idx ? { ...r, qty: Math.max(0, r.qty - 1) } : r))
+  const newRows = rows
+    .map((r, i) => (i === idx ? { ...r, qty: Math.max(0, r.qty - 1) } : r))
+    .filter((r) => r.qty > 0)
   next = mintItemToInventoryOrFloor(next, gainDefId, `trade_${nowMs}_${idx}`, next.floor.playerPos)
 
   let run = next.run
@@ -188,7 +232,7 @@ export function tryExecuteTrade(state: GameState, ts: TradeSession, nowMs: numbe
     run = { ...next.run, hubInnkeeperTradeStock: newRows }
     nextSession = {
       kind: 'hub_innkeeper',
-      offerItemId: null,
+      offerItemId: nextOfferId,
       askStockIndex: null,
       stock: newRows,
       wants: ts.wants,
@@ -202,7 +246,7 @@ export function tryExecuteTrade(state: GameState, ts: TradeSession, nowMs: numbe
     nextSession = {
       kind: 'floor_npc',
       npcId: ts.npcId,
-      offerItemId: null,
+      offerItemId: nextOfferId,
       askStockIndex: null,
     }
   }

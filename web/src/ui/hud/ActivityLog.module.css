@@ -7,6 +7,15 @@
   pointer-events: none;
 }
 
+/*
+ * Children default to `pointer-events: auto` and can still receive hits (see CSS `pointer-events`).
+ * When the corner stack is raised above trade (`gameCornerStackAboveTrade`), log text would
+ * otherwise sit on top of the Trade button and steal clicks—especially after long log lines.
+ */
+.wrap * {
+  pointer-events: none;
+}
+
 .scroller {
   overflow-x: hidden;
   overflow-y: hidden;

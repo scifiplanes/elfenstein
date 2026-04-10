@@ -13,6 +13,7 @@ import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
 import { CombatIndicator } from './CombatIndicator'
 import { TradeModal } from '../trade/TradeModal'
+import { InnkeeperTradeSpeechPortal } from '../trade/InnkeeperTradeSpeechPortal'
 import { DeathModal } from '../death/DeathModal'
 import { TitleScreen } from '../title/TitleScreen'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
@@ -74,6 +75,14 @@ export function HudLayout(props: {
     ((tsTrade.kind === 'hub_innkeeper' && state.ui.screen === 'hub') ||
       (tsTrade.kind === 'floor_npc' && state.ui.screen === 'game'))
   const tradeWantDefIds = state.ui.tradeSession ? tradeWants(state, state.ui.tradeSession) : undefined
+  const innkeeperTradeSpeechLine =
+    interactive &&
+    !captureForPostprocess &&
+    state.ui.screen === 'hub' &&
+    state.ui.tradeSession?.kind === 'hub_innkeeper' &&
+    state.ui.hubInnkeeperSpeech
+      ? state.ui.hubInnkeeperSpeech
+      : null
   const deathModalInteractiveOpen =
     interactive &&
     !captureForPostprocess &&
@@ -148,6 +157,7 @@ export function HudLayout(props: {
   return (
     <div
       className={styles.root}
+      data-hud-root=""
       data-capture={captureForPostprocess ? 'true' : 'false'}
       ref={rootRef}
       onPointerMove={
@@ -299,10 +309,21 @@ export function HudLayout(props: {
         {tradeModalInteractiveOpen ? (
           <TradeModal state={state} dispatch={dispatch} content={content} variant="interactive" />
         ) : null}
-        <div className={styles.gameCornerStack}>
+        <div
+          className={`${styles.gameCornerStack}${
+            tradeModalInteractiveOpen && state.ui.screen === 'hub' ? ` ${styles.gameCornerStackAboveTrade}` : ''
+          }`}
+        >
           <ActivityLog entries={state.ui.activityLog ?? []} />
           <CombatIndicator state={state} dispatch={dispatch} interactive={interactive} />
         </div>
+        <InnkeeperTradeSpeechPortal
+          text={innkeeperTradeSpeechLine ?? ''}
+          autoHideMs={state.ui.hubInnkeeperSpeechTtlMs}
+          gameViewportRef={gameViewportRef}
+          active={Boolean(innkeeperTradeSpeechLine)}
+          dispatch={dispatch}
+        />
         {captureForPostprocess && captureNpcOverlay ? (
           <div className={styles.npcCaptureLayer}>{captureNpcOverlay}</div>
         ) : null}

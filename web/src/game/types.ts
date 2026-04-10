@@ -140,7 +140,8 @@ export type HubNormRect = { x: number; y: number; w: number; h: number }
 
 export type HubHotspotConfig = {
   village: { tavern: HubNormRect; cave: HubNormRect }
-  tavern: { innkeeper: HubNormRect; exit: HubNormRect }
+  /** `innkeeper` frames the bartender sprite; `innkeeperTrade` opens trade. Leave tavern via **`HubViewport`** **Leave tavern** button (not a hotspot). */
+  tavern: { innkeeper: HubNormRect; innkeeperTrade: HubNormRect }
 }
 
 /** Merchant row: remaining quantity (hub persists in `run.hubInnkeeperTradeStock`; floor NPCs store under `npc.trade`). */
@@ -173,6 +174,10 @@ export type UiState = {
   hubKind?: 'camp'
   /** Active barter UI (tavern innkeeper or a trading floor NPC). */
   tradeSession?: TradeSession
+  /** Hub/camp innkeeper trade: last mojibake line for the bottom speech strip. */
+  hubInnkeeperSpeech?: string
+  /** Auto-hide delay for `hubInnkeeperSpeech` (ms). Default **2000** when unset; **4000** for the opening welcome line. */
+  hubInnkeeperSpeechTtlMs?: number
   debugOpen: boolean
   /** F2-only: tint floor cells from `floor.gen` (dev visualization). */
   procgenDebugOverlay?: ProcgenDebugOverlayMode
@@ -403,7 +408,7 @@ export type RenderTuning = {
    * Independent of `npcFootLift`; use F2 to nudge POIs vs the floor without moving NPCs.
    */
   poiFootLift: number
-  /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not change the hotspot rect. */
+  /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not resize hub hotspot rects. */
   hubInnkeeperSpriteScale: number
   /** Dungeon floors per segment before a camp hub (1–99; default 10). */
   campEveryFloors: number
@@ -481,6 +486,8 @@ export type GameState = {
     checkpoint?: RunCheckpoint
     /** Remaining tavern innkeeper stock for this run (undefined = use content defaults on next open). */
     hubInnkeeperTradeStock?: TradeStockRow[]
+    /** Successful hub innkeeper barters (offer + request) this run; drives MBA activity-log lines. */
+    hubInnkeeperTradesCompleted?: number
   }
 
   combat?: CombatState
@@ -564,8 +571,6 @@ export type DragSource =
   | { kind: 'floorItem'; itemId: ItemId }
   /** Staged offer in the trade modal (`itemId` is the offered stack). */
   | { kind: 'tradeOffer'; itemId: ItemId }
-  /** NPC merchant row in the trade modal (`stockIndex` into current stock list). */
-  | { kind: 'tradeStockSlot'; stockIndex: number }
 
 export type DragPayload = {
   itemId: ItemId
@@ -583,5 +588,6 @@ export type DragTarget =
   /** Portrait-only: drop with no valid target stows to first free inventory slot (via unequip). */
   | { kind: 'stowEquipped' }
   | { kind: 'tradeOfferSlot' }
-  | { kind: 'tradeAskSlot' }
+  /** Merchant “their stock” cell in `TradeModal` (hover tooltip only; not a drop target). */
+  | { kind: 'tradeStockSlot'; stockIndex: number }
 

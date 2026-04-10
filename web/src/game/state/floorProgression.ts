@@ -74,6 +74,8 @@ export function descendToNextFloor(state: GameState): GameState {
         hubScene: 'village',
         hubKind: 'camp',
         tradeSession: undefined,
+        hubInnkeeperSpeech: undefined,
+        hubInnkeeperSpeechTtlMs: undefined,
         settingsOpen: false,
       },
       run: {

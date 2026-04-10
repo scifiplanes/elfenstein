@@ -31,6 +31,13 @@
   pointer-events: none;
 }
 
+/* After tavern foreground in DOM so painting order matches intent; above fg (z-index 2), below Leave tavern btn (5). */
+.hotspotTrade {
+  z-index: 4;
+  transform: translateY(40px);
+  border: none;
+}
+
 .bartender {
   position: absolute;
   z-index: 1;
@@ -60,4 +67,19 @@
   object-position: center;
   pointer-events: none;
   user-select: none;
+}
+
+/* Bottom-left “Leave tavern” chrome; replaces former `tavern.exit` hotspot. */
+.tavernLeaveBtn {
+  position: absolute;
+  left: max(10px, env(safe-area-inset-left, 0px));
+  bottom: max(10px, env(safe-area-inset-bottom, 0px));
+  z-index: 5;
+  border-color: var(--hud-inventory-slot-border);
+  pointer-events: auto;
+}
+
+.tavernLeaveBtn:disabled {
+  pointer-events: none;
+  opacity: 0.85;
 }

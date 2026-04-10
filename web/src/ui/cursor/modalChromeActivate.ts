@@ -25,39 +25,9 @@ export function modalChromePointerUpActivate(
   e.stopPropagation()
   if (cursor.state.dragging?.started) {
     cursor.cancelDrag()
-    // #region agent log
-    fetch('http://127.0.0.1:7778/ingest/894c4eea-1ecd-42c9-95f9-1525a8a4b392', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9e1d47' },
-      body: JSON.stringify({
-        sessionId: '9e1d47',
-        runId: 'post-fix3',
-        hypothesisId: 'V3',
-        location: 'modalChromeActivate.ts:pointerUp',
-        message: 'modal chrome: cancelDrag then activate (was active drag)',
-        data: { tag: (e.target as HTMLElement)?.tagName },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
   }
   suppressClickRef.current = true
   activate()
-  // #region agent log
-  fetch('http://127.0.0.1:7778/ingest/894c4eea-1ecd-42c9-95f9-1525a8a4b392', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9e1d47' },
-    body: JSON.stringify({
-      sessionId: '9e1d47',
-      runId: 'post-fix3',
-      hypothesisId: 'V1',
-      location: 'modalChromeActivate.ts:pointerUp',
-      message: 'modal chrome activated on pointerup',
-      data: { tag: (e.target as HTMLElement)?.tagName },
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {})
-  // #endregion
   requestAnimationFrame(() => {
     suppressClickRef.current = false
   })
@@ -71,21 +41,6 @@ export function modalChromeClickActivate(
   e.stopPropagation()
   if (suppressClickRef.current) {
     e.preventDefault()
-    // #region agent log
-    fetch('http://127.0.0.1:7778/ingest/894c4eea-1ecd-42c9-95f9-1525a8a4b392', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9e1d47' },
-      body: JSON.stringify({
-        sessionId: '9e1d47',
-      runId: 'post-fix3',
-      hypothesisId: 'V2',
-        location: 'modalChromeActivate.ts:click',
-        message: 'modal chrome click deduped after pointerup',
-        data: { tag: (e.target as HTMLElement)?.tagName },
-        timestamp: Date.now(),
-      }),
-    }).catch(() => {})
-    // #endregion
     return
   }
   activate()

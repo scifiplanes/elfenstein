@@ -2,7 +2,7 @@ import type { HubHotspotConfig, HubNormRect } from './types'
 
 export type HubHotspotPatch = {
   village?: { tavern?: Partial<HubNormRect>; cave?: Partial<HubNormRect> }
-  tavern?: { innkeeper?: Partial<HubNormRect>; exit?: Partial<HubNormRect> }
+  tavern?: { innkeeper?: Partial<HubNormRect>; innkeeperTrade?: Partial<HubNormRect> }
 }
 
 export function mergeHubHotspotConfig(base: HubHotspotConfig, patch: HubHotspotPatch | undefined): HubHotspotConfig {
@@ -14,7 +14,7 @@ export function mergeHubHotspotConfig(base: HubHotspotConfig, patch: HubHotspotP
     },
     tavern: {
       innkeeper: { ...base.tavern.innkeeper, ...patch.tavern?.innkeeper },
-      exit: { ...base.tavern.exit, ...patch.tavern?.exit },
+      innkeeperTrade: { ...base.tavern.innkeeperTrade, ...patch.tavern?.innkeeperTrade },
     },
   }
 }
@@ -27,6 +27,7 @@ export const DEFAULT_HUB_HOTSPOTS: HubHotspotConfig = {
   },
   tavern: {
     innkeeper: { x: 0.38, y: 0.35, w: 0.24, h: 0.28 },
-    exit: { x: 0.08, y: 0.72, w: 0.16, h: 0.14 },
+    // Trade click: half the max-width band (~34% w × ~58% h); visual position also shifted +40px in CSS (`.hotspotTrade`).
+    innkeeperTrade: { x: 0.31, y: 0.14, w: 0.34, h: 0.58 },
   },
 }

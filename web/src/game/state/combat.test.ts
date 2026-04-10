@@ -82,7 +82,7 @@ function gameShell(overrides: Partial<GameState> & { floor: GameState['floor']; 
       },
       tavern: {
         innkeeper: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeper },
-        exit: { ...DEFAULT_HUB_HOTSPOTS.tavern.exit },
+        innkeeperTrade: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeperTrade },
       },
     },
     run: {

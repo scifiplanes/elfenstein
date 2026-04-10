@@ -22,11 +22,12 @@ function parseTargetFromEl(el: Element | null): DragTarget | null {
   }
   if (kind === 'equipmentSlot') return { kind: 'equipmentSlot', characterId: String(node.dataset.dropCharacterId ?? ''), slot: String(node.dataset.dropEquipSlot ?? '') as any }
   if (kind === 'tradeOfferSlot') return { kind: 'tradeOfferSlot' }
-  if (kind === 'tradeAskSlot') return { kind: 'tradeAskSlot' }
+  if (kind === 'tradeStockSlot')
+    return { kind: 'tradeStockSlot', stockIndex: Number(node.dataset.tradeStockIndex ?? '-1') }
   return null
 }
 
-/** Walk top-to-bottom so opacity-0 portaled modals still resolve `tradeAskSlot` / etc. */
+/** Walk top-to-bottom so opacity-0 portaled modals still resolve drop targets / etc. */
 function hitTestDropTargetAtPoint(
   x: number,
   y: number,
@@ -68,8 +69,8 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
       return { icon: '↔', label: 'Stow' }
     case 'tradeOfferSlot':
       return { icon: '🤝', label: 'Offer' }
-    case 'tradeAskSlot':
-      return { icon: '☑', label: 'Request' }
+    case 'tradeStockSlot':
+      return null
     default:
       return null
   }
@@ -235,7 +236,6 @@ export function CursorProvider(props: PropsWithChildren) {
     let target = v?.target ?? hit?.target ?? null
     virtualHover.current = null
     const payload = pendingPayload.current
-    const hadPointerSession = payload != null
     pendingPayload.current = null
     dragStartPos.current = null
     try {
@@ -266,38 +266,6 @@ export function CursorProvider(props: PropsWithChildren) {
 
     setState((s) => ({ ...s, isPointerDown: false, dragging: null, affordance: null, hoverTarget: target, pointer: { x, y } }))
 
-    // `setPointerCapture` on drag sources sends `pointerup` to the captured node, not the element
-    // under the cursor — modal chrome may never see `pointerup`. If the release point hits a
-    // marked chrome button and the event target is not that button, synthesize a click next tick.
-    const origTarget = e.target
-    queueMicrotask(() => {
-      if (typeof document === 'undefined') return
-      if (!hadPointerSession) return
-      const raw = document.elementFromPoint(x, y)
-      const sel = `[${MODAL_CHROME_HIT_ATTR}]`
-      const hit = raw?.closest?.(sel)
-      if (!hit || !(hit instanceof HTMLButtonElement)) return
-      if (origTarget instanceof Node && (hit === origTarget || hit.contains(origTarget))) return
-      if (hit.getAttribute('aria-disabled') === 'true') return
-      if (hit.disabled) return
-      // #region agent log
-      fetch('http://127.0.0.1:7778/ingest/894c4eea-1ecd-42c9-95f9-1525a8a4b392', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '9e1d47' },
-        body: JSON.stringify({
-          sessionId: '9e1d47',
-          runId: 'post-fix3',
-          hypothesisId: 'V4',
-          location: 'CursorProvider.tsx:endPointerUp',
-          message: 'retarget modal chrome click after capture-target pointerup',
-          data: { origTag: origTarget instanceof Element ? origTarget.tagName : String(origTarget) },
-          timestamp: Date.now(),
-        }),
-      }).catch(() => {})
-      // #endregion
-      hit.click()
-    })
-
     return { drop, promotedToDrag }
   }, [clearHoldTimer])
 
@@ -313,6 +281,35 @@ export function CursorProvider(props: PropsWithChildren) {
       document.removeEventListener('visibilitychange', onVisibility)
     }
   }, [cancelDrag])
+
+  /**
+   * After the full `pointerup` dispatch (capture → target → bubble), if the release coordinates sit
+   * on a `[data-modal-chrome-hit]` button but the event target was not that control (pointer capture
+   * on a drag source, hit-testing oddities, etc.), synthesize `click()` so Trade/Close and other
+   * chrome still run. Skip when the native target is already inside that button so we do not double
+   * fire after a normal press on chrome.
+   */
+  useEffect(() => {
+    const sel = `[${MODAL_CHROME_HIT_ATTR}]`
+    const onPointerUpCapture = (e: PointerEvent) => {
+      if (e.button !== 0) return
+      const x = e.clientX
+      const y = e.clientY
+      const origTarget = e.target
+      queueMicrotask(() => {
+        if (typeof document === 'undefined') return
+        const raw = document.elementFromPoint(x, y)
+        const chromeBtn = raw?.closest?.(sel)
+        if (!chromeBtn || !(chromeBtn instanceof HTMLButtonElement)) return
+        if (chromeBtn.getAttribute('aria-disabled') === 'true') return
+        if (chromeBtn.disabled) return
+        if (origTarget instanceof Node && chromeBtn.contains(origTarget)) return
+        chromeBtn.click()
+      })
+    }
+    window.addEventListener('pointerup', onPointerUpCapture, true)
+    return () => window.removeEventListener('pointerup', onPointerUpCapture, true)
+  }, [])
 
   useEffect(() => {
     // Keep the custom cursor responsive for *any* click/tap (even when not starting a drag),
