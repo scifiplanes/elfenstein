@@ -239,6 +239,15 @@ export function initialState(content: ContentDB): GameState {
   return applySpawnRoomHazardIfNeeded(makeInitialState(content))
 }
 
+/**
+ * SFX played once when the player opens a dialog with a given NPC kind.
+ * Add entries here to assign a sound to any NPC — no other changes needed.
+ */
+const NPC_DIALOG_SFX: Partial<Record<NpcKind, import('../ui/feedback/SfxEngine').SfxKind>> = {
+  Skeleton: 'bones',
+  Chumbo:   'deep_gnome',
+}
+
 export function reduce(state: GameState, action: Action): GameState {
   // Settings / pause menu: block gameplay on every screen (including hub and death).
   if (state.ui.settingsOpen) {
@@ -719,13 +728,10 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
     case 'ui/openNpcDialog': {
       const npc = state.floor.npcs.find((n) => n.id === action.npcId)
-      const q = state.ui.sfxQueue ?? []
-      const sfxQueue =
-        npc?.kind === 'Skeleton'
-          ? q.concat([{ id: `s_${state.nowMs}_bones`, kind: 'bones' as const }])
-          :  (npc?.kind === 'Chumbo' 
-                ? ([{ id: `s_${state.nowMs}_deep_gnome`, kind: 'deep_gnome' as const }]) 
-                : q)
+      const dialogSfx = npc ? NPC_DIALOG_SFX[npc.kind] : undefined
+      const sfxQueue = dialogSfx
+        ? (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_npc_dialog`, kind: dialogSfx }])
+        : state.ui.sfxQueue
       return {
         ...state,
         ui: {
