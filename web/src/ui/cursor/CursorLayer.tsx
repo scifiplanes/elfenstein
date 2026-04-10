@@ -52,6 +52,8 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       '/content/Hand_Active.png',
       '/content/hand_attack_01.png',
       '/content/hand_attack_02.png',
+      '/content/hand_trade_01.png',
+      '/content/hand_trade_02.png',
     ]
     const imgs = srcs.map((src) => {
       const img = new Image()
@@ -194,6 +196,14 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const useAttackHand =
     contextualAffordance?.label === 'Attack' || Boolean(combatAttackHover && !dragging?.started)
 
+  const hubTradeHover =
+    props.state.ui.screen === 'hub' &&
+    props.state.ui.hubScene === 'tavern' &&
+    hoverTarget?.kind === 'hubInnkeeperTrade' &&
+    !dragging?.started
+
+  const useTradeHand = Boolean(hubTradeHover)
+
   const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
   const ghostText = (() => {
     if (!ghost) return ''
@@ -256,9 +266,12 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
 
   const craftFlickerIsHold = Boolean(craftReady) && (Math.floor(animNowMs / 400) % 2 === 0)
   const attackHandClass = Math.floor(animNowMs / 280) % 2 === 0 ? styles.attack1 : styles.attack2
-  const handStateClass = useAttackHand
-    ? attackHandClass
-    : craftReady && isHold
+  const tradeHandClass = Math.floor(animNowMs / 280) % 2 === 0 ? styles.trade1 : styles.trade2
+  const handStateClass = useTradeHand
+    ? tradeHandClass
+    : useAttackHand
+      ? attackHandClass
+      : craftReady && isHold
       ? craftFlickerIsHold ? styles.hold : styles.active
       : isHold ? styles.hold
       : isActive ? styles.active

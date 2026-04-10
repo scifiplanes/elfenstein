@@ -1071,7 +1071,7 @@ export function reduce(state: GameState, action: Action): GameState {
           return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
         }
       }
-      if (target.kind === 'tradeStockSlot') {
+      if (target.kind === 'tradeStockSlot' || target.kind === 'hubInnkeeperTrade') {
         return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
       }
       const itemId: ItemId = payload.itemId

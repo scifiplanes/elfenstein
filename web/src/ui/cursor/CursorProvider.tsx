@@ -2,6 +2,7 @@ import { type PropsWithChildren, useCallback, useEffect, useMemo, useRef, useSta
 import type { DragPayload, DragTarget } from '../../game/types'
 import { CursorContext, type CursorApi, type CursorState } from './CursorContext'
 import { MODAL_CHROME_HIT_ATTR } from './modalChromeActivate'
+import { hubTavernTradeHoverRectRef } from '../hub/hubTavernTradeCursorRect'
 
 function parseTargetFromEl(el: Element | null): DragTarget | null {
   const node = el?.closest?.('[data-drop-kind]') as HTMLElement | null
@@ -24,6 +25,7 @@ function parseTargetFromEl(el: Element | null): DragTarget | null {
   if (kind === 'tradeOfferSlot') return { kind: 'tradeOfferSlot' }
   if (kind === 'tradeStockSlot')
     return { kind: 'tradeStockSlot', stockIndex: Number(node.dataset.tradeStockIndex ?? '-1') }
+  if (kind === 'hubInnkeeperTrade') return { kind: 'hubInnkeeperTrade' }
   return null
 }
 
@@ -70,6 +72,8 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
     case 'tradeOfferSlot':
       return { icon: '🤝', label: 'Offer' }
     case 'tradeStockSlot':
+      return null
+    case 'hubInnkeeperTrade':
       return null
     default:
       return null
@@ -135,6 +139,14 @@ export function CursorProvider(props: PropsWithChildren) {
   const applyPointerMove = useCallback((clientX: number, clientY: number) => {
     const x = clientX
     const y = clientY
+
+    const tr = hubTavernTradeHoverRectRef.current
+    if (tr && x >= tr.left && x <= tr.right && y >= tr.top && y <= tr.bottom) {
+      virtualHover.current = {
+        target: { kind: 'hubInnkeeperTrade' },
+        rect: { left: tr.left, top: tr.top, right: tr.right, bottom: tr.bottom },
+      }
+    }
 
     // Promote drag on movement using refs + pending payload, not React state from the closure.
     // `beginPointerDown` sets those synchronously, but `dragging` in state may not have committed

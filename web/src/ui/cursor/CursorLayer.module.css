@@ -40,12 +40,22 @@
   background-image: url('/content/Hand_Active.png');
 }
 
+/* Combat attack hover (`CursorLayer.tsx`). */
 .attack1 {
   background-image: url('/content/hand_attack_01.png');
 }
 
 .attack2 {
   background-image: url('/content/hand_attack_02.png');
+}
+
+/* Hub tavern innkeeper trade hit (two-frame flip; same cadence as attack). */
+.trade1 {
+  background-image: url('/content/hand_trade_01.png');
+}
+
+.trade2 {
+  background-image: url('/content/hand_trade_02.png');
 }
 
 .ghost {

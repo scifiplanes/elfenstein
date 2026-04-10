@@ -5207,3 +5207,59 @@ Tuning loads **`/debug-settings.json`** first, then merges **`elfenstein.debugSe
 
 ### Consequences
 **`web/src/ui/debug/DebugPanel.tsx`**, **`DESIGN.md`** §3 (Debug F2 persistence).
+
+---
+
+## ADR-0313 — Hub tavern trade: `hubInnkeeperTrade` drop kind + `hand_trade` cursor
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** **`HotspotBox`** sets **`data-drop-kind="hubInnkeeperTrade"`**; **`DragTarget`** adds **`{ kind: 'hubInnkeeperTrade' }`**. **`CursorLayer`** alternates **`hand_trade_01/02.png`** trade cursor frames on the same **~280 ms** cadence when hovering that region in the tavern hub (and not dragging). **`drag/drop`** onto **`hubInnkeeperTrade`** rejects (**`ui/sfx` `reject`**) like **`tradeStockSlot`**.
+
+### Rationale
+Clear affordance for “trade here,” distinct from combat attack sprites.
+
+### Consequences
+- **`types.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`CursorLayer.module.css`**, **`HubViewport.tsx`**, **`reducer.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0314 — Trade vs attack cursor sprites + tavern trade virtual hover
+Date: 2026-04-10
+
+### Decision
+**`CursorLayer`**: combat attack uses **`hand_attack_01/02`** (**.attack1/2**); hub tavern **`hubInnkeeperTrade`** uses **`hand_trade_01/02.png`** (**.trade1/2**). **`HubViewport`** syncs the trade **`HotspotBox`** **`getBoundingClientRect`** into **`hubTavernTradeHoverRectRef`** (`ResizeObserver` + **`resize`/`scroll`**). **`CursorProvider` `applyPointerMove`** sets **`virtualHover`** to **`hubInnkeeperTrade`** when the pointer is inside that rect **before** **`elementsFromPoint`**.
+
+### Rationale
+Sprites must differ; **`elementsFromPoint`** alone was unreliable under the invisible HUD.
+
+### Consequences
+- **`HubViewport.tsx`**, **`hubTavernTradeCursorRect.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`CursorLayer.module.css`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0315 — Tavern trade hotspot: layout to **`top: 350px`**, **`h: 0.5`**, no border
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** defaults **`w/h`** **`0.28` × `0.5`** (**`x`** **`0.36`**); **`HubViewport`** uses **`TAVERN_TRADE_TOP_PX = 350`** (**`fixedTopPx`**; normalized **`y`** ignored). **`.hotspotTrade`** sets **`border: none`** (invisible hit target over the tavern foreground). Prior steps (smaller rect, **50%** height, moving **100px**/**150px**/**100px** down, removing the red outline) are folded here so IDs **ADR-0302**–**ADR-0306** in earlier branches remain historical references only.
+
+### Rationale
+Player-driven iteration on trade click target size and position without **`translateY`** hacks.
+
+### Consequences
+- **`HubViewport.tsx`**, **`HubViewport.module.css`**, **`hubHotspotDefaults.ts`**, **`public/debug-settings.json`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0316 — Tavern trade cursor assets: `hand_trade_01/02` filenames
+Date: 2026-04-10
+
+### Decision
+**`.trade1` / `.trade2`** and **`CursorLayer`** preload use **`/content/hand_trade_01.png`** and **`/content/hand_trade_02.png`** (stable lowercase URLs).
+
+### Rationale
+Authoritative art filenames in **`Content/`**.
+
+### Consequences
+- **`CursorLayer.module.css`**, **`CursorLayer.tsx`**, **`Content/hand_trade_*.png`**, **`DESIGN.md`**.

@@ -606,4 +606,6 @@ export type DragTarget =
   | { kind: 'tradeOfferSlot' }
   /** Merchant “their stock” cell in `TradeModal` (hover tooltip only; not a drop target). */
   | { kind: 'tradeStockSlot'; stockIndex: number }
+  /** Hub tavern: click region that opens innkeeper trade (`HubViewport` trade `HotspotBox`). */
+  | { kind: 'hubInnkeeperTrade' }
 

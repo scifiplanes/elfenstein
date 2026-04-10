@@ -33,11 +33,11 @@
     "lanternBeamAngleDeg": 16,
     "lanternBeamPenumbra": 0.58,
     "torchIntensity": 15.47,
-    "torchDistance": 2,
+    "torchDistance": 10,
     "shadowLanternPoint": 0,
     "shadowLanternBeam": 0,
     "shadowMapSize": 256,
-    "shadowFilter": 0,
+    "shadowFilter": 2,
     "torchPoiLightMax": 3,
     "fogEnabled": 0,
     "fogDensity": 0,
@@ -216,10 +216,10 @@
         "h": 1
       },
       "innkeeperTrade": {
-        "x": 0.31,
+        "x": 0.36,
         "y": 0.14,
-        "w": 0.34,
-        "h": 0.58
+        "w": 0.28,
+        "h": 0.5
       }
     }
   },
