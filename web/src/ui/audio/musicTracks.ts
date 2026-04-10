@@ -7,6 +7,9 @@ export const TITLE_THEME_TRACK = '/sounds/background/theme.mp3'
 /** Village hub ambient loop. */
 export const VILLAGE_TRACK = '/sounds/background/village.mp3'
 
+/** Tavern hub ambient loop. */
+export const TAVERN_TRACK = '/sounds/background/tavern.mp3'
+
 /** Base ambient loops — one per floor type, looped indefinitely. */
 export const BG_NOISE_TRACKS: Record<FloorType, string> = {
   Dungeon: '/sounds/background/bg_noise_1.mp3',
@@ -75,6 +78,7 @@ export const PROXIMITY_OVERLAYS: ProximityOverlay[] = [
 export const ALL_MUSIC_TRACKS = [
   TITLE_THEME_TRACK,
   VILLAGE_TRACK,
+  TAVERN_TRACK,
   ...Object.values(BG_NOISE_TRACKS),
   ...new Set(PROXIMITY_OVERLAYS.map((o) => o.track)),
 ]
