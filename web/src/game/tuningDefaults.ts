@@ -102,11 +102,11 @@ export const DEFAULT_RENDER: RenderTuning = {
 
 /** Copy only keys present in `DEFAULT_RENDER` so `debug-settings.json` always includes the full schema (e.g. per-mode camera lights) and drops stale fields. */
 export function pickRenderTuningForPersistence(render: RenderTuning): RenderTuning {
-  const out = {} as RenderTuning
+  const out = {} as Record<keyof RenderTuning, RenderTuning[keyof RenderTuning]>
   for (const key of Object.keys(DEFAULT_RENDER) as (keyof RenderTuning)[]) {
     out[key] = render[key]
   }
-  return out
+  return out as RenderTuning
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {

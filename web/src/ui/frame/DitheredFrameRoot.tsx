@@ -671,16 +671,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // Drive compositor-only portrait overlays off real time.
     const nowMs = performance.now()
     const cue = latestStateRef.current.ui.portraitMouth
-    const pulse = latestStateRef.current.ui.portraitIdlePulse
     const hz = Number(latestStateRef.current.render.portraitMouthFlickerHz ?? 0)
     const amount = Number(latestStateRef.current.render.portraitMouthFlickerAmount ?? 0)
     const portraitMouthOn = party.map((c) => computePortraitMouthOn({ nowMs, cue, characterId: c.id, hz, amount }))
-    // Idle pulse needs to feel immediate on press; do not rely solely on reducer/React timing.
-    const portraitIdleOn = party.map((c) =>
-      pulse?.characterId === c.id && (pulse.untilMs ?? 0) > nowMs ? 1
-      : pressedPortraitCharacterId === c.id ? 1
-      : 0,
-    )
+    // Portrait idle is capture-baked only (see PortraitPanel + ADR-0311); compositor idle stays off.
+    const portraitIdleOn = party.map(() => 0)
     const hover = cs.hoverTarget
     const portraitHoverEyesOn = party.map((c) =>
       cs.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,

@@ -367,23 +367,11 @@ export function PortraitPanel(props: {
   const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
   const pressIdle = pressedPortraitCharacterId === characterId
   const showIdleForEyes = idleFlash || pulseIdle || pressIdle
-  // Pulse/press idle: compositor draws the idle overlay; capture omits the idle `<img>` to avoid double.
-  // Random ambient (`idleFlash` only): compositor does not set `portraitIdleOn`, so capture must rasterize
-  // the idle sprite or the art stack is only hidden layers → blank portrait in uiTex.
-  const showIdleSpriteInCapture =
-    captureForPostprocess && idleFlash && !pulseIdle && !pressIdle && showIdleForEyes
-  const showIdleSprite = captureForPostprocess ? showIdleSpriteInCapture : showIdleForEyes
-  // Pulse/press: compositor draws idle on top of the HUD texture. If capture hides base/eyes but omits
-  // the idle `<img>`, a frame where compositor idle is already off and the texture is not yet recaptured
-  // reads as a blank portrait — keep the face in the capture stack and let the compositor occlude it.
-  const compositorDrivenIdle = pulseIdle || pressIdle
-  const idleHideEyes =
-    showIdleForEyes && !showEyesInspect && !(captureForPostprocess && compositorDrivenIdle)
-  const idleHideBase =
-    showIdleForEyes &&
-    !!portrait?.idleSrc &&
-    !showEyesInspect &&
-    !(captureForPostprocess && compositorDrivenIdle)
+  // All idle (ambient, `portraitIdlePulse`, frame press) is rasterized in the offscreen capture HUD so
+  // `uiTex` matches the interactive stack; the compositor does not draw player portrait idle (ADR-0311).
+  const showIdleSprite = showIdleForEyes
+  const idleHideEyes = showIdleForEyes && !showEyesInspect
+  const idleHideBase = showIdleForEyes && !!portrait?.idleSrc && !showEyesInspect
 
   const prevCharacterIdForIdleCapRef = useRef(characterId)
   const prevIdleHideBaseRef = useRef(idleHideBase)

@@ -5178,3 +5178,32 @@ Camp art should reflect the expedition **just cleared** (cave- vs dungeon- vs ru
 
 ### Consequences
 **`web/src/ui/hub/HubViewport.tsx`** (imports **`runFloorSchedule`**); **`DESIGN.md`** §5.1 / §8.1; refines **ADR-0309** (which keyed off **`floor.floorType`** at camp).
+
+---
+
+## ADR-0311 — Portrait idle capture-baked only (no compositor idle for pulse / press)
+Date: 2026-04-10
+
+### Decision
+- **`PortraitPanel`**: for **`captureForPostprocess`**, treat **all** idle visibility (**`idleFlash`**, **`ui.portraitIdlePulse`**, frame **press**) like ambient idle: apply **`idleHideBase` / `idleHideEyes`** and rasterize the idle **`<img>`** in the capture tree. **`showIdleSprite`** follows **`showIdleForEyes`** with no compositor-only carve-out.
+- **`DitheredFrameRoot`**: drive **`portraitIdleOn`** as **all zeros** for party slots (compositor does not draw player portrait idle). Keep **`idlePulseActive`**, **`portraitPressActive`**, and capture **`hudKey`** fields (**`pulse`**, **`press`**, **`pCapIdle`**) so **`html2canvas`** burst cadence still tracks idle.
+
+### Rationale
+**ADR-0301** / **ADR-0304** / **ADR-0305** kept **base+eyes** in **`uiTex`** during pulse/press and relied on compositor idle plus alpha-gated **`killStaleUiUnderCompositorIdle`**. Semi-transparent idle pixels and async capture still showed a **duplicate** base under the overlay. A **single** source of truth (same DOM stack as the interactive HUD) removes that mismatch; end-of-pulse **blank** risk is mitigated by restoring base+eyes in the capture DOM when idle ends and by existing **burst** capture (**ADR-0295**, **ADR-0155**).
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** portrait idle + reaction bullets. **`CompositeShader`** idle stale-kill path is effectively unused for player portraits while **`portraitIdleOn`** stays off; shader left in place for minimal churn.
+
+---
+
+## ADR-0312 — F2 Clear local overrides in production builds
+Date: 2026-04-10
+
+### Decision
+**`DebugPanel`**: render **Clear local overrides** outside **`import.meta.env.DEV`** so it appears in **production** as well as dev. Keep **Save to project** (and the existing dev-only **`POST /__debug_settings/save`** path) **dev-only**.
+
+### Rationale
+Tuning loads **`/debug-settings.json`** first, then merges **`elfenstein.debugSettings`** from **localStorage**, which can mask a newer shipped JSON. The clear button existed but was hidden in prod, so published players had no in-app way to reset.
+
+### Consequences
+**`web/src/ui/debug/DebugPanel.tsx`**, **`DESIGN.md`** §3 (Debug F2 persistence).

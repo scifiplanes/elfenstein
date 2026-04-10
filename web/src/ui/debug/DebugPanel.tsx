@@ -46,6 +46,9 @@ type Slider = {
   format?: (v: number) => string
 }
 
+/** Keys adjustable via `render/set` (excludes nested `npcBillboard`; use `render/npcBillboard` for that). */
+type NumericRenderTuningKey = Exclude<keyof GameState['render'], 'npcBillboard'>
+
 export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action> }) {
   const { state, dispatch } = props
   const [query, setQuery] = useState('')
@@ -93,7 +96,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     dispatch({ type: 'run/new' })
   }
 
-  const cameraSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+  const cameraSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
       { key: 'camEyeHeight', label: 'Eye height', min: 0.2, max: 2.2, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'camForwardOffset', label: 'Camera forward/back offset', min: -1.2, max: 1.2, step: 0.01, format: (v) => v.toFixed(2) },
@@ -109,7 +112,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
-  const portraitSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+  const portraitSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
       { key: 'portraitShakeLengthMs', label: 'Portrait shake length / hold (ms)', min: 0, max: 12_000, step: 10, format: (v) => String(Math.round(v)) },
       { key: 'portraitShakeDecayMs', label: 'Portrait shake decay / fade (ms)', min: 0, max: 3000, step: 10, format: (v) => String(Math.round(v)) },
@@ -153,7 +156,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
-  const cursorSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+  const cursorSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
       { key: 'cursorClickShakeMagnitude', label: 'Click shake amplitude', min: 0, max: 1.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'cursorClickShakeHz', label: 'Click shake Hz', min: 0, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
@@ -163,7 +166,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
-  const renderSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+  const renderSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
       { key: 'globalIntensity', label: 'Global intensity (3D)', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'themeHueShiftDeg_dungeon_warm', label: 'Theme hue shift (dungeon_warm, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
@@ -281,7 +284,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
-  const npcSliders: Array<Omit<Slider, 'key'> & { key: Exclude<keyof GameState['render'], 'npcBillboard'> }> = useMemo(
+  const npcSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
       {
         key: 'hubInnkeeperSpriteScale',
@@ -430,45 +433,43 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           </button>
 
           {import.meta.env.DEV && (
-            <>
-              <button
-                type="button"
-                className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
-                onClick={async () => {
-                  const ok = await saveDebugSettingsToProject(
-                    state.render,
-                    state.audio,
-                    state.hubHotspots,
-                    buildDebugUiPersist(state.ui),
-                  )
-                  dispatch({
-                    type: 'ui/toast',
-                    text: ok ? 'Saved debug settings to project.' : 'Failed to save debug settings to project.',
-                    ms: ok ? 1400 : 1600,
-                  })
-                }}
-                title="Writes web/public/debug-settings.json now (dev). Auto-save also runs ~2s after edits."
-              >
-                Save to project
-              </button>
-              <button
-                type="button"
-                className={styles.headerBtn}
-                onClick={() => {
-                  clearLocalDebugSettings()
-                  dispatch({
-                    type: 'ui/toast',
-                    text: 'Cleared local debug overrides. Reloading…',
-                    ms: 1200,
-                  })
-                  window.setTimeout(() => window.location.reload(), 350)
-                }}
-                title="Removes elfenstein.debugSettings from localStorage and reloads so project JSON applies cleanly"
-              >
-                Clear local overrides
-              </button>
-            </>
+            <button
+              type="button"
+              className={`${styles.headerBtn} ${styles.headerBtnPrimary}`}
+              onClick={async () => {
+                const ok = await saveDebugSettingsToProject(
+                  state.render,
+                  state.audio,
+                  state.hubHotspots,
+                  buildDebugUiPersist(state.ui),
+                )
+                dispatch({
+                  type: 'ui/toast',
+                  text: ok ? 'Saved debug settings to project.' : 'Failed to save debug settings to project.',
+                  ms: ok ? 1400 : 1600,
+                })
+              }}
+              title="Writes web/public/debug-settings.json now (dev). Auto-save also runs ~2s after edits."
+            >
+              Save to project
+            </button>
           )}
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => {
+              clearLocalDebugSettings()
+              dispatch({
+                type: 'ui/toast',
+                text: 'Cleared local debug overrides. Reloading…',
+                ms: 1200,
+              })
+              window.setTimeout(() => window.location.reload(), 350)
+            }}
+            title="Removes elfenstein.debugSettings from localStorage and reloads so the shipped debug-settings.json applies (dev and production builds)."
+          >
+            Clear local overrides
+          </button>
         </div>
       </div>
 

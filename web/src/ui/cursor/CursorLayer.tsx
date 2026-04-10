@@ -141,7 +141,6 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const contextualAffordance =
     dragging?.started
       ? (() => {
-          const src = dragging.payload.source
           const item = props.state.party.items[dragging.payload.itemId]
           if (!item) return null
           const def = props.content.item(item.defId)

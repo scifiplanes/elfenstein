@@ -148,7 +148,6 @@ export function placePois(args: {
 
   const isBedRoomOk = (r: GenRoom) => {
     const f = r.tags?.roomFunction
-    const p = r.tags?.roomProperties
     // Keep bed out of connector/junction rooms (pre-tagged Passage).
     if (r.id.startsWith('r_junc_')) return false
     return (f === 'Habitat' || f === 'Communal') && !harshRoomProperties(r.tags)
