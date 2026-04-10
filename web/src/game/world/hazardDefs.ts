@@ -25,12 +25,11 @@ export const ROOM_HAZARD_SPRITE_SRC: Record<RoomHazardProperty, string> = {
   Burning: '/content/hazard_fire.png',
   Flooded: '/content/hazard_water.png',
   Infected: '/content/hazard_poison.png',
-  // Reuse baseline hazard art until bespoke sprites ship (see DESIGN).
-  SporeMist: '/content/hazard_poison.png',
-  NanoHaze: '/content/hazard_water.png',
-  Unstable: '/content/hazard_fire.png',
-  Haunted: '/content/hazard_poison.png',
-  RoyalMiasma: '/content/hazard_water.png',
+  SporeMist: '/content/hazard_spore_mist.png',
+  NanoHaze: '/content/hazard_nano_haze.png',
+  Unstable: '/content/hazard_unstable.png',
+  Haunted: '/content/hazard_haunted.png',
+  RoyalMiasma: '/content/hazard_royal_miasma.png',
 }
 
 /** Fraction of eligible floor cells (after filters) that receive a decal, deterministic per cell. */

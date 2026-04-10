@@ -159,6 +159,7 @@ export function HudLayout(props: {
       className={styles.root}
       data-hud-root=""
       data-capture={captureForPostprocess ? 'true' : 'false'}
+      data-title-screen={state.ui.screen === 'title' ? 'true' : undefined}
       ref={rootRef}
       onPointerMove={
         interactive

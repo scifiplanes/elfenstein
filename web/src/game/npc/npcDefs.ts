@@ -1,27 +1,25 @@
 import type { NpcKind } from '../types'
 
-const PLACEHOLDER_NPC = '/content/poi_placeholder.png'
-
 /** Primary in-world / dialog billboard texture per kind. */
 export const NPC_SPRITE_SRC: Record<NpcKind, string> = {
   Bobr: '/content/npc_bobr.png',
   Skeleton: '/content/npc_skeleton.png',
   Catoctopus: '/content/npc_catoctopus.png',
-  Swarm: PLACEHOLDER_NPC,
+  Swarm: '/content/npc_swarm.png',
   /** In-world art ships as `npc_slime.png`; kind name stays Wurglepup in data. */
   Wurglepup: '/content/npc_slime.png',
-  Chumbo: PLACEHOLDER_NPC,
-  Grub: PLACEHOLDER_NPC,
-  Kuratko: PLACEHOLDER_NPC,
-  Grechka: PLACEHOLDER_NPC,
-  Snailord: PLACEHOLDER_NPC,
-  Bulba: PLACEHOLDER_NPC,
-  Elder: PLACEHOLDER_NPC,
-  Kerekere: PLACEHOLDER_NPC,
-  Bok: PLACEHOLDER_NPC,
-  RegularBok: PLACEHOLDER_NPC,
-  BigHands: PLACEHOLDER_NPC,
-  Gargantula: PLACEHOLDER_NPC,
+  Chumbo: '/content/npc_chumbo.png',
+  Grub: '/content/npc_grub.png',
+  Kuratko: '/content/npc_kuratko.png',
+  Grechka: '/content/npc_grechka.png',
+  Snailord: '/content/npc_snailord.png',
+  Bulba: '/content/npc_bulba.png',
+  Elder: '/content/npc_elder.png',
+  Kerekere: '/content/npc_kerekere.png',
+  Bok: '/content/npc_bok.png',
+  RegularBok: '/content/npc_regular_bok.png',
+  BigHands: '/content/npc_big_hands.png',
+  Gargantula: '/content/npc_gargantula.png',
 }
 
 /** Optional second frame swapped on a shared timer (same material per kind). */

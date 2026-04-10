@@ -14,6 +14,17 @@
   z-index: 2;
 }
 
+/* Visible Bobr intro portals here; sits above the composited canvas, below modal layer (z-8). */
+.titleCutsceneMount {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .interactiveHud {
   position: absolute;
   inset: 0;

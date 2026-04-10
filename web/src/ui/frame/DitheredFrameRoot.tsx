@@ -13,6 +13,7 @@ import { DeathModal } from '../death/DeathModal'
 import { TradeModal } from '../trade/TradeModal'
 import { SettingsMenu } from '../settings/SettingsMenu'
 import { TitleScreen } from '../title/TitleScreen'
+import { TitleCutscenePortalContext } from '../title/TitleCutscenePortalContext'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
 import { useFixedStageOuterScale } from '../../app/FixedStageContext'
@@ -25,6 +26,48 @@ import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
 
 type SpeciesId = GameState['party']['chars'][number]['species']
 const NAV_PUSHED_SRC = '/content/ui/navigation/ui_navigationbutton_pushed.png'
+/** Same asset as `TitleScreen` / hub village; full-stage `object-fit: cover` for compositor boot. */
+const TITLE_BOOT_VILLAGE_SRC = '/content/village.png'
+
+function buildTitleBootPlaceholderTexture(): Promise<THREE.CanvasTexture> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = STAGE_CSS_WIDTH
+      canvas.height = STAGE_CSS_HEIGHT
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('2D context unavailable'))
+        return
+      }
+      ctx.fillStyle = '#050508'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const iw = img.naturalWidth || img.width
+      const ih = img.naturalHeight || img.height
+      if (iw < 1 || ih < 1) {
+        reject(new Error('Invalid image size'))
+        return
+      }
+      const scale = Math.max(canvas.width / iw, canvas.height / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      const ox = (canvas.width - dw) / 2
+      const oy = (canvas.height - dh) / 2
+      ctx.drawImage(img, 0, 0, iw, ih, ox, oy, dw, dh)
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.minFilter = THREE.LinearFilter
+      tex.magFilter = THREE.LinearFilter
+      tex.generateMipmaps = false
+      tex.needsUpdate = true
+      resolve(tex)
+    }
+    img.onerror = () => reject(new Error('Failed to load title boot art'))
+    img.src = TITLE_BOOT_VILLAGE_SRC
+  })
+}
 
 function portraitOverlayUrlsForSpecies(
   species: SpeciesId,
@@ -127,6 +170,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const pendingHudKeyRef = useRef<string>('')
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
+  const [titleCutsceneMountEl, setTitleCutsceneMountEl] = useState<HTMLDivElement | null>(null)
+  /** Bumps when `titleBootPlaceholderTexRef` is ready so `renderOnce` recomposites with the boot UI texture. */
+  const [, setTitleBootPlaceholderReady] = useState(0)
+  const titleBootPlaceholderTexRef = useRef<THREE.CanvasTexture | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cursor = useCursor()
   const pointerDownStartedAtMsRef = useRef<number | null>(null)
@@ -267,6 +314,27 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     return () => {
       uiTexRef.current?.dispose()
       uiTexRef.current = null
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void buildTitleBootPlaceholderTexture()
+      .then((tex) => {
+        if (cancelled) {
+          tex.dispose()
+          return
+        }
+        titleBootPlaceholderTexRef.current = tex
+        setTitleBootPlaceholderReady((n) => n + 1)
+      })
+      .catch(() => {
+        /* Boot still works once html2canvas supplies `uiTexRef`. */
+      })
+    return () => {
+      cancelled = true
+      titleBootPlaceholderTexRef.current?.dispose()
+      titleBootPlaceholderTexRef.current = null
     }
   }, [])
 
@@ -763,9 +831,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const hazardTintPulse = activeRoomProp && hazardPulseProps.has(activeRoomProp)
       ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
       : 1
+    const uiTexForPresenter =
+      uiTexRef.current ??
+      (onTitleScreen ? titleBootPlaceholderTexRef.current : null)
+
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
-      uiTex: uiTexRef.current,
+      uiTex: uiTexForPresenter,
       // `getBoundingClientRect` includes `FixedStageViewport` scale; compositor uniforms expect **layout** CSS px (1920×1080 stage).
       gameRectPx: {
         left: (gr.left - (hr?.left ?? 0)) / outerS,
@@ -906,26 +978,29 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   /* `tradeModalOpen` only for capture HUD overlay; interactive trade mounts in `HudLayout`. */
 
   return (
-    <div className={styles.root}>
-      <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
+    <TitleCutscenePortalContext.Provider value={titleCutsceneMountEl}>
+      <div className={styles.root}>
+        <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
 
-      {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
+        <div ref={setTitleCutsceneMountEl} className={styles.titleCutsceneMount} aria-hidden />
 
-      <div className={styles.interactiveHud}>
-        <HudLayout
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          interactive={true}
-          captureForPostprocess={false}
-          world={world}
-          rootRef={interactiveHudRef}
-          gameViewportRef={gameViewportRef}
-          webglError={webglError}
-          navPadPressedId={navPadPressedId}
-          onNavPadVisualPress={onNavPadVisualPress}
-        />
-      </div>
+        {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
+
+        <div className={styles.interactiveHud}>
+          <HudLayout
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            interactive={true}
+            captureForPostprocess={false}
+            world={world}
+            rootRef={interactiveHudRef}
+            gameViewportRef={gameViewportRef}
+            webglError={webglError}
+            navPadPressedId={navPadPressedId}
+            onNavPadVisualPress={onNavPadVisualPress}
+          />
+        </div>
 
       {state.ui.npcDialogFor || (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
         <div className={styles.stageModalLayer}>
@@ -987,7 +1062,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
             captureMountEl,
           )
         : null}
-    </div>
+      </div>
+    </TitleCutscenePortalContext.Provider>
   )
 }
 

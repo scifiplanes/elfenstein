@@ -62,3 +62,49 @@
   padding: 14px 16px 16px;
   width: min(720px, 100%);
 }
+
+/*
+ * Bobr intro (keep total duration in sync with `BOBR_INTRO_TOTAL_MS` in `TitleScreen.tsx`):
+ * 0.3s black → 3s fade in (200% longer than former 1s) → 2s hold → 3s fade out → 0.3s black (8.6s total).
+ */
+.introOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 10;
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #000;
+  pointer-events: auto;
+  cursor: none;
+}
+
+.introSprite {
+  max-width: min(90%, 720px);
+  max-height: min(70vh, 560px);
+  width: auto;
+  height: auto;
+  object-fit: contain;
+  opacity: 0;
+  animation: bobrIntroOpacity 8.6s linear forwards;
+}
+
+@keyframes bobrIntroOpacity {
+  0%,
+  3.4884% {
+    opacity: 0;
+  }
+  38.3721% {
+    opacity: 1;
+  }
+  61.6279% {
+    opacity: 1;
+  }
+  96.5116% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 0;
+  }
+}

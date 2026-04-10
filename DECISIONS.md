@@ -4638,4 +4638,126 @@ Cleaner village presentation; tavern feedback is scoped to the tavern visit.
 
 ### Consequences
 - **`reducer.ts`** (**`hub/goVillage`**), **`trade.test.ts`**, **`DESIGN.md`**.
+## ADR-0298 — Title **Start**: Bobr fade intro before **`run/new`**
+Date: 2026-04-10
 
+### Decision
+- **`TitleScreen`** (**interactive** only): pressing **Start** does **not** dispatch **`run/new`** immediately. A **black full-stage overlay** with centered **`/content/npc_bobr.png`** runs a **CSS keyframed opacity** timeline (see **ADR-0301** for current segment lengths). On **`animationend`**, dispatch **`run/new`** once (ref-guarded). **Continue** / **Quit** are **disabled** while the intro plays.
+- **Capture** title variant: unchanged (no intro) so offscreen HUD capture stays a static menu frame.
+- **No** new **`GameState`** / reducer fields; timing lives in **`TitleScreen`** + CSS.
+
+### Rationale
+A lightweight narrative beat before the hub without threading UI choreography through the reducer or blocking the title-screen action allowlist.
+
+### Consequences
+- **`web/src/ui/title/TitleScreen.tsx`**, **`TitleScreen.module.css`**, **`DESIGN.md`** §5.1. Other **`run/new`** paths (**settings** restart, **death** new run, **F2** debug) remain instant.
+
+---
+
+## ADR-0299 — Title screen: isolate pointer hits from the invisible HUD grid
+Date: 2026-04-10
+
+### Decision
+- **`HudLayout`**: when **`ui.screen === 'title'`**, set **`data-title-screen`** on the grid root and CSS **`pointer-events: none`** on **`section.panel`** descendants (grid cells **and** the **`bottomRow`** map/inventory/nav sections) so they do not receive clicks under the compositor’s **`opacity: 0`** interactive HUD. **`TitleScreen`** lives in **`fullHudInteractiveLayer`** and does not use **`HudLayout`’s **`section.panel`** class.
+- **`NavigationPanel`**: treat **`screen === 'title'`** like hub for **`busy`** so nav buttons stay **disabled** on the title screen.
+- **`TitleScreen`**: **`useEffect`** **`setTimeout`** matching the CSS intro duration while the Bobr intro runs (**interactive** only), calling the same **`onBobrIntroEnd`** path as **`animationend`** (still ref-guarded once).
+
+### Rationale
+Without this, some stacks let the **3D hit layer** and **nav** still capture input while the menu appears on the presenter, so **Start** / the intro felt broken.
+
+### Consequences
+- **`web/src/ui/hud/HudLayout.tsx`**, **`HudLayout.module.css`**, **`NavigationPanel.tsx`**, **`TitleScreen.tsx`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0300 — Visible Bobr title intro: portal above **`presentCanvas`**
+Date: 2026-04-10
+
+### Decision
+- **`DitheredFrameRoot`**: add **`titleCutsceneMount`** (**`position: absolute; inset: 0; z-index: 4`**, **`pointer-events: none`** on the empty shell) between **`presentCanvas`** and **`.interactiveHud`**, and provide it via **`TitleCutscenePortalContext`**.
+- **`TitleScreen`** (**interactive**): render the Bobr intro overlay with **`createPortal(..., titleCutsceneMount)`** instead of inside **`TitleScreen`’s** subtree under **`.interactiveHud`** (**`opacity: 0`**), which made the cutscene invisible on the real stage while the end timer still delayed **`run/new`**.
+
+### Rationale
+Parent **`opacity`** applies to descendants; the hit HUD must stay invisible for compositing, but the intro must be **actually visible**.
+
+### Consequences
+- **`web/src/ui/title/TitleCutscenePortalContext.tsx`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`TitleScreen.tsx`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0301 — Bobr title intro timing: pad + longer fades
+Date: 2026-04-10
+
+### Decision
+- **Pre / post black**: **0.3s** hold at opacity **0** before fade-in starts, and **0.3s** at **0** after fade-out completes (still on the black overlay) before **`run/new`**.
+- **Fades**: fade-in and fade-out each **200% longer** than the prior **1s** baseline → **3s** each; **hold** stays **2s**.
+- **Total**: **8.6s**; **`TitleScreen`** **`BOBR_INTRO_TOTAL_MS`** and **`bobrIntroOpacity`** **`8.6s`** stay in sync.
+
+### Rationale
+More breathing room before the sprite appears and after it disappears; slower fades read less abrupt.
+
+### Consequences
+- **`TitleScreen.tsx`**, **`TitleScreen.module.css`**, **`DESIGN.md`** §5.1, cross-refs in **ADR-0298** / **ADR-0299** / **ADR-0300**.
+
+---
+
+## ADR-0302 — Title screen: village **`uiTex`** boot placeholder (no 3D flash)
+Date: 2026-04-10
+
+### Decision
+- **`DitheredFrameRoot`**: on mount, build a **`THREE.CanvasTexture`** from **`/content/village.png`** drawn **cover**-fit into a **`STAGE_CSS_WIDTH` × `STAGE_CSS_HEIGHT`** canvas (opaque base fill, then image).
+- **`renderOnce`**: **`presenter.setInputs({ uiTex })`** uses **`uiTexRef.current`**, or when **`ui.screen === 'title'`** and **`uiTexRef` is still null**, that **boot texture**—so the compositor never blends **3D** through an empty HUD texture before the first async **`html2canvas`** capture lands.
+
+### Rationale
+**`uiTex`** starts **null**; **`html2canvas`** is **idle-scheduled** with backoff. Without a fallback, **`CompositeShader`** shows the **dungeon** in the **game rect** for ~a second on cold load.
+
+### Consequences
+- **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** §3 / §5.1. Placeholder art is intentionally the same **village** asset as the title background for now; can be swapped later.
+
+---
+
+## ADR-0303 — Bobr title intro: click to skip
+Date: 2026-04-10
+
+### Decision
+- **`TitleScreen`** portaled **`.introOverlay`**: **`onPointerDown`** (primary button) calls **`onBobrIntroEnd`** (same as **`animationend`** / timeout; **`introEndOnceRef`** still dedupes **`run/new`**).
+- **`TitleScreen.module.css`**: **`cursor: none`** on the overlay (matches HUD hand-cursor policy; overlay remains **`pointer-events: auto`**).
+
+### Rationale
+Players should not wait the full **8.6s** timeline if they want to start immediately.
+
+### Consequences
+- **`TitleScreen.tsx`**, **`TitleScreen.module.css`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0304 — Per-entity placeholder PNG filenames (copy of `poi_placeholder.png`)
+Date: 2026-04-10
+
+### Decision
+- Under repo-level **`Content/`**, add **`npc_<kind>.png`** for each **`NpcKind`** that previously shared **`poi_placeholder.png`**, and **`poi_bed.png`** / **`poi_cracked_wall.png`** for those POIs—each file is a **byte-for-byte copy** of **`Content/poi_placeholder.png`** for now.
+- **`web/src/game/npc/npcDefs.ts`**: **`NPC_SPRITE_SRC`** references the new **`/content/npc_….png`** paths; **`web/src/game/poi/poiDefs.ts`**: **Bed** / **CrackedWall** reference **`/content/poi_bed.png`** and **`/content/poi_cracked_wall.png`**.
+
+### Rationale
+Stable, per-slot URLs make the art pipeline explicit (drop-in replacements without touching code) while keeping identical placeholder pixels until real sprites exist.
+
+### Consequences
+- **`Content/`** gains **15** new PNGs; **`poi_placeholder.png`** stays as an optional generic fallback.
+- **`DESIGN.md`** §7.5 / §9 / §13 updated to describe dedicated filenames + copy-of-placeholder policy.
+
+---
+
+## ADR-0305 — Dedicated env triples + hazard decal PNGs for reskins / expansion properties
+Date: 2026-04-10
+
+### Decision
+- **`Content/`**: add **18** environment textures (**`jungle_*`**, **`livingbio_*`**, **`bunker_*`**, **`golem_*`**, **`catacombs_*`**, **`palace_*`**) as **copies** of the **`cave_*`**, **`Dungeon`** triple, or **`ruins_*`** sources they previously aliased in code; add **5** hazard sprites (**`hazard_spore_mist.png`**, **`hazard_nano_haze.png`**, **`hazard_unstable.png`**, **`hazard_haunted.png`**, **`hazard_royal_miasma.png`**) as copies of **`hazard_poison.png`**, **`hazard_water.png`**, or **`hazard_fire.png`** as before.
+- **`web/src/world/dungeonEnvTextures.ts`**: **`getDungeonEnvTextureSrcs`** returns a **distinct triple per `FloorType`** (explicit **`switch`**).
+- **`web/src/game/world/hazardDefs.ts`**: **`ROOM_HAZARD_SPRITE_SRC`** points each **`RoomHazardProperty`** at its own **`/content/hazard_….png`**.
+
+### Rationale
+Stable per-type URLs for environment and hazard decals so art can replace files without changing TypeScript, while keeping **identical pixels** until new art ships.
+
+### Consequences
+- **`DESIGN.md`** §8.1, §11 (dungeon albedo), §11 (room-hazard decals), §13 (asset list) updated.
+- Base **`Dungeon`** / **`Cave`** / **`Ruins`** triples and the three baseline hazard PNGs **unchanged** on disk.
