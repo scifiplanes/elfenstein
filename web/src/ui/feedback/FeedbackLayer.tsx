@@ -23,6 +23,9 @@ const SFX_FILES: Partial<Record<SfxKind, string[]>> = {
     '/sounds/sfx/bones_2.mp3',
     '/sounds/sfx/bones_3.mp3',
   ],
+  well: [
+    '/sounds/sfx/well.mp3',
+  ],
 }
 
 export function FeedbackLayer(props: { state: GameState; dispatch: Dispatch<Action> }) {

@@ -458,7 +458,7 @@ export function reduce(state: GameState, action: Action): GameState {
           portraitShake: undefined,
           portraitIdlePulse: undefined,
           crafting: undefined,
-          sfxQueue: [],
+          sfxQueue: [{ id: `s_${state.nowMs}_well_reload`, kind: 'well' as const }],
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
           settingsOpen: false,
