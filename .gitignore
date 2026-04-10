@@ -1,5 +1,8 @@
 .DS_Store
 Thumbs.db
+
+# Cursor IDE debug logs (local only)
+.cursor/*.log
 *.swp
 *.swo
 

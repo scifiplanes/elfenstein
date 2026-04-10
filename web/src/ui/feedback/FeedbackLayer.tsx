@@ -26,6 +26,9 @@ const SFX_FILES: Partial<Record<SfxKind, string[]>> = {
   well: [
     '/sounds/sfx/well.mp3',
   ],
+  deep_gnome: [
+    '/sounds/sfx/speech/deep_gnome_phrase_1.mp3'
+  ]
 }
 
 export function FeedbackLayer(props: { state: GameState; dispatch: Dispatch<Action> }) {

@@ -723,7 +723,9 @@ export function reduce(state: GameState, action: Action): GameState {
       const sfxQueue =
         npc?.kind === 'Skeleton'
           ? q.concat([{ id: `s_${state.nowMs}_bones`, kind: 'bones' as const }])
-          : q
+          :  (npc?.kind === 'Chumbo' 
+                ? ([{ id: `s_${state.nowMs}_deep_gnome`, kind: 'deep_gnome' as const }]) 
+                : q)
       return {
         ...state,
         ui: {
