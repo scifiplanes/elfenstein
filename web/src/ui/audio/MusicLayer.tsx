@@ -45,6 +45,8 @@ export function MusicLayer(props: { state: GameState }) {
 
   // ── Mount / unmount ─────────────────────────────────────────────────────────
   useEffect(() => {
+    const autoplayTimers: number[] = []
+
     const resume = () => {
       bgPlayer.ensure()
       for (const p of overlayPlayers.values()) p.ensure()
@@ -56,6 +58,15 @@ export function MusicLayer(props: { state: GameState }) {
     const overlayPreloads = Array.from(overlayPlayers.entries()).map(([track, player]) =>
       player.preload([track]),
     )
+    // Attempt to unlock all AudioContexts. Browsers that allow autoplay (Firefox,
+    // Chrome on localhost / high-engagement origins) will succeed immediately.
+    // Strict browsers ignore these calls until a real user gesture fires; the
+    // pointerdown/keydown listeners above serve as the guaranteed fallback.
+    const tryResume = () => {
+      bgPlayer.ensure()
+      for (const p of overlayPlayers.values()) p.ensure()
+    }
+
     void Promise.all([bgPlayer.preload(ALL_MUSIC_TRACKS), ...overlayPreloads]).then(() => {
       for (const [track, player] of overlayPlayers) {
         player.crossfadeTo(track, 0)
@@ -63,6 +74,14 @@ export function MusicLayer(props: { state: GameState }) {
       }
       const track = activeBgTrackRef.current
       if (track) bgPlayer.crossfadeTo(track, 0)
+
+      // Try to start playback immediately, then retry a couple of times in case
+      // the browser's autoplay permission resolves slightly after page load.
+      tryResume()
+      const t1 = window.setTimeout(tryResume, 500)
+      const t2 = window.setTimeout(tryResume, 2000)
+      // Store timers so they can be cleared on unmount (assigned via closure below).
+      autoplayTimers.push(t1, t2)
     })
 
     void sfxPlayer.load(BG_SFX_TRACKS)
@@ -80,6 +99,7 @@ export function MusicLayer(props: { state: GameState }) {
       bgPlayer.stop()
       for (const p of overlayPlayers.values()) p.stop()
       window.clearTimeout(sfxTimerRef.current)
+      for (const t of autoplayTimers) window.clearTimeout(t)
       window.removeEventListener('pointerdown', resume)
       window.removeEventListener('keydown', resume)
     }
@@ -96,7 +116,11 @@ export function MusicLayer(props: { state: GameState }) {
   }, [bgPlayer, state.audio.masterMusic])
 
   // ── Bg track selection (floor type or debug override) ────────────────────────
-  const desiredBgTrack = state.ui.debugBgTrack ?? selectBgTrack(state)
+  // Debug override only applies in-game; title screen always uses the theme.
+  const desiredBgTrack =
+    state.ui.screen !== 'title' && state.ui.debugBgTrack
+      ? state.ui.debugBgTrack
+      : selectBgTrack(state)
   useEffect(() => {
     if (activeBgTrackRef.current !== desiredBgTrack) {
       const isFirst = activeBgTrackRef.current === null

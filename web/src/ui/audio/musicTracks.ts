@@ -1,6 +1,9 @@
 import type { FloorType } from '../../procgen/types'
 import type { NpcKind, PoiKind } from '../../game/types'
 
+/** Main menu theme — plays on the title screen, crossfades out when the game starts. */
+export const TITLE_THEME_TRACK = '/sounds/background/theme.mp3'
+
 /** Base ambient loops — one per floor type, looped indefinitely. */
 export const BG_NOISE_TRACKS: Record<FloorType, string> = {
   Dungeon: '/sounds/background/bg_noise_1.mp3',
@@ -67,6 +70,7 @@ export const PROXIMITY_OVERLAYS: ProximityOverlay[] = [
 
 /** Flat list of every music URL — used to preload all tracks up front. */
 export const ALL_MUSIC_TRACKS = [
+  TITLE_THEME_TRACK,
   ...Object.values(BG_NOISE_TRACKS),
   ...new Set(PROXIMITY_OVERLAYS.map((o) => o.track)),
 ]
