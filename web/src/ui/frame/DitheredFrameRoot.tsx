@@ -12,6 +12,7 @@ import { NpcDialogModal } from '../npc/NpcDialogModal'
 import { DeathModal } from '../death/DeathModal'
 import { TradeModal } from '../trade/TradeModal'
 import { SettingsMenu } from '../settings/SettingsMenu'
+import { BobrIntroPortal } from '../title/BobrIntroPortal'
 import { TitleScreen } from '../title/TitleScreen'
 import { TitleCutscenePortalContext } from '../title/TitleCutscenePortalContext'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
@@ -171,6 +172,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureScheduledRef = useRef(false)
   const lastHudKeyRef = useRef<string>('')
   const pendingHudKeyRef = useRef<string>('')
+  /** Screen at last successful `html2canvas` commit (avoids parsing `hudKey`; see ADR-0327). */
+  const lastCapturedHudScreenRef = useRef<GameState['ui']['screen'] | null>(null)
   const renderOnceRef = useRef<() => boolean>(() => false)
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
@@ -598,6 +601,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
               uiTexRef.current.image = canvas
               uiTexRef.current.needsUpdate = true
             }
+            lastCapturedHudScreenRef.current = latestStateRef.current.ui.screen
             // Capture succeeded; mark HUD as clean for this key.
             const pending = pendingHudKeyRef.current
             if (pending) {
@@ -839,9 +843,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const hazardTintPulse = activeRoomProp && hazardPulseProps.has(activeRoomProp)
       ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
       : 1
-    const uiTexForPresenter =
-      uiTexRef.current ??
-      (onTitleScreen ? titleBootPlaceholderTexRef.current : null)
+    // Bobr intro is DOM-above-canvas; `uiTexRef` can still be the title bitmap (or null after a
+    // scale-change dispose) until hub `html2canvas` finishes—avoid main-menu flash (ADR-0326/0327).
+    const curScreen = latestStateRef.current.ui.screen
+    const lastCapScreen = lastCapturedHudScreenRef.current
+    const hubNeedsBootUiTex =
+      curScreen === 'hub' &&
+      (lastCapScreen === 'title' || (lastCapScreen == null && lastHudKeyRef.current === ''))
+    const uiTexForPresenter = hubNeedsBootUiTex
+      ? titleBootPlaceholderTexRef.current ?? null
+      : uiTexRef.current ?? (onTitleScreen ? titleBootPlaceholderTexRef.current : null)
 
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
@@ -972,6 +983,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
 
         <div ref={setTitleCutsceneMountEl} className={styles.titleCutsceneMount} aria-hidden />
+
+        <BobrIntroPortal state={state} dispatch={dispatch} />
 
         {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
 

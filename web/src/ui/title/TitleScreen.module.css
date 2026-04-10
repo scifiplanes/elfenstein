@@ -77,7 +77,7 @@
 }
 
 /*
- * Bobr intro (keep total duration in sync with `BOBR_INTRO_TOTAL_MS` in `TitleScreen.tsx`):
+ * Bobr intro (keep total duration in sync with `BOBR_INTRO_TOTAL_MS` in `game/bobrIntroMs.ts`):
  * 0.3s black → 3s fade in (200% longer than former 1s) → 2s hold → 3s fade out → 0.3s black (8.6s total).
  */
 .introOverlay {

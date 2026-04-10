@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { firstPaintMs, interactiveHud, interactiveSettingsDialog } from './helpers'
+import { bobrIntroSettleMs, firstPaintMs, interactiveHud, interactiveSettingsDialog } from './helpers'
 
 test.describe('smoke', () => {
   test('boot: root mounts without page error', async ({ page }) => {
@@ -54,7 +54,7 @@ test.describe('smoke', () => {
 })
 
 test.describe('title to hub', () => {
-  test('Start skips Bobr intro and leaves title screen', async ({ page }) => {
+  test('Start loads hub under Bobr; village after intro', async ({ page }) => {
     await page.goto('/')
     await expect(
       interactiveHud(page).getByRole('dialog', { name: 'Title screen' }),
@@ -62,11 +62,13 @@ test.describe('title to hub', () => {
       timeout: firstPaintMs,
     })
     await interactiveHud(page).getByRole('button', { name: 'Start' }).click()
-    const bobr = page.locator('img[src*="npc_bobr"]')
-    await expect(bobr).toBeVisible({ timeout: 10_000 })
-    await bobr.click()
     await expect(page.getByRole('dialog', { name: 'Title screen' })).toHaveCount(0, {
       timeout: 20_000,
+    })
+    const bobr = page.locator('img[src*="npc_bobr"]')
+    await expect(bobr).toBeVisible({ timeout: 10_000 })
+    await expect(interactiveHud(page).locator('img[src="/content/village.png"]')).toBeVisible({
+      timeout: bobrIntroSettleMs,
     })
   })
 })

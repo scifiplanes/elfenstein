@@ -26,6 +26,7 @@ import {
   clampNpcBillboardRows,
   type LegacyNpcRenderFlat,
 } from './npcBillboardTuning'
+import { BOBR_INTRO_TOTAL_MS } from './bobrIntroMs'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
@@ -232,8 +233,9 @@ export type Action =
   | { type: 'combat/fleeAttempt' }
   | { type: 'combat/defend' }
   | { type: 'combat/clickAttack'; npcId: string }
-  | { type: 'run/new' }
+  | { type: 'run/new'; playBobrIntro?: boolean }
   | { type: 'run/reloadCheckpoint' }
+  | { type: 'ui/dismissBobrIntro' }
 
 export function initialState(content: ContentDB): GameState {
   return applySpawnRoomHazardIfNeeded(makeInitialState(content))
@@ -275,6 +277,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
       case 'hubHotspot/setAxis':
+      case 'ui/dismissBobrIntro':
         break
       default:
         return state
@@ -307,6 +310,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
       case 'hubHotspot/setAxis':
+      case 'ui/dismissBobrIntro':
         break
       default:
         return state
@@ -354,6 +358,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/sfx':
       case 'ui/shake':
       case 'ui/toast':
+      case 'ui/dismissBobrIntro':
         break
       default:
         return state
@@ -386,6 +391,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setShowDeathPopupPreview':
       case 'audio/set':
       case 'hubHotspot/setAxis':
+      case 'ui/dismissBobrIntro':
         break
       default:
         return state
@@ -409,11 +415,17 @@ export function reduce(state: GameState, action: Action): GameState {
           npcDialogFor: undefined,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
+          bobrIntroUntilMs: undefined,
         },
       }
     }
+    case 'ui/dismissBobrIntro': {
+      if (state.ui.bobrIntroUntilMs == null) return state
+      return { ...state, ui: { ...state.ui, bobrIntroUntilMs: undefined } }
+    }
     case 'run/new': {
       const fresh = makeInitialState(CONTENT)
+      const playBobrIntro = action.playBobrIntro === true
       // Preserve tuning across runs; keep debug panel state too.
       const preserved: GameState = {
         ...fresh,
@@ -432,6 +444,7 @@ export function reduce(state: GameState, action: Action): GameState {
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
+          bobrIntroUntilMs: playBobrIntro ? state.nowMs + BOBR_INTRO_TOTAL_MS : undefined,
         },
       }
       return pushActivityLog(applySpawnRoomHazardIfNeeded(preserved), 'New run.')
@@ -487,6 +500,7 @@ export function reduce(state: GameState, action: Action): GameState {
           tradeSession: undefined,
           hubInnkeeperSpeech: undefined,
           hubInnkeeperSpeechTtlMs: undefined,
+          bobrIntroUntilMs: undefined,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
@@ -762,7 +776,12 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'audio/set':
       return { ...state, audio: { ...state.audio, [action.key]: action.value } }
     case 'time/tick': {
-      const next: GameState = pruneExpiredActivityLog({ ...state, nowMs: action.nowMs })
+      const tickNow = action.nowMs
+      let tickState = state
+      if (state.ui.bobrIntroUntilMs != null && tickNow >= state.ui.bobrIntroUntilMs) {
+        tickState = { ...state, ui: { ...state.ui, bobrIntroUntilMs: undefined } }
+      }
+      const next: GameState = pruneExpiredActivityLog({ ...tickState, nowMs: tickNow })
       const withDecay = applyStatusDecay(next)
       const withCrafting = maybeFinishCrafting(withDecay)
       let withAnim = tickViewAnimation(withCrafting)
