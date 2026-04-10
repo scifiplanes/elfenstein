@@ -1,4 +1,4 @@
-export type SfxKind = 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones'
+export type SfxKind = 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' | 'well'
 type SfxTuning = {
   masterSfx: number
   munchVol: number
