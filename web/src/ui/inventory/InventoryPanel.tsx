@@ -1,4 +1,5 @@
 import type { Dispatch } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState, ItemDefId } from '../../game/types'
@@ -15,10 +16,26 @@ export function InventoryPanel(props: {
   const { state, dispatch, content, tradeWantDefIds } = props
   const cursor = useCursor()
   const wantSet = tradeWantDefIds?.length ? new Set(tradeWantDefIds) : null
+  const firstSlotRef = useRef<HTMLDivElement | null>(null)
 
   const inv = state.party.inventory
   const slots = inv.slots
   const hover = cursor.state.hoverTarget?.kind === 'inventorySlot' ? cursor.state.hoverTarget.slotIndex : null
+
+  useLayoutEffect(() => {
+    const slot = firstSlotRef.current
+    const hud = slot?.closest('[data-hud-root]')
+    if (!slot || !(hud instanceof HTMLElement)) return
+
+    const apply = () => {
+      const w = slot.getBoundingClientRect().width
+      if (w > 0) hud.style.setProperty('--hud-inventory-slot-px', `${w}px`)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(slot)
+    return () => ro.disconnect()
+  }, [inv.cols, slots.length])
 
   return (
     <div
@@ -38,6 +55,7 @@ export function InventoryPanel(props: {
         return (
           <div
             key={idx}
+            ref={idx === 0 ? firstSlotRef : undefined}
             className={`${styles.slot}${tradeEligible ? ` ${styles.slotTradeEligible}` : ''}`}
             data-drop-kind="inventorySlot"
             data-drop-slot-index={idx}

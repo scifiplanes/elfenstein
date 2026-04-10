@@ -54,28 +54,58 @@ function deepGnomePhrase(subseed: number): string {
   return tokens.join(' ')
 }
 
+const MOJIBAKE_MULTIBYTE_POOL = ['\u304b', '\u30af', '\u5b57', '\u03a9', '\u00ea', '\u00f1', '\u00df', '\u00b1', '\u00a7']
+
 /** Longer fake words: UTF-8 bytes misread as single-byte Latin (mojibake look). */
 function mojibakePhrase(subseed: number): string {
   const rnd = mul(subseed)
   const nWords = 2 + Math.floor(rnd() * 3)
   const parts: string[] = []
-  const multibytePool = ['\u304b', '\u30af', '\u5b57', '\u03a9', '\u00ea', '\u00f1', '\u00df', '\u00b1', '\u00a7']
   for (let w = 0; w < nWords; w++) {
-    const byteTarget = 12 + Math.floor(rnd() * 9)
-    let s = ''
-    while (new TextEncoder().encode(s).length < byteTarget) {
-      if (rnd() < 0.4) s += multibytePool[Math.floor(rnd() * multibytePool.length)]!
-      else s += String.fromCharCode(97 + Math.floor(rnd() * 26))
-    }
-    parts.push(utf8BytesAsLatin1String(new TextEncoder().encode(s)))
+    parts.push(mojibakeFakeWordFromRnd(rnd))
   }
   return parts.join(' ')
+}
+
+/** One mojibake “word” (deterministic from `subseed`). */
+export function mojibakeFakeWord(subseed: number): string {
+  return mojibakeFakeWordFromRnd(mul(subseed >>> 0))
+}
+
+export function mojibakeFakeWords(count: number, seed: number): string[] {
+  let h = seed >>> 0
+  const out: string[] = []
+  for (let i = 0; i < count; i++) {
+    h = mixSeed(h, `|mjw${i}|`)
+    out.push(mojibakeFakeWord(h))
+  }
+  return out
+}
+
+/** UTF-8 for `♥` misread as Latin-1 bytes (mojibake heart). */
+export function mojibakeHeartSymbol(): string {
+  return utf8BytesAsLatin1String(new TextEncoder().encode('\u2665'))
+}
+
+function mojibakeFakeWordFromRnd(rnd: () => number): string {
+  const byteTarget = 12 + Math.floor(rnd() * 9)
+  let s = ''
+  while (new TextEncoder().encode(s).length < byteTarget) {
+    if (rnd() < 0.4) s += MOJIBAKE_MULTIBYTE_POOL[Math.floor(rnd() * MOJIBAKE_MULTIBYTE_POOL.length)]!
+    else s += String.fromCharCode(97 + Math.floor(rnd() * 26))
+  }
+  return utf8BytesAsLatin1String(new TextEncoder().encode(s))
 }
 
 function utf8BytesAsLatin1String(bytes: Uint8Array): string {
   let out = ''
   for (let i = 0; i < bytes.length; i++) out += String.fromCharCode(bytes[i]!)
   return out
+}
+
+/** UTF-8 text shown as classic mojibake (bytes read as Latin-1); ties flavor to real names. */
+export function mojibakeFromUtf8Text(s: string): string {
+  return utf8BytesAsLatin1String(new TextEncoder().encode(s))
 }
 
 /** Shorter fake Latin words, then combining-mark clutter (zalgo look). */

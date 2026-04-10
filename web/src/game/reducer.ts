@@ -75,12 +75,24 @@ import {
   closeTradeSession,
   openFloorNpcTrade,
   openHubInnkeeperTrade,
+  tradeHasValidAsk,
   tryClearTradeAsk,
+  tryConsumeStagedOfferOnly,
   tryExecuteTrade,
   tryReturnTradeOfferToInventory,
   trySetTradeAsk,
   tryStageTradeOffer,
 } from './state/trade'
+import { innkeeperBarterActivityLogLine, INNKEEPER_OPEN_TRADE_ACTIVITY_LOG } from './npc/innkeeperBarterLog'
+import {
+  innkeeperSpeechAskNoOffer,
+  innkeeperSpeechAskWithOffer,
+  innkeeperSpeechExecuteBarter,
+  innkeeperSpeechExecuteOfferGift,
+  innkeeperSpeechExecuteRequestOnly,
+  innkeeperSpeechWelcome,
+} from './npc/innkeeperTradeMojibake'
+import { HUB_INNKEEPER_SPEECH_WELCOME_MS } from './npc/innkeeperSpeechTiming'
 
 const CONTENT = ContentDB.createDefault()
 
@@ -133,6 +145,7 @@ function mergePersistedDebugUi(state: GameState, patch: DebugUiPersist | undefin
 export type Action =
   | { type: 'ui/toggleDebug' }
   | { type: 'ui/toggleSettings' }
+  | { type: 'ui/clearHubInnkeeperSpeech' }
   | { type: 'ui/setSettingsOpen'; open: boolean }
   | { type: 'ui/goTitle' }
   | { type: 'ui/openPaperdoll'; characterId: string }
@@ -182,7 +195,7 @@ export type Action =
   | { type: 'debug/setRoomTelegraphStrength'; strength: number }
   | {
       type: 'hubHotspot/setAxis'
-      spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.exit'
+      spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.innkeeperTrade'
       key: 'x' | 'y' | 'w' | 'h'
       value: number
     }
@@ -230,6 +243,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/toggleSettings':
       case 'ui/setSettingsOpen':
+      case 'ui/clearHubInnkeeperSpeech':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
@@ -260,6 +274,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/toggleSettings':
       case 'ui/setSettingsOpen':
+      case 'ui/clearHubInnkeeperSpeech':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
@@ -290,6 +305,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/toggleSettings':
       case 'ui/setSettingsOpen':
+      case 'ui/clearHubInnkeeperSpeech':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
@@ -335,6 +351,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/toggleDebug':
       case 'ui/toggleSettings':
       case 'ui/setSettingsOpen':
+      case 'ui/clearHubInnkeeperSpeech':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
@@ -366,6 +383,8 @@ export function reduce(state: GameState, action: Action): GameState {
           hubScene: undefined,
           hubKind: undefined,
           tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
           paperdollFor: undefined,
           npcDialogFor: undefined,
           debugShowNpcDialogPopup: false,
@@ -388,6 +407,8 @@ export function reduce(state: GameState, action: Action): GameState {
           hubScene: 'village',
           hubKind: undefined,
           tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
@@ -444,22 +465,39 @@ export function reduce(state: GameState, action: Action): GameState {
           hubScene: undefined,
           hubKind: undefined,
           tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
         },
       }
       return pushActivityLog(next, 'Reloaded checkpoint.')
     }
     case 'hub/goTavern': {
       if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'village') return state
-      return {
+      const next: GameState = {
         ...state,
-        ui: { ...state.ui, hubScene: 'tavern', tradeSession: undefined },
+        ui: {
+          ...state.ui,
+          hubScene: 'tavern',
+          tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
+        },
       }
+      if (next.ui.hubKind !== 'camp') return pushActivityLog(next, INNKEEPER_OPEN_TRADE_ACTIVITY_LOG)
+      return next
     }
     case 'hub/goVillage': {
       if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
       return {
         ...state,
-        ui: { ...state.ui, hubScene: 'village', tradeSession: undefined },
+        ui: {
+          ...state.ui,
+          hubScene: 'village',
+          tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
+          activityLog: [],
+        },
       }
     }
     case 'hub/enterDungeon': {
@@ -473,6 +511,8 @@ export function reduce(state: GameState, action: Action): GameState {
           hubScene: undefined,
           hubKind: undefined,
           tradeSession: undefined,
+          hubInnkeeperSpeech: undefined,
+          hubInnkeeperSpeechTtlMs: undefined,
         },
         view: snapViewToGrid(f.w, f.h, state.render.camEyeHeight, f.playerPos, f.playerDir),
         // Rebuild 3D mesh after hub used a different viewport rect for the same floor (avoids stale/off-by-one feel).
@@ -480,7 +520,14 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     }
     case 'hub/openTavernTrade': {
-      return openHubInnkeeperTrade(state)
+      const next = openHubInnkeeperTrade(state)
+      if (next.ui.tradeSession?.kind !== 'hub_innkeeper') return next
+      const seed = (Math.floor(state.nowMs) ^ 0x51e7) >>> 0
+      const line = innkeeperSpeechWelcome(next.ui.tradeSession.wants, seed, (id) => CONTENT.item(id).name)
+      return {
+        ...next,
+        ui: { ...next.ui, hubInnkeeperSpeech: line, hubInnkeeperSpeechTtlMs: HUB_INNKEEPER_SPEECH_WELCOME_MS },
+      }
     }
     case 'hub/closeTavernTrade':
     case 'trade/close': {
@@ -497,7 +544,21 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'trade/selectStock': {
       const ts = state.ui.tradeSession
       if (!ts) return state
-      return trySetTradeAsk(state, ts, action.stockIndex) ?? state
+      if (ts.askStockIndex === action.stockIndex) {
+        return tryClearTradeAsk(state, ts)
+      }
+      const applied = trySetTradeAsk(state, ts, action.stockIndex)
+      if (!applied) return state
+      if (applied.ui.tradeSession?.kind !== 'hub_innkeeper') return applied
+      const ts2 = applied.ui.tradeSession
+      if (ts2.kind !== 'hub_innkeeper') return applied
+      const seed = (Math.floor(state.nowMs) ^ 0x51e8 ^ action.stockIndex) >>> 0
+      const line =
+        ts2.offerItemId == null ? innkeeperSpeechAskNoOffer(seed) : innkeeperSpeechAskWithOffer(seed)
+      return {
+        ...applied,
+        ui: { ...applied.ui, hubInnkeeperSpeech: line, hubInnkeeperSpeechTtlMs: undefined },
+      }
     }
     case 'trade/stageOfferFromInventory': {
       if (state.combat) return rejectNotWhileInCombat(state)
@@ -513,9 +574,62 @@ export function reduce(state: GameState, action: Action): GameState {
       if (state.combat) return rejectNotWhileInCombat(state)
       const ts = state.ui.tradeSession
       if (!ts) return state
-      const next = tryExecuteTrade(state, ts, state.nowMs)
+      const offerId = ts.offerItemId
+      const hasOffer = offerId != null && Boolean(state.party.items[offerId])
+      const hasAsk = tradeHasValidAsk(state, ts)
+      const seed = (Math.floor(state.nowMs) ^ 0x7e4e) >>> 0
+
+      if (!hasOffer && !hasAsk) return state
+
+      if (!hasOffer && hasAsk) {
+        if (ts.kind !== 'hub_innkeeper') return state
+        return {
+          ...state,
+          ui: {
+            ...state.ui,
+            hubInnkeeperSpeech: innkeeperSpeechExecuteRequestOnly(seed),
+            hubInnkeeperSpeechTtlMs: undefined,
+          },
+        }
+      }
+
+      if (hasOffer && !hasAsk) {
+        const consumed = tryConsumeStagedOfferOnly(state, ts)
+        if (!consumed) return reduce(state, { type: 'ui/sfx', kind: 'reject' })
+        const withSpeech =
+          ts.kind === 'hub_innkeeper'
+            ? {
+                ...consumed,
+                ui: {
+                  ...consumed.ui,
+                  hubInnkeeperSpeech: innkeeperSpeechExecuteOfferGift(seed),
+                  hubInnkeeperSpeechTtlMs: undefined,
+                },
+              }
+            : consumed
+        return reduce(withSpeech, { type: 'ui/sfx', kind: 'pickup' })
+      }
+
+      let next = tryExecuteTrade(state, ts, state.nowMs)
       if (!next) return reduce(state, { type: 'ui/sfx', kind: 'reject' })
-      return reduce(pushActivityLog(next, 'Trade complete.'), { type: 'ui/sfx', kind: 'pickup' })
+      let logLine = 'Trade complete.'
+      if (ts.kind === 'hub_innkeeper') {
+        const completed = (next.run.hubInnkeeperTradesCompleted ?? 0) + 1
+        next = { ...next, run: { ...next.run, hubInnkeeperTradesCompleted: completed } }
+        logLine = innkeeperBarterActivityLogLine(completed)
+      }
+      const withSpeech =
+        ts.kind === 'hub_innkeeper'
+          ? {
+              ...next,
+              ui: {
+                ...next.ui,
+                hubInnkeeperSpeech: innkeeperSpeechExecuteBarter(seed),
+                hubInnkeeperSpeechTtlMs: undefined,
+              },
+            }
+          : next
+      return reduce(pushActivityLog(withSpeech, logLine), { type: 'ui/sfx', kind: 'pickup' })
     }
     case 'debug/loadHubHotspots': {
       return { ...state, hubHotspots: mergeHubHotspotConfig(state.hubHotspots, action.patch) }
@@ -539,8 +653,13 @@ export function reduce(state: GameState, action: Action): GameState {
         next = { ...h, village: { ...h.village, cave: { ...h.village.cave, [key]: value } } }
       } else if (spot === 'tavern.innkeeper') {
         next = { ...h, tavern: { ...h.tavern, innkeeper: { ...h.tavern.innkeeper, [key]: value } } }
+      } else if (spot === 'tavern.innkeeperTrade') {
+        next = {
+          ...h,
+          tavern: { ...h.tavern, innkeeperTrade: { ...h.tavern.innkeeperTrade, [key]: value } },
+        }
       } else {
-        next = { ...h, tavern: { ...h.tavern, exit: { ...h.tavern.exit, [key]: value } } }
+        return state
       }
       return { ...state, hubHotspots: next }
     }
@@ -606,6 +725,11 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'ui/closeNpcDialog':
       return { ...state, ui: { ...state.ui, npcDialogFor: undefined, debugShowNpcDialogPopup: false } }
+    case 'ui/clearHubInnkeeperSpeech':
+      return {
+        ...state,
+        ui: { ...state.ui, hubInnkeeperSpeech: undefined, hubInnkeeperSpeechTtlMs: undefined },
+      }
     case 'ui/toast':
       return pushActivityLog(state, action.text)
     case 'ui/shake': {
@@ -946,14 +1070,9 @@ export function reduce(state: GameState, action: Action): GameState {
           if (applied) return reduce(reduce(applied, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.12, ms: 70 })
           return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
         }
-        if (target.kind === 'tradeAskSlot' && payload.source.kind === 'tradeStockSlot') {
-          const applied = trySetTradeAsk(stateAtAction, ts0, payload.source.stockIndex)
-          if (applied) return reduce(applied, { type: 'ui/sfx', kind: 'ui' })
-          return stateAtAction
-        }
-        if (payload.source.kind === 'tradeStockSlot') {
-          return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
-        }
+      }
+      if (target.kind === 'tradeStockSlot') {
+        return reduce(stateAtAction, { type: 'ui/sfx', kind: 'reject' })
       }
       const itemId: ItemId = payload.itemId
 

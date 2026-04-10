@@ -1,6 +1,7 @@
 import type { Dispatch, RefObject } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState, HubNormRect } from '../../game/types'
+import popup from '../shared/GamePopup.module.css'
 import styles from './HubViewport.module.css'
 
 export type HubViewportVariant = 'interactive' | 'capture'
@@ -32,14 +33,15 @@ function clamp01(n: number) {
 function HotspotBox(props: {
   rect: HubNormRect
   variant: HubViewportVariant
+  className?: string
   onActivate?: () => void
 }) {
-  const { rect, variant, onActivate } = props
+  const { rect, variant, className: extraClass, onActivate } = props
   const x = clamp01(rect.x) * 100
   const y = clamp01(rect.y) * 100
   const w = clamp01(rect.w) * 100
   const h = clamp01(rect.h) * 100
-  const className = `${styles.hotspot} ${variant === 'capture' ? styles.hotspotCapture : ''}`
+  const className = [styles.hotspot, variant === 'capture' ? styles.hotspotCapture : '', extraClass].filter(Boolean).join(' ')
 
   if (variant === 'capture' || !onActivate) {
     return (
@@ -113,17 +115,23 @@ export function HubViewport(props: {
               }}
             />
           </div>
+          <img className={styles.foreground} src={tavernFg} alt="" draggable={false} />
           <HotspotBox
-            rect={hs.tavern.innkeeper}
+            rect={hs.tavern.innkeeperTrade}
             variant={variant}
+            className={styles.hotspotTrade}
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/openTavernTrade' }) : undefined}
           />
-          <HotspotBox
-            rect={hs.tavern.exit}
-            variant={variant}
-            onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/goVillage' }) : undefined}
-          />
-          <img className={styles.foreground} src={tavernFg} alt="" draggable={false} />
+          <button
+            type="button"
+            className={`${popup.close} ${styles.tavernLeaveBtn}`}
+            aria-label="Leave tavern"
+            tabIndex={variant === 'capture' ? -1 : 0}
+            disabled={variant === 'capture'}
+            onClick={variant === 'interactive' ? () => dispatch({ type: 'hub/goVillage' }) : undefined}
+          >
+            Leave tavern
+          </button>
         </>
       )}
     </div>

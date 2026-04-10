@@ -142,9 +142,6 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     dragging?.started
       ? (() => {
           const src = dragging.payload.source
-          if (src.kind === 'tradeStockSlot' && props.state.ui.tradeSession && hoverTarget?.kind === 'tradeAskSlot') {
-            return { icon: '☑', label: 'Request' }
-          }
           const item = props.state.party.items[dragging.payload.itemId]
           if (!item) return null
           const def = props.content.item(item.defId)
@@ -201,14 +198,6 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
   const ghostText = (() => {
     if (!ghost) return ''
-    const src = dragging?.payload.source
-    if (src?.kind === 'tradeStockSlot' && props.state.ui.tradeSession) {
-      const rows = tradeStockRows(props.state, props.state.ui.tradeSession)
-      const row = rows[src.stockIndex]
-      if (!row) return ''
-      const def = props.content.item(row.defId)
-      return def.icon.kind === 'emoji' ? def.icon.value : def.name
-    }
     const item = props.state.party.items[ghost.itemId]
     const def = item ? props.content.item(item.defId) : null
     if (!def) return ghost.itemId
@@ -216,15 +205,36 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   })()
 
   // HUD inventory DOM is opacity-0 (capture hit layer); name labels render here like affordance.
-  const inventoryHoverName = (() => {
+  const itemNameTooltipHover = (() => {
     if (dragging?.started) return null
-    if (hoverTarget?.kind !== 'inventorySlot' || !hoverRect) return null
-    const itemId = props.state.party.inventory.slots[hoverTarget.slotIndex]
-    if (!itemId) return null
-    const item = props.state.party.items[itemId]
-    if (!item) return null
-    const def = props.content.item(item.defId)
-    return def?.name ?? null
+    if (!hoverRect || !hoverTarget) return null
+    if (hoverTarget.kind === 'inventorySlot') {
+      const itemId = props.state.party.inventory.slots[hoverTarget.slotIndex]
+      if (!itemId) return null
+      const item = props.state.party.items[itemId]
+      if (!item) return null
+      const def = props.content.item(item.defId)
+      return def?.name ?? null
+    }
+    if (hoverTarget.kind === 'tradeStockSlot') {
+      const ts = props.state.ui.tradeSession
+      if (!ts) return null
+      const rows = tradeStockRows(props.state, ts)
+      const row = rows[hoverTarget.stockIndex]
+      if (!row || row.qty < 1) return null
+      const def = props.content.item(row.defId)
+      return def?.name ?? null
+    }
+    if (hoverTarget.kind === 'tradeOfferSlot') {
+      const ts = props.state.ui.tradeSession
+      const offerId = ts?.offerItemId
+      if (!offerId) return null
+      const item = props.state.party.items[offerId]
+      if (!item) return null
+      const def = props.content.item(item.defId)
+      return def?.name ?? null
+    }
+    return null
   })()
 
   const handShakeTransform = useMemo(() => {
@@ -294,7 +304,7 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
             <span>{(contextualAffordance ?? affordance)!.label}</span>
           </div>
         ) : null}
-        {inventoryHoverName && hoverRect ? (
+        {itemNameTooltipHover && hoverRect ? (
           <div
             className={styles.itemNameTooltip}
             style={{
@@ -302,7 +312,7 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
               top: hoverRect.top,
             }}
           >
-            {inventoryHoverName}
+            {itemNameTooltipHover}
           </div>
         ) : null}
       </div>

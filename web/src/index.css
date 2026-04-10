@@ -10,6 +10,8 @@
 
   /* HUD: inventory grid cells + equipment strip frames (default); stamina vital bar fill + valid equip-slot drag affordance */
   --hud-inventory-slot-border: rgba(171, 136, 107, 0.75);
+  /* Measured on `data-hud-root` from the bottom inventory grid (`InventoryPanel.tsx`); trade UI inherits for matching slot size. */
+  --hud-inventory-slot-px: 80px;
   --hud-stamina-vital-fill: #d6bdb5;
 
   --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;

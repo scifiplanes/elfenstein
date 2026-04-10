@@ -71,11 +71,11 @@ export function parseHubHotspotsPatch(raw: unknown): HubHotspotPatch | undefined
   }
   if (tavern) {
     const inn = parseNormRect(tavern.innkeeper)
-    const exit = parseNormRect(tavern.exit)
-    if (inn || exit) {
+    const trade = parseNormRect(tavern.innkeeperTrade)
+    if (inn || trade) {
       patch.tavern = {}
       if (inn) patch.tavern.innkeeper = inn
-      if (exit) patch.tavern.exit = exit
+      if (trade) patch.tavern.innkeeperTrade = trade
     }
   }
   return patch.village || patch.tavern ? patch : undefined

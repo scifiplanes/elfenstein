@@ -1027,8 +1027,8 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             [
               { label: 'Village · Tavern', spot: 'village.tavern' as const },
               { label: 'Village · Cave', spot: 'village.cave' as const },
-              { label: 'Tavern · Innkeeper', spot: 'tavern.innkeeper' as const },
-              { label: 'Tavern · Exit', spot: 'tavern.exit' as const },
+              { label: 'Tavern · Bartender sprite', spot: 'tavern.innkeeper' as const },
+              { label: 'Tavern · Open trade (click)', spot: 'tavern.innkeeperTrade' as const },
             ] as const
           ).map(({ label, spot }) => {
             const rect: HubNormRect =
@@ -1038,7 +1038,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                   ? state.hubHotspots.village.cave
                   : spot === 'tavern.innkeeper'
                     ? state.hubHotspots.tavern.innkeeper
-                    : state.hubHotspots.tavern.exit
+                    : state.hubHotspots.tavern.innkeeperTrade
             const axes = [
               { key: 'x' as const, label: 'x' },
               { key: 'y' as const, label: 'y' },

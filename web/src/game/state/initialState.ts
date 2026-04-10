@@ -101,7 +101,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       },
       tavern: {
         innkeeper: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeper },
-        exit: { ...DEFAULT_HUB_HOTSPOTS.tavern.exit },
+        innkeeperTrade: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeperTrade },
       },
     },
     run: {
