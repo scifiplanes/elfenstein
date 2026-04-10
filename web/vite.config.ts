@@ -49,6 +49,22 @@ function copyDirSync(srcDir: string, dstDir: string) {
 
 // https://vite.dev/config/
 export default defineConfig({
+  // Keep react + react-dom in one pre-bundle graph so `react-dom_client.js` and
+  // `react-dom.js` always share the same Rolldown CJS-interop shape (`export { … as t }`).
+  // Stale/mixed `.vite/deps` (e.g. interrupted writes, cloud-synced node_modules) otherwise
+  // triggers: "does not provide an export named 't'".
+  optimizeDeps: {
+    include: [
+      'react',
+      'react/jsx-runtime',
+      'react/jsx-dev-runtime',
+      'react-dom',
+      'react-dom/client',
+    ],
+  },
+  resolve: {
+    dedupe: ['react', 'react-dom'],
+  },
   build: {
     rollupOptions: {
       output: {
