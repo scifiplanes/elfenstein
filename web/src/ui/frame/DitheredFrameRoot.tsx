@@ -368,7 +368,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // `syncSize` sets canvas CSS pixels; window-sized values overflow the 1920×1080 stage and look "zoomed".
     const w = STAGE_CSS_WIDTH
     const h = STAGE_CSS_HEIGHT
-    presenter.syncSize(w, h)
+    const pixelRatioCap = latestStateRef.current.render.pixelRatioCap
+    presenter.syncSize(w, h, pixelRatioCap)
     presenter.syncDither(latestStateRef.current.render)
     presenter.setDebug({ sceneMode: debugSceneMode as 0 | 1 | 2, sceneFlipY: debugSceneFlipY })
     presenter.setRectDebug(debugRect)
@@ -378,7 +379,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
 
     if (world) {
       const tWorld0 = performance.now()
-      world.syncViewportRect(gameCssW, gameCssH)
+      world.syncViewportRect(gameCssW, gameCssH, pixelRatioCap)
       world.renderFrame(latestStateRef.current, latestContentRef.current)
       const tWorld1 = performance.now()
       ;(window as any).__elfensteinPerf = {
@@ -529,7 +530,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         // when the UI texture resolution changes mid-frame.
         const vvScale = window.visualViewport?.scale || 1
         const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
-        const desiredScale = Math.min(effectiveDpr, 1.5)
+        const cap = Math.max(1, Math.min(1.5, latestStateRef.current.render.pixelRatioCap))
+        const desiredScale = Math.min(effectiveDpr, cap)
         // If a high-FPS moment is active, pin to the previous scale (if any) so we don't
         // swap UI texture resolution repeatedly during the burst.
         const captureScale = highFpsUi && lastUiCaptureScaleRef.current != null ? lastUiCaptureScaleRef.current : desiredScale

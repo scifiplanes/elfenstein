@@ -45,6 +45,19 @@
   accent-color: rgba(171, 136, 107, 0.95);
 }
 
+.select {
+  grid-column: 1 / -1;
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--buttonTitleColor);
+  padding: 8px 10px;
+  font-family: var(--mono);
+  font-size: 15px;
+  outline: none;
+}
+
 .divider {
   height: 1px;
   background: rgba(255, 255, 255, 0.12);

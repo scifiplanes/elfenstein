@@ -1,9 +1,10 @@
-import { useEffect, useState, type Dispatch, type RefObject } from 'react'
+import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type Ref, type RefObject } from 'react'
 import type { Action } from '../../game/reducer'
 import { clampCampEveryFloors, floorTypeForFloorIndex } from '../../game/state/runFloorSchedule'
 import { layoutProfile } from '../../procgen/floorLayoutProfile'
 import type { FloorType } from '../../procgen/types'
 import type { GameState, HubNormRect } from '../../game/types'
+import { hubTavernTradeHoverRectRef } from './hubTavernTradeCursorRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './HubViewport.module.css'
 
@@ -32,6 +33,9 @@ const START_VILLAGE_HOVER: Record<'tavern' | 'dungeon', string> = {
 const TAVERN_FG_START = '/content/tavern_foreground.png'
 const TAVERN_FG_CAMP = '/content/camp_tavern_foreground.png'
 
+/** Trade hotspot top edge from game viewport top (px); overrides normalized `y` for layout. */
+const TAVERN_TRADE_TOP_PX = 350
+
 function bartenderArtUrl(nowMs: number, camp: boolean): string {
   const blinkWindow = nowMs % 3200
   const base = camp ? '/content/camp_bartender' : '/content/bartender'
@@ -43,42 +47,71 @@ function clamp01(n: number) {
   return Math.max(0, Math.min(1, n))
 }
 
-function HotspotBox(props: {
+type HotspotBoxProps = {
   rect: HubNormRect
   variant: HubViewportVariant
   className?: string
+  /** When set, `data-drop-kind` is set for cursor hit-testing (e.g. tavern trade). */
+  dataDropKind?: string
+  /** If set, `top` is this many px instead of `rect.y` as a percent (tavern trade). */
+  fixedTopPx?: number
+  /** Playwright / future a11y; set on interactive hotspots only. */
+  dataTestId?: string
   onActivate?: () => void
   onPointerEnter?: () => void
   onPointerLeave?: () => void
-}) {
-  const { rect, variant, className: extraClass, onActivate, onPointerEnter, onPointerLeave } = props
+}
+
+const HotspotBox = forwardRef<HTMLButtonElement | HTMLDivElement, HotspotBoxProps>(function HotspotBox(
+  props,
+  ref,
+) {
+  const {
+    rect,
+    variant,
+    className: extraClass,
+    dataDropKind,
+    fixedTopPx,
+    dataTestId,
+    onActivate,
+    onPointerEnter,
+    onPointerLeave,
+  } = props
   const x = clamp01(rect.x) * 100
   const y = clamp01(rect.y) * 100
   const w = clamp01(rect.w) * 100
   const h = clamp01(rect.h) * 100
+  const topStyle = fixedTopPx != null ? `${fixedTopPx}px` : `${y}%`
   const className = [styles.hotspot, variant === 'capture' ? styles.hotspotCapture : '', extraClass].filter(Boolean).join(' ')
+
+  const dropAttrs = dataDropKind ? ({ 'data-drop-kind': dataDropKind } as const) : {}
 
   if (variant === 'capture' || !onActivate) {
     return (
       <div
+        ref={ref as Ref<HTMLDivElement>}
         className={className}
-        style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+        style={{ left: `${x}%`, top: topStyle, width: `${w}%`, height: `${h}%` }}
         aria-hidden
+        {...dropAttrs}
       />
     )
   }
 
   return (
     <button
+      ref={ref as Ref<HTMLButtonElement>}
       type="button"
       className={className}
-      style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
+      style={{ left: `${x}%`, top: topStyle, width: `${w}%`, height: `${h}%` }}
+      {...(dataTestId ? { 'data-testid': dataTestId } : {})}
       onClick={() => onActivate()}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
+      {...dropAttrs}
     />
   )
-}
+})
 
 export function HubViewport(props: {
   state: GameState
@@ -103,6 +136,35 @@ export function HubViewport(props: {
         : START_HUB_ART.tavern
   const hs = state.hubHotspots
   const tavernFg = camp ? TAVERN_FG_CAMP : TAVERN_FG_START
+  const tavernTradeHotspotRef = useRef<HTMLButtonElement | null>(null)
+
+  /** `CursorProvider` reads `hubTavernTradeHoverRectRef` inside `applyPointerMove` (same tick as hover state) so tavern trade wins over flaky `elementsFromPoint` under the invisible HUD. */
+  useLayoutEffect(() => {
+    hubTavernTradeHoverRectRef.current = null
+    if (variant !== 'interactive' || scene !== 'tavern') return
+    const el = tavernTradeHotspotRef.current
+    if (!el) return
+    const sync = () => {
+      const r = el.getBoundingClientRect()
+      hubTavernTradeHoverRectRef.current = {
+        left: r.left,
+        top: r.top,
+        right: r.right,
+        bottom: r.bottom,
+      }
+    }
+    sync()
+    const ro = new ResizeObserver(sync)
+    ro.observe(el)
+    window.addEventListener('resize', sync)
+    window.addEventListener('scroll', sync, true)
+    return () => {
+      ro.disconnect()
+      window.removeEventListener('resize', sync)
+      window.removeEventListener('scroll', sync, true)
+      hubTavernTradeHoverRectRef.current = null
+    }
+  }, [variant, scene, hs.tavern.innkeeperTrade])
 
   const [villageHover, setVillageHover] = useState<'tavern' | 'dungeon' | null>(null)
   useEffect(() => {
@@ -127,6 +189,7 @@ export function HubViewport(props: {
           <HotspotBox
             rect={hs.village.tavern}
             variant={variant}
+            dataTestId="hub-hotspot-tavern"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/goTavern' }) : undefined}
             onPointerEnter={variant === 'interactive' ? () => setVillageHover('tavern') : undefined}
             onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
@@ -134,6 +197,7 @@ export function HubViewport(props: {
           <HotspotBox
             rect={hs.village.cave}
             variant={variant}
+            dataTestId="hub-hotspot-cave"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/enterDungeon' }) : undefined}
             onPointerEnter={variant === 'interactive' ? () => setVillageHover('dungeon') : undefined}
             onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
@@ -163,9 +227,13 @@ export function HubViewport(props: {
           </div>
           <img className={styles.foreground} src={tavernFg} alt="" draggable={false} />
           <HotspotBox
+            ref={tavernTradeHotspotRef}
             rect={hs.tavern.innkeeperTrade}
             variant={variant}
             className={styles.hotspotTrade}
+            dataDropKind="hubInnkeeperTrade"
+            fixedTopPx={TAVERN_TRADE_TOP_PX}
+            dataTestId="hub-hotspot-innkeeper-trade"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/openTavernTrade' }) : undefined}
           />
           <button

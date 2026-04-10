@@ -27,7 +27,7 @@ export const DEFAULT_HUB_HOTSPOTS: HubHotspotConfig = {
   },
   tavern: {
     innkeeper: { x: 0.38, y: 0.35, w: 0.24, h: 0.28 },
-    // Trade click: half the max-width band (~34% w × ~58% h); visual position also shifted +40px in CSS (`.hotspotTrade`).
+    // Trade click: `HubViewport` pins top to **350px** (`fixedTopPx`); **y** is ignored for layout. **w/h** match shipped `debug-settings.json`.
     innkeeperTrade: { x: 0.31, y: 0.14, w: 0.34, h: 0.58 },
   },
 }

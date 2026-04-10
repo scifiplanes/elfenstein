@@ -168,11 +168,19 @@
       }
     },
     "poiGroundY_Well": 0,
-    "poiGroundY_Chest": 0,
+    "poiGroundY_Chest": 0.16,
+    "poiGroundY_Barrel": 0,
+    "poiGroundY_Crate": 0,
+    "poiGroundY_Bed": 0,
+    "poiGroundY_Shrine": 0,
+    "poiGroundY_CrackedWall": 0,
+    "poiGroundY_Exit": 0,
     "poiSpriteBoost": 3,
     "poiFootLift": 0.085,
     "hubInnkeeperSpriteScale": 1,
-    "campEveryFloors": 10
+    "campEveryFloors": 10,
+    "gpuTier": "high",
+    "pixelRatioCap": 1.5
   },
   "audio": {
     "masterSfx": 1,

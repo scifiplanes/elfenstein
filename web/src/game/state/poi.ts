@@ -92,13 +92,27 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     )
   }
   if (poi.kind === 'Bed') {
+    if (poi.opened) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+          },
+        },
+        'Already used.',
+      )
+    }
     const hm = hpMax(state)
     const sm = staminaMax(state)
     const chars = state.party.chars.map((c) => ({ ...c, hp: Math.min(hm, c.hp + 30), stamina: Math.min(sm, c.stamina + 30) }))
+    const pois = state.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
     return pushActivityLog(
       {
         ...state,
         party: { ...state.party, chars },
+        floor: { ...state.floor, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 130, magnitude: 0.2 },

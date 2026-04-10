@@ -46,8 +46,8 @@
 
 /* After tavern foreground in DOM so painting order matches intent; above fg (z-index 2), below Leave tavern btn (5). */
 .hotspotTrade {
+  /* Above tavern fg; stay below Leave (5). Cursor also uses `hubTavernTradeHoverRectRef`. */
   z-index: 4;
-  transform: translateY(40px);
   border: none;
 }
 

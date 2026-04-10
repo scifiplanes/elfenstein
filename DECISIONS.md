@@ -5207,3 +5207,155 @@ Tuning loads **`/debug-settings.json`** first, then merges **`elfenstein.debugSe
 
 ### Consequences
 **`web/src/ui/debug/DebugPanel.tsx`**, **`DESIGN.md`** §3 (Debug F2 persistence).
+
+---
+
+## ADR-0313 — Hub tavern trade: `hubInnkeeperTrade` drop kind + `hand_trade` cursor
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** **`HotspotBox`** sets **`data-drop-kind="hubInnkeeperTrade"`**; **`DragTarget`** adds **`{ kind: 'hubInnkeeperTrade' }`**. **`CursorLayer`** alternates **`hand_trade_01/02.png`** trade cursor frames on the same **~280 ms** cadence when hovering that region in the tavern hub (and not dragging). **`drag/drop`** onto **`hubInnkeeperTrade`** rejects (**`ui/sfx` `reject`**) like **`tradeStockSlot`**.
+
+### Rationale
+Clear affordance for “trade here,” distinct from combat attack sprites.
+
+### Consequences
+- **`types.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`CursorLayer.module.css`**, **`HubViewport.tsx`**, **`reducer.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0314 — Trade vs attack cursor sprites + tavern trade virtual hover
+Date: 2026-04-10
+
+### Decision
+**`CursorLayer`**: combat attack uses **`hand_attack_01/02`** (**.attack1/2**); hub tavern **`hubInnkeeperTrade`** uses **`hand_trade_01/02.png`** (**.trade1/2**). **`HubViewport`** syncs the trade **`HotspotBox`** **`getBoundingClientRect`** into **`hubTavernTradeHoverRectRef`** (`ResizeObserver` + **`resize`/`scroll`**). **`CursorProvider` `applyPointerMove`** sets **`virtualHover`** to **`hubInnkeeperTrade`** when the pointer is inside that rect **before** **`elementsFromPoint`**.
+
+### Rationale
+Sprites must differ; **`elementsFromPoint`** alone was unreliable under the invisible HUD.
+
+### Consequences
+- **`HubViewport.tsx`**, **`hubTavernTradeCursorRect.ts`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`CursorLayer.module.css`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0315 — Tavern trade hotspot: layout to **`top: 350px`**, **`h: 0.5`**, no border
+Date: 2026-04-10
+
+### Decision
+**`innkeeperTrade`** defaults **`w/h`** **`0.28` × `0.5`** (**`x`** **`0.36`**); **`HubViewport`** uses **`TAVERN_TRADE_TOP_PX = 350`** (**`fixedTopPx`**; normalized **`y`** ignored). **`.hotspotTrade`** sets **`border: none`** (invisible hit target over the tavern foreground). Prior steps (smaller rect, **50%** height, moving **100px**/**150px**/**100px** down, removing the red outline) are folded here so IDs **ADR-0302**–**ADR-0306** in earlier branches remain historical references only.
+
+### Rationale
+Player-driven iteration on trade click target size and position without **`translateY`** hacks.
+
+### Consequences
+- **`HubViewport.tsx`**, **`HubViewport.module.css`**, **`hubHotspotDefaults.ts`**, **`public/debug-settings.json`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0316 — Tavern trade cursor assets: `hand_trade_01/02` filenames
+Date: 2026-04-10
+
+### Decision
+**`.trade1` / `.trade2`** and **`CursorLayer`** preload use **`/content/hand_trade_01.png`** and **`/content/hand_trade_02.png`** (stable lowercase URLs).
+
+### Rationale
+Authoritative art filenames in **`Content/`**.
+
+### Consequences
+- **`CursorLayer.module.css`**, **`CursorLayer.tsx`**, **`Content/hand_trade_*.png`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0317 — Bed POI: one rest per floor
+Date: 2026-04-10
+
+### Decision
+**Bed** uses existing **`FloorPoi.opened`**: first interaction applies the rest heal and sets **`opened: true`**; later interactions only log **Already used.** (activity log), with a light shake—same pattern as an empty **Chest**.
+
+### Rationale
+Prevents farming infinite rests from one bed while keeping the POI clickable for feedback.
+
+### Consequences
+- **`web/src/game/state/poi.ts`**, **`web/src/procgen/population.ts`** (seed **`opened: false`**), **`web/src/game/types.ts`** (comment), **`DESIGN.md`** §9.
+
+---
+
+## ADR-0318 — GPU quality tiers + shared pixel ratio cap
+Date: 2026-04-10
+
+### Decision
+- Add **`RenderTuning.gpuTier`**: **`low` | `balanced` | `high` | `custom`** (default **`high`**) and **`pixelRatioCap`** in **[1, 1.5]** (default **1.5**), persisted like other render keys.
+- **`render/setGpuTier`** merges **`web/src/game/gpuTierPresets.ts`** (shadows, POI torch count, dither matrix/strength, cap). **`render/set`** on any **tier-owned** key sets **`gpuTier`** to **`custom`**.
+- Thread **`pixelRatioCap`** into **`FramePresenter.syncSize`**, **`WorldRenderer.syncViewportRect`**, and **`html2canvas`** **`scale`** in **`DitheredFrameRoot`** (replacing the hardcoded **1.5** cap).
+- **Settings** and **F2 Rendering** expose tier selection; F2 also includes a **`pixelRatioCap`** slider.
+
+### Rationale
+Gives players a single control for performance without losing fine-grained F2 tuning; keeps presenter, world RT, and HUD capture resolution aligned.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`gpuTierPresets.ts`**, **`reducer.ts`**, **`FramePresenter.ts`**, **`WorldRenderer.ts`**, **`DitheredFrameRoot.tsx`**, **`SettingsMenu`**, **`DebugPanel`**; **`DESIGN.md`** §3 / §6.4.
+
+---
+
+## ADR-0319 — Playwright end-to-end smoke tests + CI
+Date: 2026-04-10
+
+### Decision
+- Add **`@playwright/test`** under **`web/`** with **`playwright.config.ts`**: **`testDir`** **`e2e/`**, **`webServer`** runs **`npm run build && npm run preview`** on **`127.0.0.1:4173`** with **`strictPort`**, **`reuseExistingServer`** off in CI.
+- Set **`PLAYWRIGHT_BROWSERS_PATH`** to **`web/node_modules/.cache/ms-playwright`** in config (and **`scripts/playwright-install.mjs`**) so installs are project-local and predictable when a parent sets a broken global cache.
+- **`npm run playwright:install`**: install Chromium; append **`--with-deps`** when **`CI`** is set (Linux agents).
+- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → click Bobr → no title dialogs.
+- GitHub Actions **`.github/workflows/web.yml`**: **`npm ci`**, **`npm test`** (Vitest), **`npm run playwright:install`**, **`npm run test:e2e`**.
+
+### Rationale
+Vitest already covers reducers and rules; browser smoke catches integration regressions (dual HUD/capture trees, modals, intro). **`vite preview`** avoids dev-only **`/__debug_settings/save`** behavior during E2E.
+
+### Consequences
+**`web/package.json`**, **`web/playwright.config.ts`**, **`web/e2e/`**, **`web/scripts/playwright-install.mjs`**, **`web/tsconfig.node.json`**, **`web/.gitignore`**; **`.github/workflows/web.yml`**; **`DESIGN.md`** §3.
+
+---
+
+## ADR-0320 — Hub hotspot `data-testid` + Playwright hub/game/tavern E2E
+Date: 2026-04-10
+
+### Decision
+- **`HubViewport`** **`HotspotBox`**: optional **`dataTestId`** (alongside **`dataDropKind`** / **`fixedTopPx`** for tavern trade); interactive buttons set **`data-testid`** **`hub-hotspot-tavern`**, **`hub-hotspot-cave`**, **`hub-hotspot-innkeeper-trade`** (capture **`div`** hotspots unchanged).
+- **`web/e2e/helpers.ts`**: **`interactiveHud`**, **`interactiveSettingsDialog`**, **`goToVillageHub`** (title → **Start** → skip Bobr → assert **`/content/village.png`** in interactive HUD).
+- **`web/e2e/hub.spec.ts`**: cave → **Step forward** enabled; tavern → **Leave tavern** → village; tavern → trade → **Close** (assert **Trade · Innkeeper**).
+- Refactor **`web/e2e/smoke.spec.ts`** to import shared helpers from **`helpers.ts`**.
+
+### Rationale
+Village **`HotspotBox`** controls had no accessible names, so Playwright could not target **Cave** / **Tavern** / trade reliably. Stable **`data-testid`** keeps geometry F2-driven while unlocking E2E; nav pad **`aria-label`** already distinguishes hub vs game.
+
+### Consequences
+**`HubViewport.tsx`**, **`web/e2e/helpers.ts`**, **`web/e2e/hub.spec.ts`**, **`web/e2e/smoke.spec.ts`**; **`DESIGN.md`** §3 (automated testing).
+
+---
+
+## ADR-0321 — Per-PoiKind `poiGroundY_*` render keys + F2 sliders
+Date: 2026-04-10
+
+### Decision
+Add **`render.poiGroundY_Barrel`**, **`poiGroundY_Crate`**, **`poiGroundY_Bed`**, **`poiGroundY_Shrine`**, **`poiGroundY_CrackedWall`**, **`poiGroundY_Exit`** (alongside existing **Well** / **Chest** keys), clamp them in **`clampRenderTuning`**, wire **`WorldRenderer.getPoiGroundYForKind`** to **`PoiKind`** only (no fallback to **`npcBillboard.Wurglepup.groundY`**), and expose matching F2 sliders in **`DebugPanel`**.
+
+### Rationale
+Those POIs previously shared the **Wurglepup** NPC ground pivot, which was easy to miss and coupled unrelated art tuning.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**; **`DESIGN.md`** §8 / §9. Defaults **`0`** match the prior **Wurglepup** default; players who had tuned **Wurglepup** only for POIs must set the new POI sliders.
+
+---
+
+## ADR-0322 — Ship author-tuned `debug-settings.json` + align hub trade defaults
+Date: 2026-04-10
+
+### Decision
+Commit the current **`web/public/debug-settings.json`** as the shipped cold-load baseline, including **`render.torchDistance` 2**, **`render.shadowFilter` 0** (Basic), and **`hubHotspots.tavern.innkeeperTrade`** **`x` 0.31 / `w` 0.34 / `h` 0.58** (still with **`HubViewport`** **`top: 350px`** for trade). Update **`DEFAULT_HUB_HOTSPOTS.innkeeperTrade`** in **`hubHotspotDefaults.ts`** to match so tests and no-JSON fallbacks agree with the shipped file.
+
+### Rationale
+The repo JSON is the player-visible default after **Clear local overrides** and on first load; keeping it aligned with **`DEFAULT_HUB_HOTSPOTS`** avoids drift between “no persistence” paths and the built **`public/`** snapshot.
+
+### Consequences
+**`web/public/debug-settings.json`**, **`web/src/game/hubHotspotDefaults.ts`**, **`DESIGN.md`** (hub trade copy, lighting bullets, header).
+
+---

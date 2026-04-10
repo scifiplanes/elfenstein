@@ -69,6 +69,7 @@ export type FloorPoi = {
   id: Id
   kind: PoiKind
   pos: Vec2
+  /** Chest/Barrel/Crate/Shrine; Bed uses one-time rest then stays interactable with “Already used.” */
   opened?: boolean
   /** Well only: no water VFX; base sprite switches to drained art after a successful fill. */
   drained?: boolean
@@ -256,6 +257,9 @@ export type RunCheckpoint = {
   snapshot: CheckpointSnapshot
 }
 
+/** GPU quality preset; `custom` when tier-owned render fields were changed manually. */
+export type GpuTier = 'low' | 'balanced' | 'high' | 'custom'
+
 export type RenderTuning = {
   /** Global scalar for 3D scene brightness (lights + 3D sprites). */
   globalIntensity: number
@@ -417,6 +421,18 @@ export type RenderTuning = {
   poiGroundY_Well: number
   /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
   poiGroundY_Chest: number
+  /** POI Barrel billboard ground pivot (same units as `npcBillboard.*.groundY`). */
+  poiGroundY_Barrel: number
+  /** POI Crate billboard ground pivot. */
+  poiGroundY_Crate: number
+  /** POI Bed billboard ground pivot. */
+  poiGroundY_Bed: number
+  /** POI Shrine billboard ground pivot. */
+  poiGroundY_Shrine: number
+  /** POI CrackedWall billboard ground pivot. */
+  poiGroundY_CrackedWall: number
+  /** POI Exit billboard ground pivot. */
+  poiGroundY_Exit: number
   /** Multiplies PoI sprite material brightness (1.0 = unchanged). */
   poiSpriteBoost: number
   /**
@@ -428,6 +444,14 @@ export type RenderTuning = {
   hubInnkeeperSpriteScale: number
   /** Dungeon floors per segment before a camp hub (1–99; default 10). */
   campEveryFloors: number
+
+  /** Player/debug GPU preset; `custom` when shadow, DPR cap, or dither tier knobs diverge via sliders. */
+  gpuTier: GpuTier
+  /**
+   * Upper bound for `devicePixelRatio` (after visualViewport scale compensation) for the presenter canvas,
+   * world offscreen render target, and HUD html2canvas capture. Clamped to 1..1.5 in `clampRenderTuning`.
+   */
+  pixelRatioCap: number
 }
 
 export type AudioTuning = {
@@ -606,4 +630,6 @@ export type DragTarget =
   | { kind: 'tradeOfferSlot' }
   /** Merchant “their stock” cell in `TradeModal` (hover tooltip only; not a drop target). */
   | { kind: 'tradeStockSlot'; stockIndex: number }
+  /** Hub tavern: click region that opens innkeeper trade (`HubViewport` trade `HotspotBox`). */
+  | { kind: 'hubInnkeeperTrade' }
 
