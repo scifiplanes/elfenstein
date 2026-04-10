@@ -1,4 +1,4 @@
-import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId } from '../types'
+import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId, WeaponDamageStat } from '../types'
 import { ContentDB } from '../content/contentDb'
 import { npcCombatTuningFromContent } from '../content/npcCombat'
 import { npcQuestEnglishLine } from '../npc/npcQuestSpeech'
@@ -358,7 +358,7 @@ export function computePcAttackDamage(args: {
   defenderNpcId: Id
   weaponBaseDamage: number
   weaponDamageType: DamageType
-  damageStat?: 'strength' | 'agility'
+  damageStat?: WeaponDamageStat
   /** Encounter: roll vs NPC defense. Open world: auto-hit (still apply mitigation). */
   resolveAttackRoll: boolean
 }): { hit: boolean; crit: boolean; finalDmg: number; pcAttackRoll?: PcAttackRollSummary } {
@@ -376,7 +376,14 @@ export function computePcAttackDamage(args: {
     crit = roll.crit
   }
 
-  const statPts = damageStat === 'strength' ? attacker.stats.strength : damageStat === 'agility' ? attacker.stats.agility : 0
+  const statPts =
+    damageStat === 'strength'
+      ? attacker.stats.strength
+      : damageStat === 'agility'
+        ? attacker.stats.agility
+        : damageStat === 'intelligence'
+          ? attacker.stats.intelligence
+          : 0
   const statBonus = damageStat ? Math.floor(statPts * 0.25) : 0
   const rawWeapon = weaponBaseDamage + statBonus
   const dmgBonus = Math.max(0, Number(state.run?.bonuses.damageBonusPct ?? 0))

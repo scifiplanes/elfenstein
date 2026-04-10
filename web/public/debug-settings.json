@@ -14,8 +14,16 @@
     "themeSaturation_ruins_bleach": 1,
     "themeSaturation_ruins_umber": 1,
     "baseEmissive": 0.055,
-    "lanternIntensity": 40,
-    "lanternDistance": 4.5,
+    "bareLightIntensity": 31.3,
+    "bareLightDistance": 3,
+    "heldTorchIntensity": 34.79,
+    "heldTorchDistance": 7.5,
+    "equippedLanternIntensity": 40,
+    "equippedLanternDistance": 8,
+    "headlampIntensity": 40,
+    "headlampDistance": 9,
+    "glowbugIntensity": 31.28,
+    "glowbugDistance": 6,
     "lanternForwardOffset": 0.72,
     "lanternVerticalOffset": 0.01,
     "lanternFlickerAmp": 0.225,
@@ -25,11 +33,11 @@
     "lanternBeamAngleDeg": 16,
     "lanternBeamPenumbra": 0.58,
     "torchIntensity": 15.47,
-    "torchDistance": 10,
+    "torchDistance": 2,
     "shadowLanternPoint": 0,
     "shadowLanternBeam": 0,
     "shadowMapSize": 256,
-    "shadowFilter": 2,
+    "shadowFilter": 0,
     "torchPoiLightMax": 3,
     "fogEnabled": 0,
     "fogDensity": 0,
@@ -73,19 +81,98 @@
     "portraitShakeHz": 60,
     "npcFootLift": -0.035,
     "npcBillboard": {
-      "Wurglepup": { "groundY": 0.15, "size": 0.65, "sizeRand": 0 },
-      "Bobr": { "groundY": -0.15, "size": 0.37, "sizeRand": 0.3 },
-      "Skeleton": { "groundY": -0.07, "size": 0.65, "sizeRand": 0 },
-      "Catoctopus": { "groundY": 0, "size": 0.65, "sizeRand": 0 }
+      "Wurglepup": {
+        "groundY": 0.15,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Bobr": {
+        "groundY": -0.15,
+        "size": 0.37,
+        "sizeRand": 0.3
+      },
+      "Skeleton": {
+        "groundY": -0.07,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Catoctopus": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Swarm": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Chumbo": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Grub": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Kuratko": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Grechka": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Snailord": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Bulba": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Elder": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Kerekere": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Bok": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "RegularBok": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "BigHands": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      },
+      "Gargantula": {
+        "groundY": 0,
+        "size": 0.65,
+        "sizeRand": 0
+      }
     },
     "poiGroundY_Well": 0,
     "poiGroundY_Chest": 0,
     "poiSpriteBoost": 3,
     "poiFootLift": 0.085,
     "hubInnkeeperSpriteScale": 1,
-    "campEveryFloors": 10,
-    "ambientIntensity": 0,
-    "sunIntensity": 0
+    "campEveryFloors": 10
   },
   "audio": {
     "masterSfx": 1,

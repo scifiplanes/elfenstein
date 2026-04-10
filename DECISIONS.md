@@ -4761,3 +4761,392 @@ Stable per-type URLs for environment and hazard decals so art can replace files 
 ### Consequences
 - **`DESIGN.md`** §8.1, §11 (dungeon albedo), §11 (room-hazard decals), §13 (asset list) updated.
 - Base **`Dungeon`** / **`Cave`** / **`Ruins`** triples and the three baseline hazard PNGs **unchanged** on disk.
+
+---
+
+## ADR-0306 — Camp hub: themed village art + hover overlays
+Date: 2026-04-10
+
+### Decision
+- **`HubViewport`**: **Camp** village background is **`/content/camp_<skin>.png`** with **skin** from **`floor.floorType`** (next segment, already generated when the camp opens): **`Cave`** → **`cave`**, **`Dungeon`** → **`dungeon`**, everything else → **`village`**.
+- **Hover**: interactive village shows **`camp_<skin>_tavern_hover.png`** or **`_dungeon_hover.png`** over the **Tavern** / **Cave** hotspots; **starting hub** keeps **`village_*.png`** hovers over **`village.png`**. **Capture** variant skips hovers.
+
+### Rationale
+New **Content** ships three camp village sets plus per-skin hovers; mapping non-Cave/non-Dungeon segment types to **`camp_village`** matches available files without extra art.
+
+### Consequences
+- **`web/src/ui/hub/HubViewport.tsx`**, **`HubViewport.module.css`** (stacking), **`DESIGN.md`** §5.1 (village hover) and §8.1 (camps).
+
+---
+
+## ADR-0286 — Camp village hotspot hover art
+Date: 2026-04-10
+
+### Decision
+- **`HubViewport`**: when **`ui.hubKind === 'camp'`** and **`hubScene: village`**, pointer hover over the **Tavern** or **Cave** hotspot shows **`/content/camp_village_tavern_hover.png`** or **`/content/camp_village_dungeon_hover.png`** as a **full-viewport** **`object-fit: cover`** layer over **`camp_village.png`**. The **capture** variant does not mount hover layers.
+
+### Rationale
+Authored hover sprites ship in **`Content/`**; wiring them gives clear affordance for camp village exits without changing hotspot geometry.
+
+### Consequences
+- **`web/src/ui/hub/HubViewport.tsx`**, **`HubViewport.module.css`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0287 — Starting village: duplicate hover PNGs + same hotspot behavior
+Date: 2026-04-10
+
+### Decision
+- **`Content/`**: add **`village_tavern_hover.png`** and **`village_dungeon_hover.png`** as **byte copies** of the camp hover pair (same pixels until art diverges).
+- **`HubViewport`**: **`hubScene: village`** uses **`START_VILLAGE_HOVER`** vs **`CAMP_VILLAGE_HOVER`** by **`ui.hubKind`**, with the same **interactive-only** overlay rules as **ADR-0286**.
+
+### Rationale
+Matches the existing **starting vs camp** asset split so hover art can be retuned per hub without sharing one URL.
+
+### Consequences
+- **`Content/`** (+2 PNGs), **`web/src/ui/hub/HubViewport.tsx`**, **`DESIGN.md`** §5.1.
+
+---
+
+## ADR-0288 — Player-held light sources drive camera lantern intensity/distance
+Date: 2026-04-10
+
+### Decision
+- **`ItemDef`**: optional **`playerLight`** on equippable light items (see **ADR-0289** for full tag set including **Glowbug**).
+- Equipped light on **`party.chars[0]`** drives the camera PointLight via **`resolvePlayerCameraLightKind`** and **`WorldRenderer.syncTuning`** (per-mode **`render`** keys in **ADR-0289**; POI torches stay on **`torchIntensity` / `torchDistance`** only).
+
+### Rationale
+Reuses existing F2 tuning pairs so POI torches and held torches stay visually tunable together; equipping a proper lantern or headlamp restores full reach without a separate “dark empty hands” rule.
+
+### Consequences
+Equip changes immediately change dungeon visibility; **`DESIGN.md`** §7.3 and §11 updated. Per-mode **`render`** keys and **`resolvePlayerCameraLightKind`** are specified in **ADR-0289**.
+
+---
+
+## ADR-0289 — Split camera light tuning: bare vs each equipped source; POI torch separate
+Date: 2026-04-10
+
+### Decision
+- **`RenderTuning`**: remove **`lanternIntensity` / `lanternDistance`** from the camera path; add **`bareLight*`**, **`heldTorch*`**, **`equippedLantern*`**, **`headlamp*`**, **`glowbug*`** (ten scalars). **`torchIntensity` / `torchDistance`** apply **only** to POI torch PointLights.
+- **`resolvePlayerCameraLightKind`**: returns **`bare` | `torch` | `lantern` | `headlamp` | `glowbug`**; priority **Lantern > Headlamp > Torch > Glowbug > bare**.
+- **`PlayerLightTag`**: add **`glowbug`**; **Glowbug** item is **`playerLight`** + equippable in hands (`tool`, `oneHand`).
+- **Theme**: held torch uses **`torchIntensityMult`**; bare, equipped lantern, headlamp, glowbug use **`lanternIntensityMult`**.
+
+### Rationale
+Lets F2 tune **placed** torches independently of **held** torch and separates **bare** visibility from **equipped lantern** / **headlamp** / **glowbug**.
+
+### Consequences
+**`debug-settings.json`** and F2 labels updated; **`DESIGN.md`** §7.3 / §11 / materials; supersedes the tuning details in **ADR-0288** for intensity/distance keys (ADR-0288 remains as the original equip-wiring decision).
+
+---
+
+## ADR-0290 — Camera light uses strongest party-wide equipped `playerLight`
+Date: 2026-04-10
+
+### Decision
+**`resolvePlayerCameraLightKind`** evaluates equipped **`playerLight`** on **each** **`party.chars`** entry (hands + head), ranks kinds **Lantern > Headlamp > Torch > Glowbug > bare**, and returns the **maximum** rank so a headlamp (or any light) on **any** portrait affects the dungeon camera—not only **`party.chars[0]`**.
+
+### Rationale
+HUD equips per-character strips; tying the camera only to the first roster slot made headlamps on other PCs appear broken, and matched player expectation poorly.
+
+### Consequences
+**`DESIGN.md`** §7.3 / §11 wording updated; **`playerLight.ts`** only.
+
+---
+
+## ADR-0291 — Debug tuning: canonical render/audio snapshot + debounced project file write (dev)
+Date: 2026-04-10
+
+### Decision
+- **`pickRenderTuningForPersistence`** / **`pickAudioTuningForPersistence`** (`tuningDefaults.ts`): when writing **`debug-settings.json`** or **localStorage**, copy only keys defined on **`DEFAULT_RENDER`** / **`DEFAULT_AUDIO`** so the file always carries the full schema and omits stale properties (e.g. removed `lanternIntensity`).
+- **`GameApp`**: under **`vite dev`**, debounced (~**2 s**) **`saveDebugSettingsToProject`** mirrors the same payload as local persistence (in addition to **Save to project**).
+
+### Rationale
+New F2 keys were easy to lose if saves relied on accidental object shape; auto-writing the project JSON in dev matches **ADR-0006** intent and keeps repo snapshots current without only manual saves.
+
+### Consequences
+**`debugSettingsPersistence.ts`**, **`GameApp.tsx`**, **`tuningDefaults.ts`**, **`DESIGN.md`** §3 debug bullet.
+
+---
+
+## ADR-0292 — Portrait idle overlay hides base body sprite
+Date: 2026-04-10
+
+### Decision
+While portrait **idle** is active (ambient flash, frame press / `ui.portraitIdlePulse`, or held press), **`PortraitPanel`** hides the **base** `<img>` as well as the eyes—same gating as eye suppression (`!showEyesInspect`), reusing **`.eyesHidden`** on the base layer.
+
+### Rationale
+Idle art is often a full replacement or has transparency; leaving the base visible caused double-stacking and leaks. Hiding the base in the DOM (including HUD capture) aligns with compositor idle overlays blended over the captured HUD.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** §7.1 portrait idle bullet.
+
+---
+
+## ADR-0293 — Portrait wall-clock refresh for pulse/mouth expiry
+Date: 2026-04-10
+
+### Decision
+**`PortraitPanel`** schedules **`setTimeout`** at **`ui.portraitIdlePulse.untilMs`** and **`ui.portraitMouth.untilMs`** when each cue targets that **`characterId`**, bumping local React state so the panel re-renders as soon as the wall-clock window ends.
+
+### Rationale
+Cue visibility uses **`performance.now()`** at render time, but renders were mostly driven by **`time/tick`** on **`requestAnimationFrame`**. Throttled rAF (background tab, heavy frames) delayed repaints after **`untilMs`**, so idle/base/eyes and mouth layers felt like they cleared too late.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** §7.1 portrait idle bullet; reducer pruning on **`time/tick`** unchanged.
+
+---
+
+## ADR-0294 — Shorter portrait ambient / frame-pulse idle flash; stable wall-clock effect deps
+Date: 2026-04-10
+
+### Decision
+- **`RenderTuning`**: default **`portraitIdleFlashMinMs`** **70** (was **120**), **`portraitIdleFlashMaxMs`** **220** (was **350**); same pair drives **ambient** idle flashes and **`ui.portraitIdlePulse`** frame-press bursts.
+- **`PortraitPanel`**: wall-clock **`useEffect`** depends on **`portraitIdlePulse` / `portraitMouth`** **`characterId` + `untilMs`** primitives only, not whole UI objects, so pending expiry timers are not cleared and rescheduled on unrelated state churn.
+
+### Rationale
+Debug logs showed **`showIdleForEyes`** returning to **`false`** was dominated by **`idleFlash`** with **~180–360 ms** gaps, matching the old **120–350 ms** flash window; pulse/mouth wall-clock bumps were only **~10 ms** past **`untilMs`**. Narrowing deps reduces spurious timer resets when pulse windows update.
+
+### Consequences
+**`tuningDefaults.ts`**, **`web/public/debug-settings.json`**, **`PortraitPanel.tsx`**.
+
+---
+
+## ADR-0295 — Expand crafting: alternates, order traps, swarm inventory crafts
+Date: 2026-04-10
+
+### Decision
+Grow **`ALL_RECIPES`** in **`web/src/game/content/recipes.ts`** with:
+- **Alternate ingredient pairs** to existing results (e.g. **Club** smashes **Stone** for **Stone shard**, **Claw**/**Tooth**/**Bone** branches for weapons and remedies, **Moss**/**Mushrooms** cooking paths, **Bone** + **Gem** for **Staff**).
+- **Order-sensitive “traps”** where reversing drag order changes the result (e.g. **Salt** + **Rootsoup** → **Mold** vs **Rootsoup** + **Salt** → salted soup; **Lantern** + **Bobr juice** vs **Torch** + **Bobr juice**; **Slime**/**Fungus** reciprocals; **Bone**/**Stick**, **Foodroot**/**Waterbag (Full)**, **Cloth scrap**/**Mushrooms**, **Sweetroot**/**Shroomcake**).
+- **Swarm tools** from inventory: **Twine** + **Hive** → **Swarm basket**; **Hive** + **Grubling** or **Mushrooms** → **Captured swarm** (world drag of basket onto **Swarm** unchanged).
+
+No recipes use **Iron key**, **Brass key**, or other keys. No new **`ItemDef`**s.
+
+### Rationale
+Rewards experimentation with materials already in **`DEFAULT_ITEMS`**, deepens the **drag-order** identity of crafting, and gives **Hive** / **Swarm basket** / **Captured swarm** a path without floor-only reliance.
+
+### Consequences
+Keep **`ALL_RECIPES`** inputs and outputs aligned with **`web/src/game/content/items.ts`**. **`DESIGN.md`** §7.3 documents order sensitivity and new breadth at a summary level; full matrix remains **`recipes.ts`**.
+
+---
+
+## ADR-0296 — Ambient portrait idle: compositor overlay + capture keeps base/eyes
+Date: 2026-04-10
+
+### Decision
+- **`portraitAmbientCompositorIdle.ts`**: per-character flag set from the **capture** `PortraitPanel` when **only** random **`idleFlash`** is active (no `portraitIdlePulse`, no pressed-frame idle, no inspect hover).
+- **`DitheredFrameRoot`**: OR **`getPortraitAmbientCompositorIdle(id)`** into **`portraitIdleOn`** so the WebGL composite draws the idle sprite at full frame rate for ambient flashes (same path as pulse/press).
+- **`PortraitPanel` (capture)**: while that flag is on, **do not** apply **`idleHideBase` / `idleHideEyes`**—the captured HUD keeps the normal face rasterized; the compositor paints idle on top.
+
+### Rationale
+`html2canvas` often finishes **after** a short ambient flash ends. If the capture DOM had base/eyes hidden during the flash, the **completed** capture could still show the hidden state, so the face felt slow to return even when capture scheduling was immediate (**ADR-0295**). Keeping base+eyes in the bitmap and using the existing compositor idle layer avoids that race entirely for ambient idle.
+
+### Consequences
+**`portraitAmbientCompositorIdle.ts`**, **`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** portrait reaction bullet.
+
+---
+
+## ADR-0298 — Revert ADR-0296 ambient compositor idle (portrait went blank; Afonso mouth only)
+Date: 2026-04-10
+
+### Decision
+Remove **`portraitAmbientCompositorIdle.ts`** and the **`portraitIdleOn`** OR from **`getPortraitAmbientCompositorIdle`**. Restore **`PortraitPanel`** capture behavior: **`idleHideBase` / `idleHideEyes`** during **all** idle (`idleFlash` / pulse / press), with no “compositor covers ambient” exception.
+
+### Rationale
+Turning on compositor **idle** for random ambient while the **capture** stack still omitted the idle `<img>` (`showIdleSprite` false) produced a mismatch: the UI texture had **no** face layers while **`portraitIdleOn`** could still drive idle/mouth compositing—**Afonso** kept a **compositor closed-mouth** quad, so slots read as “empty portrait, mouth only”; others read as fully blank.
+
+### Consequences
+Deletes **`portraitAmbientCompositorIdle.ts`**; **`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** portrait reaction bullet. **ADR-0295** (capture `hudKey` revision + `hudDirty` immediate capture) and **ADR-0297** (blink open on ambient `idleFlash` end) stay.
+
+---
+
+## ADR-0299 — Rasterize idle sprite in capture for ambient-only flashes
+Date: 2026-04-10
+
+### Decision
+**`PortraitPanel`**: **`showIdleSprite`** in **`captureForPostprocess`** mode is **`true`** only when **`idleFlash && !pulseIdle && !pressIdle`** (ambient random flash); pulse/press idle keep **`showIdleSprite` false** in capture so compositor idle is not doubled.
+
+### Rationale
+After **ADR-0298**, ambient idle again hid base/eyes in capture while suppressing the idle `<img>`, and **`portraitIdleOn`** does not cover ambient—so the portrait art region in **uiTex** was fully transparent (“entire portrait disappears”). Afonso could still show a compositor mouth; others showed nothing.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** portrait reaction bullet.
+
+---
+
+## ADR-0297 — Open eyes when ambient idle flash ends (blink vs idle overlap)
+Date: 2026-04-10
+
+### Decision
+**`PortraitPanel`**: on **`idleFlash` true → false** (per slot), call **`setBlinkClosed(false)`** and clear Frosh **`blinkClosedL` / `blinkClosedR`**, resetting the independent blink cycle so eyes are not left closed exactly when the ambient idle overlay drops.
+
+### Rationale
+Session logs showed **`idleHideBase`** already **`false`** while **`blinkHideEyes`** was **`true`** right after idle ended—blink timing overlapped the return to the normal face, so the portrait read as “slow to come back” even when capture/compositor idle was correct.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** portrait blinking bullet.
+
+---
+
+## ADR-0295 — Sync HUD capture to ambient portrait idle (base/eyes hide)
+Date: 2026-04-10
+
+### Decision
+- **`portraitCaptureHudRev.ts`**: monotonic revision bumped from the **capture** `PortraitPanel` whenever **`idleHideBase`** (ambient / press / pulse idle) toggles.
+- **`DitheredFrameRoot`**: append **`pCapIdle=${getPortraitCaptureHudRev()}`** to the capture **`hudKey`**, and set **`immediateCapture = highFpsUi || poseDirty || hudDirty`** so a dirty HUD is not blocked by the ~720ms **`effectiveIntervalMs`** backoff.
+
+### Rationale
+Logs showed **`html2canvas`** runs were gated by **`stale` (~650ms)** with **`hudDirty: false`** while **`idleFlash`** only lived in local React state; after idle ended the capture DOM showed base+eyes immediately but the compositor texture could stay on the hidden-base frame for hundreds of milliseconds.
+
+### Consequences
+**`portraitCaptureHudRev.ts`**, **`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** §7.1 portrait idle bullet.
+
+---
+
+## ADR-0300 — Bump HUD capture rev on capture idle sprite visibility too
+Date: 2026-04-10
+
+### Decision
+In the **capture** `PortraitPanel`, call **`bumpPortraitCaptureHudRev()`** when either **`idleHideBase`** or **`showIdleSprite`** changes (same character), not only when **`idleHideBase`** changes.
+
+### Rationale
+**`idleHideBase`** and **ambient** **`showIdleSprite`** usually flip together, but any future or edge divergence would leave **`hudKey`**/`pCapIdle` stale while the rasterized idle `<img>` toggles—risking a blank or mismatched composited frame until the next unrelated bump.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** portrait idle bullet.
+
+---
+
+## ADR-0301 — Capture keeps base+eyes under compositor-only idle (pulse / press)
+Date: 2026-04-10
+
+### Decision
+In **`PortraitPanel`**, when **`captureForPostprocess`** and idle is driven only by **`ui.portraitIdlePulse`** or **frame press** (compositor **`portraitIdleOn`**), **do not** apply **`idleHideBase` / `idleHideEyes`** in the capture tree. **Random ambient** idle (capture-local **`idleFlash`**) still hides base+eyes and rasterizes the idle `<img>` in capture.
+
+### Rationale
+Debug logs showed **`idleHideBase: true`** with **`showIdleSprite: false`** on capture during pulse/press—by design the idle `<img>` is omitted so the compositor can draw idle once. If compositor idle turns off before the HUD texture is recaptured, the stack is **only hidden layers** → visible **blank** portrait.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DESIGN.md`** portrait idle + reaction bullets.
+
+---
+
+## ADR-0302 — 3D drag-drop: raycast POI/NPC/floor-item at pointer-up
+Date: 2026-04-10
+
+### Decision
+When **`drag/drop`** resolves to **`floorDrop`** and the pointer is over the dungeon **3D viewport**, **`HudLayout`** first calls **`WorldRenderer.pickTarget`** at the release pixel. If the hit is **`poi`**, **`npc`**, or **`floorItem`**, dispatch **`drag/drop`** with that target; otherwise keep the existing **`pickFloorPoint`** snap for plain floor drops.
+
+### Rationale
+**`GameViewport`** exposes **`data-drop-kind="floorDrop"`** for the whole cell, so **`CursorProvider`’s** DOM **`elementsFromPoint`** never yields a POI target on release. **Virtual hover** from **`pickObject`** is consumed/cleared on each move and is not reliable at **`pointerup`**, which broke **apply item on POI** even when the hand showed **Apply**.
+
+### Consequences
+**`HudLayout.tsx`** pointer-up path; **`DESIGN.md`** §6.2 drop rules.
+
+---
+
+## ADR-0303 — Resolve 3D `floorDrop` targets on captured drag sources (inventory / equip)
+Date: 2026-04-10
+
+### Decision
+Extract **`resolveGameViewportDragDropTarget`** (**`web/src/ui/viewport/resolveGameViewportDragDropTarget.ts`**) and call it from **`HudLayout`**, **`InventoryPanel`**, and **`CharacterEquipStrip`** whenever **`endPointerUp`** yields **`drag/drop`** with **`target.kind === 'floorDrop'`**. **`HudLayout`** passes **`world`** + **`gameViewportRef`** into those panels.
+
+### Rationale
+**`beginPointerDown`** uses **`setPointerCapture`** on inventory slot buttons (and equip buttons). **`pointerup`** is delivered to the captured element, which calls **`endPointerUp`** and **`stopPropagation`**—so **`HudLayout`’s** root **`pointerup`** never ran the 3D raycast branch. Drops from inventory still looked like **`floorDrop`** and fell through to **`dropItemToFloor`**.
+
+### Consequences
+**`resolveGameViewportDragDropTarget.ts`**, **`HudLayout.tsx`**, **`InventoryPanel.tsx`**, **`CharacterEquipStrip.tsx`**, **`DESIGN.md`** §6.2.
+
+---
+
+## ADR-0304 — Compositor idle: clear stale HUD pixels under idle sprite (shader) + rAF during pulse/press
+Date: 2026-04-10
+
+### Decision
+- **`CompositeShader`**: When **`portraitIdleOn`** is active for a slot, **zero** the captured **`uiTex`** sample inside the **same idle sprite bounding quad** used for idle overlay sampling (stats rect excluded), **before** compositing portrait overlays. This removes the **stale base+eyes** from async **`html2canvas`** while compositor idle is on.
+- **`DitheredFrameRoot`**: Extend the presenter **rAF** “active” gate so **`renderOnce`** runs every frame while **`ui.portraitIdlePulse`** is in window or a **portrait press** is active (**`cursorLatestRef`** + **`getPressedPortraitCharacterId`**), matching the existing **`highFpsUi`** capture burst intent.
+
+### Rationale
+**ADR-0301** keeps base+eyes in the capture texture during pulse/press so a slow recapture cannot flash a blank portrait. Compositor idle turns on immediately; **`uiTex`** can lag, so **`over(uiTex, idle)`** showed **duplicate** face wherever the idle PNG is transparent. Shader-side suppression fixes that without abandoning the fast overlay path.
+
+### Consequences
+**`CompositeShader.ts`**, **`DitheredFrameRoot.tsx`**, **`DESIGN.md`** portrait reaction bullet.
+
+---
+
+## ADR-0305 — Compositor idle stale-kill: gate on idle texture alpha (keep portrait backdrop)
+Date: 2026-04-10
+
+### Decision
+**`killStaleUiUnderCompositorIdle`** (**`CompositeShader`**) clears **`uiTex`** only where **`texture2D(tIdle, uv).a`** exceeds a small threshold (~**0.008**), using the same UV math as the idle overlay. Fully transparent idle pixels keep the captured HUD (portrait gradient / plate) instead of replacing it with **transparent black**, which had read as a flat **black** panel behind the sprite.
+
+### Rationale
+**ADR-0304** zeroed the **entire** idle sprite bounding quad. Transparent regions of the idle PNG are meant to show the **HUD backdrop** from capture; wiping them removed that layer, so **`over(cleared, idle)`** left holes that composite as **black** relative to the dither pass.
+
+### Consequences
+**`CompositeShader.ts`** (add **`sampler2D tIdle`** to the kill helper; pass **`tPortraitIdle0..3`** from **`main`**), **`DESIGN.md`** portrait reaction bullet.
+
+---
+
+## ADR-0306 — Phase 1 items/recipes: Mold branch, body slots, ranged tuning
+Date: 2026-04-10
+
+### Decision
+Expand authored content in **`web/src/game/content/items.ts`** and **`web/src/game/content/recipes.ts`**:
+- **Mold** is no longer only a dead-end product: **Spore paste** (**Mold** + **Herb leaf**, or **Mushrooms** + **Mold**) and **Spore stew** (**Spore paste** + **Waterbag (Full)**, both orders).
+- Add crafted gear for unused paperdoll slots: **Moss wrap** (**clothing**), **Moss sandals** (**feet**), **Gem charm** (**accessory**).
+- Tune **Sling** (lighter), **Bow** (heavier), and **Bolas** (**Rooted** on hit via **`statusOnHit`**).
+- Allowlist new craft outputs in **`web/src/tools/procgenContentNonSpawnAllowlist.ts`** for **`npm run audit:procgen-content`**.
+
+### Rationale
+Gives players a payoff for **Mold** and uses **`feet` / `clothing` / `accessory`** equipment slots already present in **`PaperdollModal`**. Separates the three agility ranged weapons without new systems.
+
+### Consequences
+Regenerate **[`CraftingRecipesGraph.md`](CraftingRecipesGraph.md)** after recipe edits (`npm run gen:crafting-graph` in **`web/`**). **`DESIGN.md`** §7.3 and §7.4 updated.
+
+---
+
+## ADR-0307 — `renderOnce` uses `cursorLatestRef` (rAF closure vs live cursor)
+Date: 2026-04-10
+
+### Decision
+Inside **`DitheredFrameRoot`’s** **`renderOnce`**, read **`cursorLatestRef.current`** (aliased as **`cs`**) for **`getPressedPortraitCharacterId`**, **`hudKey`** portrait-hover fields, compositor **`portraitHoverEyesOn` / `portraitHoverMouthOn`**, and **`__elfensteinPerf.pointer.isDown`**—not **`cursor.state`** from the React closure.
+
+### Rationale
+The presenter **rAF** `useEffect` depends only on **`[world]`** and calls **`renderOnce`** every frame while **`idlePulseActive`** or **`portraitPressActive`** is true (**ADR-0304**). That **`renderOnce`** instance closes over **`cursor`** from the effect’s mount render, so **`cursor.state`** was **stale** during those bursts. Compositor inspect/mouth **hover** overlays stopped updating; **mouth chomp** still worked because it uses **`latestStateRef`** + **`ui.portraitMouth`**, not hover.
+
+### Consequences
+**`DitheredFrameRoot.tsx`**; **`DESIGN.md`** portrait reaction bullet.
+
+---
+
+## ADR-0307 — Weapon `damageStat` may scale off Intelligence
+Date: 2026-04-10
+
+### Decision
+- **`WeaponDamageStat`** in **`web/src/game/types.ts`**: **`strength` | `agility` | `intelligence`**.
+- **`ItemDef.weapon.damageStat`** and **`computePcAttackDamage`** use that type; **`intelligence`** contributes **`floor(intelligence × 0.25)`** like the other stats (e.g. **Attuned staff** in **`web/src/game/content/items.ts`**).
+
+### Rationale
+Magic-oriented weapons should type-check and apply the same additive scaling rule as physical stat-scaled weapons.
+
+### Consequences
+**`web/src/game/types.ts`**, **`web/src/game/content/contentDb.ts`**, **`web/src/game/state/combat.ts`**, **`DESIGN.md`** §8 (PC damage resolution).
+
+---
+
+## ADR-0308 — Phase 2 items/recipes: breadth, Burning/Drenched remedies, Shrine offerings
+Date: 2026-04-10
+
+### Decision
+- **Crafting**: add **Brined spore** (**Spore paste** + **Salt**), **Smolder bundle** (**Ash** + **Twine**), **River tonic** (**Bobr juice** + **Bitter herb**), **Cooling poultice** (**Herb leaf** + **Moss**), **Dry wrap** (**Salt** + **Cloth scrap**, both orders); allowlist craft outputs in **`procgenContentNonSpawnAllowlist.ts`**; regenerate **[`CraftingRecipesGraph.md`](CraftingRecipesGraph.md)**.
+- **Feed remedies**: **Cooling poultice** removes **Burning**; **Dry wrap** removes **Drenched**; extend **`remedyHint`** and **`feedCharacter`** in **`web/src/game/state/interactions.ts`**.
+- **Shrine**: extend **`ItemPoiUseHook`** / **`ItemDef.useOnPoi`** in **`contentDb.ts`** with optional **`consumeOffering`** and **`blessPartyMs`**; **`applyItemOnPoi`** in **`poi.ts`** handles **Shrine** before **`applyPoiUse`**. **Sweetroot** gains **`useOnPoi.Shrine`** (consume + party **Blessed**).
+- **Tests**: **`poi.test.ts`** (shrine offering), **`interactions.test.ts`** (new feed cures).
+
+### Rationale
+Phase 2 from the content roadmap: more recipe discovery without new combat systems, hazard counterplay for room effects that already apply **Burning** / **Drenched**, and a minimal second POI hook alongside **Well**.
+
+### Consequences
+**`DESIGN.md`** §7.3, §9 POI list; new ADR (this entry).

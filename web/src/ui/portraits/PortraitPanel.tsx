@@ -3,7 +3,7 @@ import type React from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { getCharacterEquipmentHudModel } from '../../game/state/equipment'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
@@ -11,6 +11,7 @@ import { shakeTransform } from '../feedback/shakeTransform'
 import { loadImage, prefetchImages } from '../assets/imageCache'
 import { hpMax, staminaMax } from '../../game/state/runProgression'
 import { EquipIcon } from './EquipIcon'
+import { bumpPortraitCaptureHudRev } from './portraitCaptureHudRev'
 import styles from './PortraitPanel.module.css'
 
 const VITAL_BAR_FILL: Record<'hp' | 'sta' | 'hun' | 'thr', string> = {
@@ -122,6 +123,37 @@ export function PortraitPanel(props: {
   const [blinkClosedR, setBlinkClosedR] = useState(false)
   const [idleFlash, setIdleFlash] = useState(false)
   const [portraitAr, setPortraitAr] = useState<number>(1)
+  /** Bumped via `setTimeout` at cue `untilMs` so `performance.now()` comparisons refresh even when `time/tick` rAF is throttled. */
+  const [, setPortraitClockNonce] = useState(0)
+
+  useEffect(() => {
+    const bump = () => setPortraitClockNonce((n) => n + 1)
+    const ids: number[] = []
+    const schedule = (untilMs: number) => {
+      const delay = Math.max(0, untilMs - performance.now()) + 1
+      ids.push(window.setTimeout(bump, delay))
+    }
+
+    const pulse = state.ui.portraitIdlePulse
+    if (pulse?.characterId === characterId && pulse.untilMs > performance.now()) {
+      schedule(pulse.untilMs)
+    }
+    const mouth = state.ui.portraitMouth
+    if (mouth?.characterId === characterId && mouth.untilMs > performance.now()) {
+      schedule(mouth.untilMs)
+    }
+
+    return () => {
+      for (const id of ids) window.clearTimeout(id)
+    }
+    // Primitive deps only so unrelated `ui` object churn does not reset timers mid-pulse.
+  }, [
+    characterId,
+    state.ui.portraitIdlePulse?.characterId,
+    state.ui.portraitIdlePulse?.untilMs,
+    state.ui.portraitMouth?.characterId,
+    state.ui.portraitMouth?.untilMs,
+  ])
 
   useEffect(() => {
     let cancelled = false
@@ -330,22 +362,71 @@ export function PortraitPanel(props: {
         }
       : undefined
 
+  const pulse = state.ui.portraitIdlePulse
+  const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > nowMs
+  const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
+  const pressIdle = pressedPortraitCharacterId === characterId
+  const showIdleForEyes = idleFlash || pulseIdle || pressIdle
+  // Pulse/press idle: compositor draws the idle overlay; capture omits the idle `<img>` to avoid double.
+  // Random ambient (`idleFlash` only): compositor does not set `portraitIdleOn`, so capture must rasterize
+  // the idle sprite or the art stack is only hidden layers → blank portrait in uiTex.
+  const showIdleSpriteInCapture =
+    captureForPostprocess && idleFlash && !pulseIdle && !pressIdle && showIdleForEyes
+  const showIdleSprite = captureForPostprocess ? showIdleSpriteInCapture : showIdleForEyes
+  // Pulse/press: compositor draws idle on top of the HUD texture. If capture hides base/eyes but omits
+  // the idle `<img>`, a frame where compositor idle is already off and the texture is not yet recaptured
+  // reads as a blank portrait — keep the face in the capture stack and let the compositor occlude it.
+  const compositorDrivenIdle = pulseIdle || pressIdle
+  const idleHideEyes =
+    showIdleForEyes && !showEyesInspect && !(captureForPostprocess && compositorDrivenIdle)
+  const idleHideBase =
+    showIdleForEyes &&
+    !!portrait?.idleSrc &&
+    !showEyesInspect &&
+    !(captureForPostprocess && compositorDrivenIdle)
+
+  const prevCharacterIdForIdleCapRef = useRef(characterId)
+  const prevIdleHideBaseRef = useRef(idleHideBase)
+  const prevShowIdleSpriteCapRef = useRef(showIdleSprite)
+  useEffect(() => {
+    if (prevCharacterIdForIdleCapRef.current !== characterId) {
+      prevCharacterIdForIdleCapRef.current = characterId
+      prevIdleHideBaseRef.current = idleHideBase
+      prevShowIdleSpriteCapRef.current = showIdleSprite
+      return
+    }
+    const hideChanged = prevIdleHideBaseRef.current !== idleHideBase
+    const spriteChanged = prevShowIdleSpriteCapRef.current !== showIdleSprite
+    if (!hideChanged && !spriteChanged) return
+    prevIdleHideBaseRef.current = idleHideBase
+    prevShowIdleSpriteCapRef.current = showIdleSprite
+    if (captureForPostprocess) {
+      bumpPortraitCaptureHudRev()
+    }
+  }, [idleHideBase, showIdleSprite, characterId, captureForPostprocess])
+
+  const prevIdleFlashBlinkCharRef = useRef(characterId)
+  const prevIdleFlashForBlinkRef = useRef(idleFlash)
+  useEffect(() => {
+    if (prevIdleFlashBlinkCharRef.current !== characterId) {
+      prevIdleFlashBlinkCharRef.current = characterId
+      prevIdleFlashForBlinkRef.current = idleFlash
+      return
+    }
+    if (prevIdleFlashForBlinkRef.current && !idleFlash) {
+      setBlinkClosed(false)
+      setBlinkClosedL(false)
+      setBlinkClosedR(false)
+    }
+    prevIdleFlashForBlinkRef.current = idleFlash
+  }, [idleFlash, characterId])
+
   if (!c) return null
 
   const equipHud = getCharacterEquipmentHudModel(state, content, characterId)
 
   const statuses = c.statuses.map((s) => s.id)
   const statusText = statuses.length ? `Status: ${statuses.join(', ')}` : 'Status: —'
-
-  const pulse = state.ui.portraitIdlePulse
-  const pulseIdle = pulse?.characterId === characterId && pulse.untilMs > nowMs
-  const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
-  const pressIdle = pressedPortraitCharacterId === characterId
-  // Idle art itself is compositor-rendered in capture mode, but the base portrait eye sprites
-  // still need to hide during idle so the composition matches the original DOM behavior.
-  const showIdleForEyes = idleFlash || pulseIdle || pressIdle
-  const showIdleSprite = captureForPostprocess ? false : showIdleForEyes
-  const idleHideEyes = showIdleForEyes && !showEyesInspect
 
   const columnTx = portraitColumnTranslateXPx ?? 0
   const rootTransformParts: string[] = [`translateY(-${PORTRAIT_COLUMN_NUDGE_UP_PX}px)`]
@@ -385,7 +466,12 @@ export function PortraitPanel(props: {
         <div className={styles.portraitArtClip} aria-hidden="true">
           {portrait ? (
             <div className={styles.spriteStack}>
-              <img className={styles.sprite} src={portrait.baseSrc} alt="" draggable={false} />
+              <img
+                className={`${styles.sprite} ${idleHideBase ? styles.eyesHidden : ''}`}
+                src={portrait.baseSrc}
+                alt=""
+                draggable={false}
+              />
               {showEyesInspect ? (
                 <img className={styles.sprite} src={portrait.eyesInspectSrc} alt="" draggable={false} />
               ) : portrait.kind === 'frosh' ? (

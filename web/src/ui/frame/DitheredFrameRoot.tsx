@@ -22,6 +22,7 @@ import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
+import { getPortraitCaptureHudRev } from '../portraits/portraitCaptureHudRev'
 import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
 
 type SpeciesId = GameState['party']['chars'][number]['species']
@@ -176,6 +177,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const titleBootPlaceholderTexRef = useRef<THREE.CanvasTexture | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cursor = useCursor()
+  const cursorLatestRef = useRef(cursor.state)
+  cursorLatestRef.current = cursor.state
   const pointerDownStartedAtMsRef = useRef<number | null>(null)
   const prevPointerDownRef = useRef(false)
 
@@ -349,6 +352,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const gameCssH = gameEl.clientHeight
     if (gameCssW < 1 || gameCssH < 1) return false
 
+    // rAF loop (deps `[world]`) holds a stale `renderOnce` closure; always read cursor from ref.
+    const cs = cursorLatestRef.current
+
     const outerS = Math.max(1e-6, fixedStageOuterScaleRef.current)
 
     const qs = new URLSearchParams(window.location.search)
@@ -408,7 +414,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
     const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
     const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
-    const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
+    const pressedPortraitCharacterId = getPressedPortraitCharacterId(cs)
     const portraitPressActive = pressedPortraitCharacterId != null
     // Portrait mouth is a compositor overlay, but it still benefits from a higher cadence so flicker reads.
     const highFpsUi = anyShakeActive || mouthActive || idlePulseActive || portraitPressActive
@@ -457,15 +463,15 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const pressKey = pressedPortraitCharacterId ?? ''
       // Portrait hover affordances (eyes inspect / mouth preview) are rendered inside the captured HUD
       // and depend on cursor hover state during drags.
-      const ht = cursor.state.hoverTarget
+      const ht = cs.hoverTarget
       const hoverPortraitKey =
-        cursor.state.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
+        cs.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
       const screenKey = sForKey.ui.screen
       const paperdollKey = sForKey.ui.paperdollFor ?? ''
       const dbgDeathKey = sForKey.ui.debugShowDeathPopup ? '1' : '0'
       const dbgNpcDlgKey = sForKey.ui.debugShowNpcDialogPopup ? '1' : '0'
       const checkpointKey = sForKey.run.checkpoint ? '1' : '0'
-      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}`
+      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}|pCapIdle=${getPortraitCaptureHudRev()}`
     })()
     const hudDirty = hudKey !== lastHudKeyRef.current
     // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
@@ -476,7 +482,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // Schedule it in idle time and back off when captures are slow.
     const lastCapDur = lastUiCaptureDurMsRef.current ?? 0
     // Backoff is great for smooth frame pacing, but during interaction bursts we prefer immediacy.
-    const immediateCapture = highFpsUi || poseDirty
+    // When `hudDirty` is true but this was false, capture waited for the stale/interval gate (~720ms),
+    // so local-only HUD pixels (e.g. portrait idle flash) stayed out of sync with the compositor texture.
+    const immediateCapture = highFpsUi || poseDirty || hudDirty
     const backoffMs = immediateCapture ? 0 : lastCapDur > 120 ? 600 : lastCapDur > 60 ? 350 : lastCapDur > 30 ? 180 : 0
     const effectiveIntervalMs = immediateCapture ? 0 : captureIntervalMs + backoffMs
     const stale = now - lastCaptureMsRef.current > maxStaleMs
@@ -673,12 +681,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       : pressedPortraitCharacterId === c.id ? 1
       : 0,
     )
-    const hover = cursor.state.hoverTarget
+    const hover = cs.hoverTarget
     const portraitHoverEyesOn = party.map((c) =>
-      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
+      cs.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
     )
     const portraitHoverMouthOn = party.map((c) =>
-      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
+      cs.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
     )
     // Hover mouth should show steadily (original affordance); cue mouth flicker wins when active.
     const portraitMouthIsOpen = portraitMouthOn.map((v, i) => (v > 0 ? v : portraitHoverMouthOn[i] ?? 0))
@@ -907,7 +915,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       emaPresentMs: ema.presentMs,
       uiCaptureMs: lastUiCaptureDurMsRef.current,
       pointer: {
-        isDown: cursor.state.isPointerDown,
+        isDown: cs.isPointerDown,
         downStartedAtMs: pointerDownStartedAtMsRef.current,
         pressedPortraitCharacterId,
       },
@@ -946,8 +954,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const anyShakeActive = (!!ui.shake && ui.shake.untilMs > s.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > s.nowMs)
       const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > s.nowMs
       const hazardTelegraphActive = roomPropertyUnderPlayer(s) != null
+      const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
+      const cs = cursorLatestRef.current
+      const portraitPressActive = cs.isPointerDown && getPressedPortraitCharacterId(cs) != null
       const active =
-        now < renderBurstUntilMsRef.current || anyShakeActive || mouthActive || hazardTelegraphActive
+        now < renderBurstUntilMsRef.current ||
+        anyShakeActive ||
+        mouthActive ||
+        hazardTelegraphActive ||
+        idlePulseActive ||
+        portraitPressActive
       if (active) renderOnce()
       raf = window.requestAnimationFrame(loop)
     }

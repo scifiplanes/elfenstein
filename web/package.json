@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "preview": "vite preview",
-    "audit:procgen-content": "tsx scripts/procgenContentAudit.ts"
+    "audit:procgen-content": "tsx scripts/procgenContentAudit.ts",
+    "gen:crafting-graph": "node scripts/genCraftingRecipesGraph.mjs"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

@@ -120,6 +120,40 @@ vec4 over(vec4 under, vec4 overC) {
   return vec4(rgb, outA);
 }
 
+// Compositor idle runs before the next html2canvas snapshot; stale uiTex can still show base+eyes
+// under semi-opaque idle. Clear captured UI only where the idle texture has real coverage so we
+// do not wipe the portrait backdrop (gradient) behind fully transparent idle pixels (would read black).
+vec4 killStaleUiUnderCompositorIdle(
+  vec2 px,
+  vec4 uiIn,
+  vec4 rectPx,
+  vec4 statsRectPx,
+  float idleOn1,
+  float idleAr1,
+  sampler2D tIdle
+) {
+  if (idleOn1 < 0.5) return uiIn;
+  if (rectPx.z <= 1.0 || rectPx.w <= 1.0) return uiIn;
+  if (!insideRect(px, rectPx)) return uiIn;
+  if (statsRectPx.z > 1.0 && statsRectPx.w > 1.0 && insideRect(px, statsRectPx)) return uiIn;
+  vec2 localPx = px - rectPx.xy;
+  float rectW = rectPx.z;
+  float rectH = rectPx.w;
+  float ar = max(1e-6, idleAr1);
+  float spriteW = rectH * ar;
+  float left = rectW * 0.5 - spriteW * 0.5;
+  float u = (localPx.x - left) / max(1.0, spriteW);
+  float v = (localPx.y - portraitArtNudgeYPx) / max(1.0, rectH);
+  if (u >= 0.0 && u <= 1.0 && v >= 0.0 && v <= 1.0) {
+    float vTex = 1.0 - v;
+    float idleA = texture2D(tIdle, vec2(u, vTex)).a;
+    if (idleA > 0.008) {
+      return vec4(0.0);
+    }
+  }
+  return uiIn;
+}
+
 vec4 samplePortraitOverlay(
   vec2 px,
   vec4 rectPx,
@@ -218,6 +252,10 @@ void main() {
   // DOM rects (getBoundingClientRect) are top-origin; gl_FragCoord is bottom-origin.
   vec2 px = vec2(gl_FragCoord.x, resolution.y - gl_FragCoord.y);
   vec4 ui = texture2D(tUi, vUv);
+  ui = killStaleUiUnderCompositorIdle(px, ui, portraitRectPx0, portraitStatsRectPx0, idleOn.x, idleAr.x, tPortraitIdle0);
+  ui = killStaleUiUnderCompositorIdle(px, ui, portraitRectPx1, portraitStatsRectPx1, idleOn.y, idleAr.y, tPortraitIdle1);
+  ui = killStaleUiUnderCompositorIdle(px, ui, portraitRectPx2, portraitStatsRectPx2, idleOn.z, idleAr.z, tPortraitIdle2);
+  ui = killStaleUiUnderCompositorIdle(px, ui, portraitRectPx3, portraitStatsRectPx3, idleOn.w, idleAr.w, tPortraitIdle3);
 
   // Portrait reaction overlays: render *over* captured UI so they appear above the portrait base art,
   // while still masking out the stats UI region (see samplePortraitOverlay).

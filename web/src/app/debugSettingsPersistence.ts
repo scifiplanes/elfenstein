@@ -7,6 +7,7 @@ import type {
   RenderTuning,
   RoomTelegraphMode,
 } from '../game/types'
+import { pickAudioTuningForPersistence, pickRenderTuningForPersistence } from '../game/tuningDefaults'
 
 const PROC_OVERLAY_MODES: ProcgenDebugOverlayMode[] = ['districts', 'roomTags', 'mission']
 
@@ -171,7 +172,12 @@ export function saveDebugSettingsToLocal(
   debugUi: DebugUiPersist,
 ): void {
   try {
-    const data: DebugSettingsFile & { hubHotspots: HubHotspotConfig } = { render, audio, hubHotspots, debugUi }
+    const data: DebugSettingsFile & { hubHotspots: HubHotspotConfig } = {
+      render: pickRenderTuningForPersistence(render),
+      audio: pickAudioTuningForPersistence(audio),
+      hubHotspots,
+      debugUi,
+    }
     localStorage.setItem(LOCAL_KEY, JSON.stringify(data))
   } catch {
     // ignore (storage disabled/quota/etc.)
@@ -198,7 +204,12 @@ export async function saveDebugSettingsToProject(
     const res = await fetch('/__debug_settings/save', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ render, audio, hubHotspots, debugUi }),
+      body: JSON.stringify({
+        render: pickRenderTuningForPersistence(render),
+        audio: pickAudioTuningForPersistence(audio),
+        hubHotspots,
+        debugUi,
+      }),
     })
     if (!res.ok) {
       console.warn('[debug-settings] save failed:', res.status)

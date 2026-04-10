@@ -12,6 +12,7 @@ import {
   loadDebugSettingsFromLocal,
   loadDebugSettingsFromProject,
   saveDebugSettingsToLocal,
+  saveDebugSettingsToProject,
 } from './debugSettingsPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
@@ -63,6 +64,32 @@ export function GameApp() {
         buildDebugUiPersist(state.ui),
       )
     }, 450)
+    return () => window.clearTimeout(t)
+  }, [
+    debugTuningHydrated,
+    state.render,
+    state.audio,
+    state.hubHotspots,
+    state.ui.debugBgTrack,
+    state.ui.procgenDebugOverlay,
+    state.ui.roomTelegraphMode,
+    state.ui.roomTelegraphStrength,
+    state.ui.debugShowNpcDialogPopup,
+    state.ui.debugShowDeathPopup,
+  ])
+
+  /** Debounced write of the same snapshot as localStorage to `web/public/debug-settings.json` (Vite dev only). */
+  useEffect(() => {
+    if (!debugTuningHydrated) return
+    if (!import.meta.env.DEV) return
+    const t = window.setTimeout(() => {
+      void saveDebugSettingsToProject(
+        state.render,
+        state.audio,
+        state.hubHotspots,
+        buildDebugUiPersist(state.ui),
+      )
+    }, 2000)
     return () => window.clearTimeout(t)
   }, [
     debugTuningHydrated,

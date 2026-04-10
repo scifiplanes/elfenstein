@@ -17,8 +17,16 @@ export const DEFAULT_RENDER: RenderTuning = {
   themeSaturation_ruins_bleach: 1.0,
   themeSaturation_ruins_umber: 1.0,
   baseEmissive: 0.02,
-  lanternIntensity: 4.0,
-  lanternDistance: 24,
+  bareLightIntensity: 4.0,
+  bareLightDistance: 24,
+  heldTorchIntensity: 1.0,
+  heldTorchDistance: 6,
+  equippedLanternIntensity: 4.0,
+  equippedLanternDistance: 24,
+  headlampIntensity: 4.0,
+  headlampDistance: 24,
+  glowbugIntensity: 0.45,
+  glowbugDistance: 4,
   lanternForwardOffset: 0.28,
   lanternVerticalOffset: -0.06,
   lanternFlickerAmp: 0.06,
@@ -69,8 +77,8 @@ export const DEFAULT_RENDER: RenderTuning = {
   dropRangeCells: 5,
   portraitIdleGapMinMs: 8000,
   portraitIdleGapMaxMs: 18000,
-  portraitIdleFlashMinMs: 120,
-  portraitIdleFlashMaxMs: 350,
+  portraitIdleFlashMinMs: 70,
+  portraitIdleFlashMaxMs: 220,
   portraitMouthFlickerHz: 18,
   portraitMouthFlickerAmount: 8,
   // Start by matching camera shake envelope so existing feel is unchanged until tuned.
@@ -92,6 +100,15 @@ export const DEFAULT_RENDER: RenderTuning = {
   campEveryFloors: 10,
 }
 
+/** Copy only keys present in `DEFAULT_RENDER` so `debug-settings.json` always includes the full schema (e.g. per-mode camera lights) and drops stale fields. */
+export function pickRenderTuningForPersistence(render: RenderTuning): RenderTuning {
+  const out = {} as RenderTuning
+  for (const key of Object.keys(DEFAULT_RENDER) as (keyof RenderTuning)[]) {
+    out[key] = render[key]
+  }
+  return out
+}
+
 export const DEFAULT_AUDIO: AudioTuning = {
   masterSfx: 0.6,
   masterMusic: 0.4,
@@ -110,4 +127,13 @@ export const DEFAULT_AUDIO: AudioTuning = {
   munchThumpHz: 90,
   munchTremDepth: 0.35,
   munchTremHz: 18,
+}
+
+/** Same idea as `pickRenderTuningForPersistence` for the audio block in `debug-settings.json`. */
+export function pickAudioTuningForPersistence(audio: AudioTuning): AudioTuning {
+  const out = {} as AudioTuning
+  for (const key of Object.keys(DEFAULT_AUDIO) as (keyof AudioTuning)[]) {
+    out[key] = audio[key]
+  }
+  return out
 }

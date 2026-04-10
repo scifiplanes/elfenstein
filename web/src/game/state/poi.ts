@@ -1,7 +1,7 @@
 import type { ContentDB } from '../content/contentDb'
 import { CHEST_LOOT_DEF_IDS, CONTAINER_LOOT_DEF_IDS } from '../content/poiLootTables'
 import type { GameState, ItemId } from '../types'
-import { removeStatus } from './status'
+import { addStatus, removeStatus } from './status'
 import { consumeItem } from './inventory'
 import { makeDropJitter } from './dropJitter'
 import { pushActivityLog } from './activityLog'
@@ -233,7 +233,32 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
     return applyPoiUse(state, content, poiId)
   }
 
-  if (poi.kind === 'Shrine') return applyPoiUse(state, content, poiId)
+  if (poi.kind === 'Shrine') {
+    const def = content.item(item.defId)
+    const hook = def.useOnPoi?.Shrine
+    if (hook && (hook.consumeOffering || (hook.blessPartyMs != null && hook.blessPartyMs > 0))) {
+      let next = state
+      if (hook.consumeOffering) next = consumeItem(next, itemId)
+      if (hook.blessPartyMs != null && hook.blessPartyMs > 0) {
+        const untilMs = next.nowMs + hook.blessPartyMs
+        for (const c of next.party.chars) {
+          if (c.hp > 0) next = addStatus(next, c.id, 'Blessed', untilMs)
+        }
+      }
+      return pushActivityLog(
+        {
+          ...next,
+          ui: {
+            ...next.ui,
+            shake: { startedAtMs: next.nowMs, untilMs: next.nowMs + 140, magnitude: 0.22 },
+            sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${next.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'ui' as const }]),
+          },
+        },
+        hook.toast ?? 'The shrine accepts your offering.',
+      )
+    }
+    return applyPoiUse(state, content, poiId)
+  }
 
   if (poi.kind === 'CrackedWall') {
     const okTool = item.defId === 'Chisel' || item.defId === 'StoneShard'

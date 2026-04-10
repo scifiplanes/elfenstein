@@ -20,6 +20,7 @@ import {
   type RoomHazardProperty,
 } from '../game/world/hazardDefs'
 import { ROOM_HAZARD_SPRITE_SRC, shouldPlaceHazardDecal } from '../game/world/hazardDefs'
+import { resolvePlayerCameraLightKind } from '../game/state/playerLight'
 import { getThemeLightIntent } from './themeTuning'
 
 const TAU = Math.PI * 2
@@ -294,7 +295,7 @@ export class WorldRenderer {
 
   renderFrame(state: GameState, content: ContentDB) {
     this.syncScene(state, content)
-    this.syncTuning(state)
+    this.syncTuning(state, content)
     this.renderer.setRenderTarget(this.rt)
     this.renderer.render(this.scene, this.camera)
     this.renderer.setRenderTarget(null)
@@ -884,10 +885,11 @@ export class WorldRenderer {
     return g
   }
 
-  private syncTuning(state: GameState) {
+  private syncTuning(state: GameState, content: ContentDB) {
     const themeId = state.floor.gen?.theme?.id
     const intent = getThemeLightIntent(themeId)
     const globalI = Math.max(0, Number(state.render.globalIntensity ?? 1.0))
+    const cameraLightKind = resolvePlayerCameraLightKind(state, content)
 
     if (state.render.fogEnabled > 0) {
       if (!this.expFog) this.expFog = new THREE.FogExp2(0x050508, 0)
@@ -911,8 +913,37 @@ export class WorldRenderer {
         ? 1
         : 1 + state.render.lanternFlickerAmp * Math.sin(t * Math.PI * 2 * state.render.lanternFlickerHz)
 
-    this.lantern.intensity = Math.max(0, state.render.lanternIntensity * (intent.lanternIntensityMult ?? 1.0) * globalI * flicker)
-    this.lantern.distance = state.render.lanternDistance
+    const lanternM = intent.lanternIntensityMult ?? 1.0
+    const torchM = intent.torchIntensityMult ?? 1.0
+    let baseI = 0
+    let baseD = 0
+    let useTorchTheme = false
+    switch (cameraLightKind) {
+      case 'bare':
+        baseI = state.render.bareLightIntensity
+        baseD = state.render.bareLightDistance
+        break
+      case 'torch':
+        baseI = state.render.heldTorchIntensity
+        baseD = state.render.heldTorchDistance
+        useTorchTheme = true
+        break
+      case 'lantern':
+        baseI = state.render.equippedLanternIntensity
+        baseD = state.render.equippedLanternDistance
+        break
+      case 'headlamp':
+        baseI = state.render.headlampIntensity
+        baseD = state.render.headlampDistance
+        break
+      case 'glowbug':
+        baseI = state.render.glowbugIntensity
+        baseD = state.render.glowbugDistance
+        break
+    }
+    const mult = useTorchTheme ? torchM : lanternM
+    this.lantern.intensity = Math.max(0, baseI * mult * globalI * flicker)
+    this.lantern.distance = baseD
     {
       const base = new THREE.Color(0xffd7a0)
       const tint = new THREE.Color(intent.intentHex)
