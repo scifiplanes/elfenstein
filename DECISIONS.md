@@ -5373,3 +5373,29 @@ Two **`renderOnce`** invocations in quick succession (effect + conditional inner
 Slightly more deferrable HUD texture updates during interaction bursts (capped by rIC **timeout**). **`DESIGN.md`** renderer bullet documents the single-rAF model. Resize **`ResizeObserver`** path no longer forces an extra React state bump for compositor pacing.
 
 ---
+
+## ADR-0324 — Hub/title: hide minimap + nav; inventory width unchanged
+Date: 2026-04-10
+
+### Decision
+When **`ui.screen`** is **`title`** or **`hub`**, **`HudLayout`** does **not** render the **minimap** or **on-screen navigation** sections. The **bottom row** CSS grid is **unchanged**; only the **inventory** `<section>` is present, still using **`grid-area: inventory`**, so the **center band** (**120px + 1.62fr + 120px**) matches dungeon layout and the inventory panel does **not** grow into the side tracks.
+
+### Rationale
+Town/hub does not need dungeon navigation chrome; keeping the **same** inventory footprint avoids layout shift when entering the dungeon.
+
+### Consequences
+- **`web/src/ui/hud/HudLayout.tsx`**, **`DESIGN.md`** §5.1 / §6.4.
+
+---
+
+## ADR-0325 — Title screen: `ui_logo.png` + copyright stack
+Date: 2026-04-10
+
+### Decision
+**`TitleScreen`** replaces the **Elfenstein** text title with **`Content/ui/ui_logo.png`** (served as **`/content/ui/ui_logo.png`**, mirrored under **`web/public/content/ui/`** for Vite). The logo and **Copyright 1995-2026 Mafra Studios** are **centered horizontally** and **vertically centered** in the **flex** area above the footer (**copyright** sits **below** the logo).
+
+### Rationale
+Brand reads from authored logo art instead of live text; layout keeps the **footer** actions at the **bottom** of the stage.
+
+### Consequences
+- **`web/src/ui/title/TitleScreen.tsx`**, **`TitleScreen.module.css`**, **`Content/ui/ui_logo.png`**, **`web/public/content/ui/ui_logo.png`**, **`DESIGN.md`** §5.1.

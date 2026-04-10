@@ -11,6 +11,7 @@ import styles from './TitleScreen.module.css'
 export type TitleScreenVariant = 'interactive' | 'capture'
 
 const BOBR_INTRO_SRC = '/content/npc_bobr.png'
+const TITLE_LOGO_SRC = '/content/ui/ui_logo.png'
 /** Must match `TitleScreen.module.css` `bobrIntroOpacity` duration (0.3 + 3 + 2 + 3 + 0.3 s). */
 const BOBR_INTRO_TOTAL_MS = 8600
 
@@ -63,8 +64,8 @@ export function TitleScreen(props: {
       aria-label="Title screen"
       aria-busy={chromeDisabled || undefined}
     >
-      <div className={styles.topBlock}>
-        <div className={`${popup.title} ${styles.title}`}>Elfenstein</div>
+      <div className={styles.centerBlock}>
+        <img className={styles.logo} src={TITLE_LOGO_SRC} alt="Elfenstein" draggable={false} />
         <div className={`${popup.sub} ${styles.sub}`}>Copyright 1995-2026 Mafra Studios</div>
       </div>
 
