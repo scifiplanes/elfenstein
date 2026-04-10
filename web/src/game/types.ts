@@ -69,6 +69,7 @@ export type FloorPoi = {
   id: Id
   kind: PoiKind
   pos: Vec2
+  /** Chest/Barrel/Crate/Shrine; Bed uses one-time rest then stays interactable with “Already used.” */
   opened?: boolean
   /** Well only: no water VFX; base sprite switches to drained art after a successful fill. */
   drained?: boolean

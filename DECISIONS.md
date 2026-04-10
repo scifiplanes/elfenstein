@@ -5263,3 +5263,17 @@ Authoritative art filenames in **`Content/`**.
 
 ### Consequences
 - **`CursorLayer.module.css`**, **`CursorLayer.tsx`**, **`Content/hand_trade_*.png`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0317 — Bed POI: one rest per floor
+Date: 2026-04-10
+
+### Decision
+**Bed** uses existing **`FloorPoi.opened`**: first interaction applies the rest heal and sets **`opened: true`**; later interactions only log **Already used.** (activity log), with a light shake—same pattern as an empty **Chest**.
+
+### Rationale
+Prevents farming infinite rests from one bed while keeping the POI clickable for feedback.
+
+### Consequences
+- **`web/src/game/state/poi.ts`**, **`web/src/procgen/population.ts`** (seed **`opened: false`**), **`web/src/game/types.ts`** (comment), **`DESIGN.md`** §9.

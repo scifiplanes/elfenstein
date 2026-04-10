@@ -352,7 +352,7 @@ Initial POIs:
 - **Chest**: opens (sprite change) and drops random item
 - **Barrel**: opens (sprite change) and drops random item; the **open** barrel still **blocks** its cell until a **further** use **clears** it (POI removed, no rubble sprite).
 - **Crate**: opens (sprite change) and drops random item; the **open** crate still **blocks** its cell until a **further** use **clears** it (POI removed, no rubble sprite).
-- **Bed**: restores full HP and Stamina
+- **Bed**: **one use per floor**: restores HP and Stamina (same heal amounts as before); further clicks log **Already used.** (POI stays on the tile; `opened` tracks use)
 - **Shrine**: **use** (click or item drop without a matching **`useOnPoi.Shrine`** hook) removes **Cursed** from the party and marks the shrine used (sprite swap). Dragging an item whose def includes **`useOnPoi.Shrine`** with **`consumeOffering`** / **`blessPartyMs`** runs the **offering** path instead: consumes that item, applies **Blessed** per content, logs a toast; does not replace the standard “purge **Cursed**” use (player can still use the shrine normally afterward if not yet opened).
 - **Exit**: descends to the next floor (meta-progression)
 

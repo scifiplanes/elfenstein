@@ -282,7 +282,7 @@ export function placePois(args: {
 
   return [
     { id: 'poi_well', kind: 'Well', pos: wellPos },
-    { id: 'poi_bed', kind: 'Bed', pos: bedPos },
+    { id: 'poi_bed', kind: 'Bed', pos: bedPos, opened: false },
     { id: 'poi_chest', kind: 'Chest', pos: chestPos, opened: false },
     { id: 'poi_barrel', kind: 'Barrel', pos: barrelPos, opened: false },
     { id: 'poi_crate', kind: 'Crate', pos: cratePos, opened: false },
