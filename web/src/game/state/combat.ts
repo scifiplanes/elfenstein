@@ -30,6 +30,10 @@ function hashStr(s: string) {
   return h >>> 0
 }
 
+function pcHasActiveStatus(c: Character, state: GameState, id: StatusEffectId): boolean {
+  return c.statuses.some((s) => s.id === id && (s.untilMs == null || s.untilMs > state.nowMs))
+}
+
 function tieBreak01(state: GameState, encounterId: Id, participantKey: string) {
   const h = hashStr(`${state.floor.seed}:${encounterId}:${participantKey}`)
   return ((h % 10_000) + 0.5) / 10_000 // (0, 1)
@@ -178,6 +182,24 @@ function applyUiShake(state: GameState, magnitude: number, ms: number) {
   return { ...state, ui: { ...state.ui, shake: { startedAtMs, untilMs, magnitude } } }
 }
 
+/** Base magnitudes sit between inspect (~0.14) and feed (~0.2); scaled in UI by `portraitShakeMagnitudeScale`. */
+const PORTRAIT_SHAKE_NPC_HIT = 0.18
+const PORTRAIT_SHAKE_NPC_CRIT = 0.24
+const PORTRAIT_SHAKE_COMBAT_MIN_MS = 180
+
+function applyPortraitShake(state: GameState, characterId: CharacterId, magnitude: number): GameState {
+  const tunedMs = Math.max(0, (state.render.portraitShakeLengthMs ?? 0) + (state.render.portraitShakeDecayMs ?? 0))
+  const durMs = Math.max(PORTRAIT_SHAKE_COMBAT_MIN_MS, tunedMs)
+  const nowMs = state.nowMs
+  return {
+    ...state,
+    ui: {
+      ...state.ui,
+      portraitShake: { characterId, startedAtMs: nowMs, untilMs: nowMs + durMs, magnitude },
+    },
+  }
+}
+
 function defenseForPc(state: GameState, pcId: CharacterId) {
   const c = state.party.chars.find((x) => x.id === pcId)
   if (!c) return null
@@ -320,7 +342,8 @@ export function resolvePcAttackRoll(args: { state: GameState; attacker: Characte
   if (!combat || !npc) return { hit: true, crit: false, d20: 20, toHit: 20, defense: 0 }
 
   const d20 = rollD20(state, combat.encounterId, `hit:${attacker.id}:${npc.id}:${combat.turnIndex}`)
-  const toHit = d20 + attacker.stats.perception + attacker.stats.agility
+  let toHit = d20 + attacker.stats.perception + attacker.stats.agility
+  if (pcHasActiveStatus(attacker, state, 'NanoTagged')) toHit -= 1
   const defense = 10 + npcCombatTuning(npc.kind).speed
   const hit = toHit >= defense
   const crit = d20 === 20
@@ -416,7 +439,9 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   const mitigated = isPhysical ? Math.max(0, tuned.baseDamage - armor) : tuned.baseDamage
   const d20 = combat != null ? rollD20(st, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
   const toHit = d20 + tuned.speed
-  const defense = 10 + target.stats.speed
+  let defense = 10 + target.stats.speed
+  if (pcHasActiveStatus(target, st, 'Parasitized')) defense -= 1
+  if (pcHasActiveStatus(target, st, 'Spored')) defense -= 1
   const hit = toHit >= defense
   const crit = d20 === 20
   const final = hit ? Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1))) : 0
@@ -440,6 +465,7 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   )
   next = pushSfx(next, 'hit')
   next = applyUiShake(next, crit ? 0.55 : 0.35, crit ? 180 : 140)
+  next = applyPortraitShake(next, target.id, crit ? PORTRAIT_SHAKE_NPC_CRIT : PORTRAIT_SHAKE_NPC_HIT)
   if (tuned.statusOnHit?.length && st.combat) {
     for (const sh of tuned.statusOnHit) {
       const seed = hashStr(`${st.floor.seed}:${st.combat!.encounterId}:${npc.id}:${target.id}:${sh.status}:${st.combat!.turnIndex}`)

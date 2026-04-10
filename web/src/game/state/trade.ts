@@ -1,5 +1,5 @@
 import type { GameState, ItemDefId, ItemId, TradeSession, TradeStockRow } from '../types'
-import { HUB_INNKEEPER_TRADE } from '../content/trading'
+import { CAMP_INNKEEPER_TRADE, HUB_INNKEEPER_TRADE } from '../content/trading'
 import { consumeItem, moveItemToInventorySlot } from './inventory'
 import { makeDropJitter } from './dropJitter'
 
@@ -41,8 +41,9 @@ export function closeTradeSession(state: GameState): GameState {
 export function openHubInnkeeperTrade(state: GameState): GameState {
   if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'tavern') return state
   if (state.combat) return state
-  const stock = cloneTradeStock(state.run.hubInnkeeperTradeStock ?? HUB_INNKEEPER_TRADE.stock)
-  const wants = [...HUB_INNKEEPER_TRADE.wants]
+  const catalog = state.ui.hubKind === 'camp' ? CAMP_INNKEEPER_TRADE : HUB_INNKEEPER_TRADE
+  const stock = cloneTradeStock(state.run.hubInnkeeperTradeStock ?? catalog.stock)
+  const wants = [...catalog.wants]
   const session: TradeSession = {
     kind: 'hub_innkeeper',
     offerItemId: null,

@@ -25,7 +25,6 @@ export function InventoryPanel(props: {
       className={styles.grid}
       style={{ ['--inv-cols' as any]: inv.cols }}
       data-drop-kind="floorDrop"
-      onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const { drop } = cursor.endPointerUp(e)
@@ -51,9 +50,6 @@ export function InventoryPanel(props: {
                   className={styles.item}
                   onPointerDown={(e) => {
                     cursor.beginPointerDown({ itemId: item.id, source: { kind: 'inventorySlot', slotIndex: idx, itemId: item.id } }, e)
-                  }}
-                  onPointerMove={(e) => {
-                    cursor.onPointerMove(e)
                   }}
                   onPointerCancel={cursor.cancelDrag}
                   onPointerUp={(e) => {

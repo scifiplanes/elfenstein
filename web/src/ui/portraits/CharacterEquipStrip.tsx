@@ -81,7 +81,6 @@ export function CharacterEquipStrip(props: {
     <div
       className={[styles.root, className].filter(Boolean).join(' ')}
       style={nudgeStyle}
-      onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={onPointerUpStrip}
     >

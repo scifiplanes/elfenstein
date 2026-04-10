@@ -10,7 +10,18 @@ import type {
 
 const PROC_OVERLAY_MODES: ProcgenDebugOverlayMode[] = ['districts', 'roomTags', 'mission']
 
-const ROOM_TELEGRAPH_MODES: RoomTelegraphMode[] = ['auto', 'off', 'Burning', 'Flooded', 'Infected']
+const ROOM_TELEGRAPH_MODES: RoomTelegraphMode[] = [
+  'auto',
+  'off',
+  'Burning',
+  'Flooded',
+  'Infected',
+  'SporeMist',
+  'NanoHaze',
+  'Unstable',
+  'Haunted',
+  'RoyalMiasma',
+]
 
 export type DebugUiPersist = {
   /** `null` in JSON clears the BGM override. */

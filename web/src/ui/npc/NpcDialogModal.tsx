@@ -233,7 +233,6 @@ export function NpcDialogModal(props: {
     <div
       className={`${styles.backdrop} ${styles.backdropHitLayer}`}
       onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}
-      onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const { drop } = cursor.endPointerUp(e)

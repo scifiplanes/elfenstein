@@ -259,3 +259,67 @@ export function bfsDistances(tiles: Tile[], w: number, h: number, start: Vec2): 
   return dist
 }
 
+const defaultLockReachOpts = { lockedDoorsAreWalkable: false as const }
+
+export function bfsDistancesWithLocks(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  start: Vec2,
+  opts: { lockedDoorsAreWalkable: boolean } = defaultLockReachOpts,
+): Int32Array {
+  const dist = new Int32Array(tiles.length)
+  dist.fill(-1)
+  if (!inBounds(start, w, h)) return dist
+  const startIdx = idxOf(start, w)
+  if (startIdx < 0 || startIdx >= tiles.length) return dist
+  if (!isWalkableWithLocks(tiles[startIdx], opts)) return dist
+
+  const q: number[] = [startIdx]
+  dist[startIdx] = 0
+
+  for (let qi = 0; qi < q.length; qi++) {
+    const i = q[qi]
+    const x = i % w
+    const y = (i / w) | 0
+    const base = dist[i]
+    const neigh = [i + 1, i - 1, i + w, i - w]
+    for (const j of neigh) {
+      if (j < 0 || j >= tiles.length) continue
+      const nx = j % w
+      const ny = (j / w) | 0
+      if (Math.abs(nx - x) + Math.abs(ny - y) !== 1) continue
+      if (dist[j] !== -1) continue
+      if (!isWalkableWithLocks(tiles[j], opts)) continue
+      dist[j] = base + 1
+      q.push(j)
+    }
+  }
+
+  return dist
+}
+
+/** Same as shortestPathLatticeStats but uses lock-aware walkability (closed locks block). */
+export function shortestPathLatticeStatsWithLocks(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  entrance: Vec2,
+  exit: Vec2,
+  opts: { lockedDoorsAreWalkable: boolean } = defaultLockReachOpts,
+): { shortestLen: number; latticeCells: number } {
+  const distE = bfsDistancesWithLocks(tiles, w, h, entrance, opts)
+  const distX = bfsDistancesWithLocks(tiles, w, h, exit, opts)
+  const exitIdx = idxOf(exit, w)
+  const L = exitIdx >= 0 && exitIdx < distE.length ? distE[exitIdx] : -1
+  if (L < 0) return { shortestLen: -1, latticeCells: 0 }
+  let latticeCells = 0
+  for (let i = 0; i < tiles.length; i++) {
+    if (!isWalkableWithLocks(tiles[i], opts)) continue
+    const de = distE[i]
+    const dx = distX[i]
+    if (de >= 0 && dx >= 0 && de + dx === L) latticeCells++
+  }
+  return { shortestLen: L, latticeCells }
+}
+

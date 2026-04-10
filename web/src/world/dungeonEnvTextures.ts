@@ -8,21 +8,25 @@ export type DungeonEnvTextureSrcs = {
 
 /** Albedo maps for floor / wall / ceiling voxels (~1 world unit per tile face). */
 export function getDungeonEnvTextureSrcs(floorType: FloorType): DungeonEnvTextureSrcs {
-  if (floorType === 'Ruins') {
+  if (floorType === 'Ruins' || floorType === 'Catacombs' || floorType === 'Palace') {
     return {
       floor: '/content/ruins_floor.png',
       wall: '/content/ruins_wall.png',
       ceiling: '/content/ruins_ceiling.png',
     }
   }
-  if (floorType === 'Dungeon') {
+  if (
+    floorType === 'Dungeon' ||
+    floorType === 'Bunker' ||
+    floorType === 'Golem'
+  ) {
     return {
       floor: '/content/dungeon_floor.png',
       wall: '/content/dungon_wall.png',
       ceiling: '/content/dungon_ceiling.png',
     }
   }
-  // Cave uses the cave set.
+  // Cave, Jungle, LivingBio — organic set (future: jungle_floor.png, bio_wall.png, etc.)
   return {
     floor: '/content/cave_floor.png',
     wall: '/content/cave_wall.png',

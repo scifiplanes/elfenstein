@@ -13,9 +13,17 @@ import type {
   ProcgenDebugOverlayMode,
   RenderTuning,
   RoomTelegraphMode,
+  StatusEffectId,
   Tile,
 } from './types'
 import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
+import { DEFAULT_RENDER } from './tuningDefaults'
+import {
+  LEGACY_NPC_FLAT_KEYS,
+  buildNpcBillboardFromInput,
+  clampNpcBillboardRows,
+  type LegacyNpcRenderFlat,
+} from './npcBillboardTuning'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
@@ -44,6 +52,7 @@ import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
 import { descendToNextFloor } from './state/floorProgression'
+import { FLOOR_TYPE_ORDER } from './state/runFloorSchedule'
 import { nearestFloorCellWithoutPoi, pickPlayerSpawnCell, poiOccupiesCell } from './state/playerFloorCell'
 import { applyXp } from './state/runProgression'
 import {
@@ -123,6 +132,8 @@ function mergePersistedDebugUi(state: GameState, patch: DebugUiPersist | undefin
 
 export type Action =
   | { type: 'ui/toggleDebug' }
+  | { type: 'ui/toggleSettings' }
+  | { type: 'ui/setSettingsOpen'; open: boolean }
   | { type: 'ui/goTitle' }
   | { type: 'ui/openPaperdoll'; characterId: string }
   /** Opens paperdoll and schedules idle overlay pulse (HUD capture path; avoids lost clicks). */
@@ -151,7 +162,7 @@ export type Action =
   | { type: 'debug/spawnPoi'; kind: PoiKind }
   /** Debug: spawn a floor item of the given def one cell in front of the player (floor tile only). */
   | { type: 'debug/spawnItem'; defId: ItemDefId }
-  /** Debug: cycle `floor.floorType` (Dungeon → Cave → Ruins). Regen separately to apply. */
+  /** Debug: cycle `floor.floorType` along segment order (see `FLOOR_TYPE_ORDER`). Regen separately to apply. */
   | { type: 'floor/debugCycleRealizer' }
   /** Debug: cycle `floor.difficulty` (0 → 1 → 2). Regen separately to apply. */
   | { type: 'floor/debugCycleDifficulty' }
@@ -162,7 +173,8 @@ export type Action =
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
   | { type: 'ui/triggerDebugBgSfx'; index: number }
-  | { type: 'render/set'; key: keyof GameState['render']; value: number }
+  | { type: 'render/set'; key: Exclude<keyof GameState['render'], 'npcBillboard'>; value: number }
+  | { type: 'render/npcBillboard'; kind: NpcKind; field: 'groundY' | 'size' | 'sizeRand'; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
   | { type: 'debug/loadPersistedUi'; patch?: DebugUiPersist }
@@ -204,10 +216,40 @@ export type Action =
   | { type: 'run/reloadCheckpoint' }
 
 export function initialState(content: ContentDB): GameState {
-  return makeInitialState(content)
+  return applySpawnRoomHazardIfNeeded(makeInitialState(content))
 }
 
 export function reduce(state: GameState, action: Action): GameState {
+  // Settings / pause menu: block gameplay on every screen (including hub and death).
+  if (state.ui.settingsOpen) {
+    switch (action.type) {
+      case 'run/new':
+      case 'run/reloadCheckpoint':
+      case 'ui/goTitle':
+      case 'time/tick':
+      case 'ui/toggleDebug':
+      case 'ui/toggleSettings':
+      case 'ui/setSettingsOpen':
+      case 'ui/setProcgenDebugOverlay':
+      case 'ui/setDebugBgTrack':
+      case 'ui/triggerDebugBgSfx':
+      case 'render/set':
+      case 'render/npcBillboard':
+      case 'debug/loadTuning':
+      case 'debug/loadHubHotspots':
+      case 'debug/loadPersistedUi':
+      case 'debug/setRoomTelegraphMode':
+      case 'debug/setRoomTelegraphStrength':
+      case 'debug/setShowNpcDialogPopupPreview':
+      case 'debug/setShowDeathPopupPreview':
+      case 'audio/set':
+      case 'hubHotspot/setAxis':
+        break
+      default:
+        return state
+    }
+  }
+
   // Title blocks gameplay until the player starts/continues a run.
   if (state.ui.screen === 'title' && !state.ui.death) {
     switch (action.type) {
@@ -216,10 +258,13 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/goTitle':
       case 'time/tick':
       case 'ui/toggleDebug':
+      case 'ui/toggleSettings':
+      case 'ui/setSettingsOpen':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -243,10 +288,13 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/goTitle':
       case 'time/tick':
       case 'ui/toggleDebug':
+      case 'ui/toggleSettings':
+      case 'ui/setSettingsOpen':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -285,10 +333,13 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/goTitle':
       case 'time/tick':
       case 'ui/toggleDebug':
+      case 'ui/toggleSettings':
+      case 'ui/setSettingsOpen':
       case 'ui/setProcgenDebugOverlay':
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -311,7 +362,9 @@ export function reduce(state: GameState, action: Action): GameState {
         ui: {
           ...state.ui,
           screen: 'title',
+          settingsOpen: false,
           hubScene: undefined,
+          hubKind: undefined,
           tradeSession: undefined,
           paperdollFor: undefined,
           npcDialogFor: undefined,
@@ -331,14 +384,16 @@ export function reduce(state: GameState, action: Action): GameState {
         ui: {
           ...fresh.ui,
           screen: 'hub',
+          settingsOpen: false,
           hubScene: 'village',
+          hubKind: undefined,
           tradeSession: undefined,
           debugOpen: state.ui.debugOpen,
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
         },
       }
-      return pushActivityLog(preserved, 'New run.')
+      return pushActivityLog(applySpawnRoomHazardIfNeeded(preserved), 'New run.')
     }
     case 'run/reloadCheckpoint': {
       const cp = state.run.checkpoint
@@ -385,7 +440,9 @@ export function reduce(state: GameState, action: Action): GameState {
           sfxQueue: [],
           debugShowNpcDialogPopup: false,
           debugShowDeathPopup: false,
+          settingsOpen: false,
           hubScene: undefined,
+          hubKind: undefined,
           tradeSession: undefined,
         },
       }
@@ -414,6 +471,7 @@ export function reduce(state: GameState, action: Action): GameState {
           ...state.ui,
           screen: 'game',
           hubScene: undefined,
+          hubKind: undefined,
           tradeSession: undefined,
         },
         view: snapViewToGrid(f.w, f.h, state.render.camEyeHeight, f.playerPos, f.playerDir),
@@ -488,6 +546,10 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'ui/toggleDebug':
       return { ...state, ui: { ...state.ui, debugOpen: !state.ui.debugOpen } }
+    case 'ui/toggleSettings':
+      return { ...state, ui: { ...state.ui, settingsOpen: !state.ui.settingsOpen } }
+    case 'ui/setSettingsOpen':
+      return { ...state, ui: { ...state.ui, settingsOpen: action.open } }
     case 'ui/setProcgenDebugOverlay':
       return { ...state, ui: { ...state.ui, procgenDebugOverlay: action.mode } }
     case 'ui/setDebugBgTrack':
@@ -631,6 +693,13 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       return next
     }
+    case 'render/npcBillboard': {
+      const cur = state.render.npcBillboard[action.kind]
+      const row = { ...cur, [action.field]: action.value }
+      const npcBillboard = { ...state.render.npcBillboard, [action.kind]: row }
+      const render = clampRenderTuning({ ...state.render, npcBillboard })
+      return { ...state, render }
+    }
     case 'debug/loadTuning': {
       let render = state.render
       let audio = state.audio
@@ -727,7 +796,7 @@ export function reduce(state: GameState, action: Action): GameState {
       }
     }
     case 'floor/debugCycleRealizer': {
-      const order: FloorType[] = ['Dungeon', 'Cave', 'Ruins']
+      const order = [...FLOOR_TYPE_ORDER] as FloorType[]
       const i = Math.max(0, order.indexOf(state.floor.floorType))
       const next = order[(i + 1) % order.length]
       return pushActivityLog(
@@ -789,14 +858,15 @@ export function reduce(state: GameState, action: Action): GameState {
           npcs: npcsWithDefaultStatuses(gen.npcs),
           playerPos,
           playerDir,
+          roomHazardAppliedForRoomId: undefined,
         },
         party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
         view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
       }
-      return pushActivityLog(next, `Regenerated (seed ${nextSeed}).`)
+      return pushActivityLog(applySpawnRoomHazardIfNeeded(next), `Regenerated (seed ${nextSeed}).`)
     }
     case 'floor/descend': {
-      return descendToNextFloor(state)
+      return applySpawnRoomHazardIfNeeded(descendToNextFloor(state))
     }
     case 'player/turn': {
       const stateAfterDialog = dismissNpcDialogOnMovement(state)
@@ -853,7 +923,7 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'poi/use': {
       if (state.combat) return rejectNotWhileInCombat(state)
-      return applyPoiUse(state, CONTENT, action.poiId)
+      return applySpawnRoomHazardIfNeeded(applyPoiUse(state, CONTENT, action.poiId))
     }
     case 'floor/pickup':
       if (state.combat) return rejectNotWhileInCombat(state)
@@ -1420,84 +1490,75 @@ function clampShadowMapSize(n: number): RenderTuning['shadowMapSize'] {
   return 512
 }
 
-function clampRenderTuning(r: RenderTuning): RenderTuning {
-  const globalIntensity = Math.max(0, Math.min(3, Number(r.globalIntensity ?? 1.0)))
+function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Record<string, unknown>): RenderTuning {
+  const src = { ...DEFAULT_RENDER, ...r } as RenderTuning & LegacyNpcRenderFlat & Record<string, unknown>
+  const npcBillboard = clampNpcBillboardRows(buildNpcBillboardFromInput(src))
+  for (const k of LEGACY_NPC_FLAT_KEYS) delete (src as Record<string, unknown>)[k]
+  delete (src as Record<string, unknown>).npcBillboard
+
+  const globalIntensity = Math.max(0, Math.min(3, Number(src.globalIntensity ?? 1.0)))
   const clampHue = (v: number) => Math.max(-180, Math.min(180, Number(v)))
   const clampSat = (v: number) => Math.max(0, Math.min(3, Number(v)))
-  const themeHueShiftDeg_dungeon_warm = clampHue(r.themeHueShiftDeg_dungeon_warm ?? 0)
-  const themeHueShiftDeg_dungeon_cool = clampHue(r.themeHueShiftDeg_dungeon_cool ?? 0)
-  const themeHueShiftDeg_cave_damp = clampHue(r.themeHueShiftDeg_cave_damp ?? 0)
-  const themeHueShiftDeg_cave_deep = clampHue(r.themeHueShiftDeg_cave_deep ?? 0)
-  const themeHueShiftDeg_ruins_bleach = clampHue(r.themeHueShiftDeg_ruins_bleach ?? 0)
-  const themeHueShiftDeg_ruins_umber = clampHue(r.themeHueShiftDeg_ruins_umber ?? 0)
-  const themeSaturation_dungeon_warm = clampSat(r.themeSaturation_dungeon_warm ?? 1.0)
-  const themeSaturation_dungeon_cool = clampSat(r.themeSaturation_dungeon_cool ?? 1.0)
-  const themeSaturation_cave_damp = clampSat(r.themeSaturation_cave_damp ?? 1.0)
-  const themeSaturation_cave_deep = clampSat(r.themeSaturation_cave_deep ?? 1.0)
-  const themeSaturation_ruins_bleach = clampSat(r.themeSaturation_ruins_bleach ?? 1.0)
-  const themeSaturation_ruins_umber = clampSat(r.themeSaturation_ruins_umber ?? 1.0)
-  const m = Math.round(r.ditherMatrixSize)
-  const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = m <= 3 ? 2 : m <= 6 ? 4 : 8
-  const p = Math.max(0, Math.min(4, Math.round(r.ditherPalette)))
-  const ditherPalette0Mix = Math.max(0, Math.min(1, Number(r.ditherPalette0Mix ?? 1)))
-  const postDitherLevels = Math.max(0, Math.min(3, Number(r.postDitherLevels ?? 1.0)))
-  const postDitherLift = Math.max(-1, Math.min(1, Number(r.postDitherLift ?? 0.0)))
-  const postDitherGamma = Math.max(0.2, Math.min(3, Number(r.postDitherGamma ?? 1.0)))
-  const fogEnabled = Number(r.fogEnabled ?? 0) > 0 ? 1 : 0
-  const fogDensity = Math.max(0, Math.min(0.3, Number(r.fogDensity ?? 0)))
-  const lanternForwardOffset = Math.max(0, Math.min(2, r.lanternForwardOffset))
-  const lanternVerticalOffset = Math.max(-1, Math.min(1, r.lanternVerticalOffset))
-  const lanternFlickerAmp = Math.max(0, Math.min(1, r.lanternFlickerAmp))
-  const lanternFlickerHz = Math.max(0, Math.min(30, r.lanternFlickerHz))
-  const baseEmissive = Math.max(0, Math.min(2, r.baseEmissive))
-  const camShakePosAmp = Math.max(0, Math.min(0.25, r.camShakePosAmp))
-  const camShakeRollDeg = Math.max(0, Math.min(12, r.camShakeRollDeg))
-  const camShakeHz = Math.max(0, Math.min(40, r.camShakeHz))
-  const camShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(r.camShakeLengthMs ?? 0))))
-  const camShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.camShakeDecayMs ?? 220))))
-  const camShakeUiMix = Math.max(0, Math.min(3, r.camShakeUiMix))
-  const portraitShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(r.portraitShakeLengthMs ?? camShakeLengthMs))))
-  const portraitShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(r.portraitShakeDecayMs ?? camShakeDecayMs))))
-  const portraitShakeMagnitudeScale = Math.max(0, Math.min(10, Number(r.portraitShakeMagnitudeScale ?? 1)))
-  const portraitShakeHz = Math.max(0, Math.min(60, Number(r.portraitShakeHz ?? camShakeHz)))
-  let portraitIdleGapMinMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMinMs ?? 8000))))
-  let portraitIdleGapMaxMs = Math.max(0, Math.min(120_000, Math.round(Number(r.portraitIdleGapMaxMs ?? 18_000))))
+  const themeHueShiftDeg_dungeon_warm = clampHue(src.themeHueShiftDeg_dungeon_warm ?? 0)
+  const themeHueShiftDeg_dungeon_cool = clampHue(src.themeHueShiftDeg_dungeon_cool ?? 0)
+  const themeHueShiftDeg_cave_damp = clampHue(src.themeHueShiftDeg_cave_damp ?? 0)
+  const themeHueShiftDeg_cave_deep = clampHue(src.themeHueShiftDeg_cave_deep ?? 0)
+  const themeHueShiftDeg_ruins_bleach = clampHue(src.themeHueShiftDeg_ruins_bleach ?? 0)
+  const themeHueShiftDeg_ruins_umber = clampHue(src.themeHueShiftDeg_ruins_umber ?? 0)
+  const themeSaturation_dungeon_warm = clampSat(src.themeSaturation_dungeon_warm ?? 1.0)
+  const themeSaturation_dungeon_cool = clampSat(src.themeSaturation_dungeon_cool ?? 1.0)
+  const themeSaturation_cave_damp = clampSat(src.themeSaturation_cave_damp ?? 1.0)
+  const themeSaturation_cave_deep = clampSat(src.themeSaturation_cave_deep ?? 1.0)
+  const themeSaturation_ruins_bleach = clampSat(src.themeSaturation_ruins_bleach ?? 1.0)
+  const themeSaturation_ruins_umber = clampSat(src.themeSaturation_ruins_umber ?? 1.0)
+  const ditherM = Math.round(src.ditherMatrixSize)
+  const ditherMatrixSize: RenderTuning['ditherMatrixSize'] = ditherM <= 3 ? 2 : ditherM <= 6 ? 4 : 8
+  const p = Math.max(0, Math.min(4, Math.round(src.ditherPalette)))
+  const ditherPalette0Mix = Math.max(0, Math.min(1, Number(src.ditherPalette0Mix ?? 1)))
+  const postDitherLevels = Math.max(0, Math.min(3, Number(src.postDitherLevels ?? 1.0)))
+  const postDitherLift = Math.max(-1, Math.min(1, Number(src.postDitherLift ?? 0.0)))
+  const postDitherGamma = Math.max(0.2, Math.min(3, Number(src.postDitherGamma ?? 1.0)))
+  const fogEnabled = Number(src.fogEnabled ?? 0) > 0 ? 1 : 0
+  const fogDensity = Math.max(0, Math.min(0.3, Number(src.fogDensity ?? 0)))
+  const lanternForwardOffset = Math.max(0, Math.min(2, src.lanternForwardOffset))
+  const lanternVerticalOffset = Math.max(-1, Math.min(1, src.lanternVerticalOffset))
+  const lanternFlickerAmp = Math.max(0, Math.min(1, src.lanternFlickerAmp))
+  const lanternFlickerHz = Math.max(0, Math.min(30, src.lanternFlickerHz))
+  const baseEmissive = Math.max(0, Math.min(2, src.baseEmissive))
+  const camShakePosAmp = Math.max(0, Math.min(0.25, src.camShakePosAmp))
+  const camShakeRollDeg = Math.max(0, Math.min(12, src.camShakeRollDeg))
+  const camShakeHz = Math.max(0, Math.min(40, src.camShakeHz))
+  const camShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(src.camShakeLengthMs ?? 0))))
+  const camShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(src.camShakeDecayMs ?? 220))))
+  const camShakeUiMix = Math.max(0, Math.min(3, src.camShakeUiMix))
+  const portraitShakeLengthMs = Math.max(0, Math.min(12_000, Math.round(Number(src.portraitShakeLengthMs ?? camShakeLengthMs))))
+  const portraitShakeDecayMs = Math.max(0, Math.min(3000, Math.round(Number(src.portraitShakeDecayMs ?? camShakeDecayMs))))
+  const portraitShakeMagnitudeScale = Math.max(0, Math.min(10, Number(src.portraitShakeMagnitudeScale ?? 1)))
+  const portraitShakeHz = Math.max(0, Math.min(60, Number(src.portraitShakeHz ?? camShakeHz)))
+  let portraitIdleGapMinMs = Math.max(0, Math.min(120_000, Math.round(Number(src.portraitIdleGapMinMs ?? 8000))))
+  let portraitIdleGapMaxMs = Math.max(0, Math.min(120_000, Math.round(Number(src.portraitIdleGapMaxMs ?? 18_000))))
   if (portraitIdleGapMaxMs < portraitIdleGapMinMs) portraitIdleGapMaxMs = portraitIdleGapMinMs
-  let portraitIdleFlashMinMs = Math.max(0, Math.min(5000, Math.round(Number(r.portraitIdleFlashMinMs ?? 120))))
-  let portraitIdleFlashMaxMs = Math.max(0, Math.min(5000, Math.round(Number(r.portraitIdleFlashMaxMs ?? 350))))
+  let portraitIdleFlashMinMs = Math.max(0, Math.min(5000, Math.round(Number(src.portraitIdleFlashMinMs ?? 120))))
+  let portraitIdleFlashMaxMs = Math.max(0, Math.min(5000, Math.round(Number(src.portraitIdleFlashMaxMs ?? 350))))
   if (portraitIdleFlashMaxMs < portraitIdleFlashMinMs) portraitIdleFlashMaxMs = portraitIdleFlashMinMs
-  const portraitMouthFlickerHz = Math.max(0, Math.min(40, Number(r.portraitMouthFlickerHz ?? 18)))
-  const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(r.portraitMouthFlickerAmount ?? 8))))
-  const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(r.dropRangeCells ?? 5))))
-  const shadowLanternPoint = Number(r.shadowLanternPoint ?? 0) > 0 ? 1 : 0
-  const shadowMapSize = clampShadowMapSize(Number(r.shadowMapSize ?? 256))
-  const shadowFilter = Math.max(0, Math.min(2, Math.round(Number(r.shadowFilter ?? 2)))) as RenderTuning['shadowFilter']
-  const torchPoiLightMax = Math.max(0, Math.min(6, Math.round(Number(r.torchPoiLightMax ?? 3))))
+  const portraitMouthFlickerHz = Math.max(0, Math.min(40, Number(src.portraitMouthFlickerHz ?? 18)))
+  const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(src.portraitMouthFlickerAmount ?? 8))))
+  const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(src.dropRangeCells ?? 5))))
+  const shadowLanternPoint = Number(src.shadowLanternPoint ?? 0) > 0 ? 1 : 0
+  const shadowMapSize = clampShadowMapSize(Number(src.shadowMapSize ?? 256))
+  const shadowFilter = Math.max(0, Math.min(2, Math.round(Number(src.shadowFilter ?? 2)))) as RenderTuning['shadowFilter']
+  const torchPoiLightMax = Math.max(0, Math.min(6, Math.round(Number(src.torchPoiLightMax ?? 3))))
 
-  const clampNpcSize = (v: number) => Math.max(0.1, Math.min(2.5, Number(v)))
-  const clampNpcRand = (v: number) => Math.max(0, Math.min(1, Number(v)))
-  const npcFootLift = Math.max(-0.2, Math.min(0.5, Number(r.npcFootLift ?? 0.02)))
+  const npcFootLift = Math.max(-0.2, Math.min(0.5, Number(src.npcFootLift ?? 0.02)))
   const clampNpcGroundY = (v: number) => Math.max(-0.75, Math.min(1.25, Number(v)))
-  const npcGroundY_Wurglepup = clampNpcGroundY(r.npcGroundY_Wurglepup ?? 0)
-  const npcGroundY_Bobr = clampNpcGroundY(r.npcGroundY_Bobr ?? 0)
-  const npcGroundY_Skeleton = clampNpcGroundY(r.npcGroundY_Skeleton ?? 0)
-  const npcGroundY_Catoctopus = clampNpcGroundY(r.npcGroundY_Catoctopus ?? 0)
-  const poiGroundY_Well = clampNpcGroundY(r.poiGroundY_Well ?? 0)
-  const poiGroundY_Chest = clampNpcGroundY(r.poiGroundY_Chest ?? 0)
-  const poiSpriteBoost = Math.max(0, Math.min(3, Number(r.poiSpriteBoost ?? 1.0)))
-  const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(r.poiFootLift ?? 0.02)))
-
-  const npcSize_Wurglepup = clampNpcSize(r.npcSize_Wurglepup ?? 0.65)
-  const npcSizeRand_Wurglepup = clampNpcRand(r.npcSizeRand_Wurglepup ?? 0)
-  const npcSize_Bobr = clampNpcSize(r.npcSize_Bobr ?? 0.65)
-  const npcSizeRand_Bobr = clampNpcRand(r.npcSizeRand_Bobr ?? 0)
-  const npcSize_Skeleton = clampNpcSize(r.npcSize_Skeleton ?? 0.65)
-  const npcSizeRand_Skeleton = clampNpcRand(r.npcSizeRand_Skeleton ?? 0)
-  const npcSize_Catoctopus = clampNpcSize(r.npcSize_Catoctopus ?? 0.65)
-  const npcSizeRand_Catoctopus = clampNpcRand(r.npcSizeRand_Catoctopus ?? 0)
-  const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(r.hubInnkeeperSpriteScale ?? 1)))
+  const poiGroundY_Well = clampNpcGroundY(src.poiGroundY_Well ?? 0)
+  const poiGroundY_Chest = clampNpcGroundY(src.poiGroundY_Chest ?? 0)
+  const poiSpriteBoost = Math.max(0, Math.min(3, Number(src.poiSpriteBoost ?? 1.0)))
+  const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(src.poiFootLift ?? 0.02)))
+  const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(src.hubInnkeeperSpriteScale ?? 1)))
+  const campEveryFloors = Math.min(99, Math.max(1, Math.round(Number(src.campEveryFloors ?? 10))))
   return {
-    ...r,
+    ...src,
     globalIntensity,
     themeHueShiftDeg_dungeon_warm,
     themeHueShiftDeg_dungeon_cool,
@@ -1547,23 +1608,13 @@ function clampRenderTuning(r: RenderTuning): RenderTuning {
     torchPoiLightMax,
 
     npcFootLift,
-    npcGroundY_Wurglepup,
-    npcGroundY_Bobr,
-    npcGroundY_Skeleton,
-    npcGroundY_Catoctopus,
+    npcBillboard,
     poiGroundY_Well,
     poiGroundY_Chest,
     poiSpriteBoost,
     poiFootLift,
-    npcSize_Wurglepup,
-    npcSizeRand_Wurglepup,
-    npcSize_Bobr,
-    npcSizeRand_Bobr,
-    npcSize_Skeleton,
-    npcSizeRand_Skeleton,
-    npcSize_Catoctopus,
-    npcSizeRand_Catoctopus,
     hubInnkeeperSpriteScale,
+    campEveryFloors,
   }
 }
 
@@ -1596,7 +1647,7 @@ function hashStr(s: string) {
 }
 
 
-function addStatusToChar(state: GameState, characterId: string, statusId: 'Poisoned' | 'Blessed' | 'Sick' | 'Bleeding' | 'Burning' | 'Drenched' | 'Drowsy' | 'Focused' | 'Cursed' | 'Frightened' | 'Rooted' | 'Shielded' | 'Starving' | 'Dehydrated', durMs?: number) {
+function addStatusToChar(state: GameState, characterId: string, statusId: StatusEffectId, durMs?: number) {
   const idx = state.party.chars.findIndex((c) => c.id === characterId)
   if (idx < 0) return state
   const chars = state.party.chars.slice()
@@ -1607,6 +1658,39 @@ function addStatusToChar(state: GameState, characterId: string, statusId: 'Poiso
   const untilMs = state.nowMs + Math.max(250, durMs ?? defDur ?? 12_000)
   chars[idx] = { ...c, statuses: c.statuses.concat([{ id: statusId, untilMs }]) }
   return { ...state, party: { ...state.party, chars } }
+}
+
+/** Run hazard gameplay once per visit to a tagged procgen room (not on every tile inside the room). */
+function applyRoomHazardAfterStep(state: GameState, x: number, y: number): GameState {
+  const room = roomForCell(state, x, y)
+  const prop = room?.tags?.roomProperties
+  if (!room || !prop) {
+    if (state.floor.roomHazardAppliedForRoomId == null) return state
+    return { ...state, floor: { ...state.floor, roomHazardAppliedForRoomId: undefined } }
+  }
+  if (state.floor.roomHazardAppliedForRoomId === room.id) {
+    return state
+  }
+  const afterHazard = applyRoomHazardOnEnter(state, x, y)
+  return { ...afterHazard, floor: { ...afterHazard.floor, roomHazardAppliedForRoomId: room.id } }
+}
+
+/**
+ * After placing the party on a floor (initial load, new run, regen, descend, Exit POI), run hazard
+ * gameplay once if the spawn cell sits in a tagged procgen room. Mirrors `applyRoomHazardAfterStep`
+ * without requiring a step.
+ */
+function applySpawnRoomHazardIfNeeded(state: GameState): GameState {
+  const { x, y } = state.floor.playerPos
+  const room = roomForCell(state, x, y)
+  const prop = room?.tags?.roomProperties
+  if (!room || !prop) {
+    if (state.floor.roomHazardAppliedForRoomId == null) return state
+    return { ...state, floor: { ...state.floor, roomHazardAppliedForRoomId: undefined } }
+  }
+  if (state.floor.roomHazardAppliedForRoomId === room.id) return state
+  const afterHazard = applyRoomHazardOnEnter(state, x, y)
+  return { ...afterHazard, floor: { ...afterHazard.floor, roomHazardAppliedForRoomId: room.id } }
 }
 
 function applyRoomHazardOnEnter(state: GameState, x: number, y: number): GameState {
@@ -1645,6 +1729,58 @@ function applyRoomHazardOnEnter(state: GameState, x: number, y: number): GameSta
     next = pushActivityLog(next, 'A foul miasma clings to you.')
     next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]) } }
     return reduce(next, { type: 'ui/shake', magnitude: 0.22, ms: 110 })
+  }
+
+  if (prop === 'SporeMist') {
+    let next = state
+    for (const c of state.party.chars) next = addStatusToChar(next, c.id, 'Spored', 22_000)
+    const roll = (seed % 100) + 1
+    if (roll <= 40) {
+      const victim = state.party.chars[(seed >>> 4) % Math.max(1, state.party.chars.length)]
+      if (victim) next = addStatusToChar(next, victim.id, 'Sick', 24_000)
+    }
+    next = pushActivityLog(next, 'Spores sting your throat.')
+    next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]) } }
+    return reduce(next, { type: 'ui/shake', magnitude: 0.2, ms: 100 })
+  }
+
+  if (prop === 'NanoHaze') {
+    let next = state
+    for (const c of state.party.chars) next = addStatusToChar(next, c.id, 'NanoTagged', 25_000)
+    next = pushActivityLog(next, 'The air hums with invisible motes.')
+    next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'ui' }]) } }
+    return reduce(next, { type: 'ui/shake', magnitude: 0.16, ms: 95 })
+  }
+
+  if (prop === 'Unstable') {
+    let next = state
+    const chars = state.party.chars.map((c) => ({ ...c, hp: Math.max(0, c.hp - 1) }))
+    next = { ...state, party: { ...state.party, chars } }
+    for (const c of next.party.chars) next = addStatusToChar(next, c.id, 'Frightened', 10_000)
+    next = pushActivityLog(next, 'The floor shudders.')
+    next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'hit' }]) } }
+    return reduce(next, { type: 'ui/shake', magnitude: 0.35, ms: 140 })
+  }
+
+  if (prop === 'Haunted') {
+    let next = state
+    for (const c of state.party.chars) next = addStatusToChar(next, c.id, 'Frightened', 14_000)
+    const hitch = (seed % 100) + 1
+    if (hitch <= 18 && state.party.chars.length) {
+      const victim = state.party.chars[(seed >>> 12) % state.party.chars.length]!
+      next = addStatusToChar(next, victim.id, 'Parasitized', 28_000)
+    }
+    next = pushActivityLog(next, 'A chill crawls up your spine.')
+    next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'reject' }]) } }
+    return reduce(next, { type: 'ui/shake', magnitude: 0.24, ms: 120 })
+  }
+
+  if (prop === 'RoyalMiasma') {
+    let next = state
+    for (const c of state.party.chars) next = addStatusToChar(next, c.id, 'Drowsy', 18_000)
+    next = pushActivityLog(next, 'Perfume and decay mingle in the air.')
+    next = { ...next, ui: { ...next.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'ui' }]) } }
+    return reduce(next, { type: 'ui/shake', magnitude: 0.14, ms: 85 })
   }
 
   return state
@@ -1764,7 +1900,7 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
       },
     },
   }
-  const withHazard = applyRoomHazardOnEnter(moved, nx, ny)
+  const withHazard = applyRoomHazardAfterStep(moved, nx, ny)
   return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
 }
 

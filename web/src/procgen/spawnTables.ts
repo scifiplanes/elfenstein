@@ -53,22 +53,83 @@ const ITEM_BY_ROOM_FUNCTION: Partial<
  */
 export const NPC_DEFAULT_WEIGHTS_BY_FLOOR: Record<FloorType, Array<{ id: NpcKind; w: number }>> = {
   Dungeon: [
-    { id: 'Wurglepup', w: 5 },
+    { id: 'Wurglepup', w: 4 },
     { id: 'Bobr', w: 2 },
     { id: 'Catoctopus', w: 2 },
-    { id: 'Skeleton', w: 1 },
+    { id: 'Skeleton', w: 2 },
+    { id: 'Chumbo', w: 1 },
+    { id: 'Kuratko', w: 1 },
+    { id: 'Bok', w: 1 },
+    { id: 'BigHands', w: 1 },
   ],
   Cave: [
     { id: 'Wurglepup', w: 4 },
     { id: 'Bobr', w: 3 },
     { id: 'Catoctopus', w: 2 },
     { id: 'Skeleton', w: 1 },
+    { id: 'Grub', w: 2 },
+    { id: 'Kerekere', w: 2 },
+    { id: 'Bulba', w: 1 },
   ],
   Ruins: [
     { id: 'Wurglepup', w: 3 },
     { id: 'Skeleton', w: 3 },
     { id: 'Catoctopus', w: 2 },
     { id: 'Bobr', w: 2 },
+    { id: 'Elder', w: 2 },
+    { id: 'Gargantula', w: 1 },
+    { id: 'RegularBok', w: 1 },
+  ],
+  Jungle: [
+    { id: 'Bulba', w: 3 },
+    { id: 'Snailord', w: 2 },
+    { id: 'Wurglepup', w: 3 },
+    { id: 'Bobr', w: 2 },
+    { id: 'Grub', w: 2 },
+    { id: 'Chumbo', w: 1 },
+    { id: 'Kerekere', w: 1 },
+  ],
+  LivingBio: [
+    { id: 'Wurglepup', w: 4 },
+    { id: 'Bulba', w: 3 },
+    { id: 'Grub', w: 3 },
+    { id: 'Catoctopus', w: 2 },
+    { id: 'Snailord', w: 2 },
+    { id: 'Gargantula', w: 1 },
+  ],
+  Bunker: [
+    { id: 'Wurglepup', w: 4 },
+    { id: 'Kuratko', w: 2 },
+    { id: 'Grechka', w: 2 },
+    { id: 'BigHands', w: 2 },
+    { id: 'Skeleton', w: 2 },
+    { id: 'Bobr', w: 1 },
+  ],
+  Catacombs: [
+    { id: 'Skeleton', w: 4 },
+    { id: 'Elder', w: 2 },
+    { id: 'Gargantula', w: 2 },
+    { id: 'Wurglepup', w: 2 },
+    { id: 'Bobr', w: 1 },
+    { id: 'BigHands', w: 1 },
+  ],
+  Golem: [
+    { id: 'Catoctopus', w: 4 },
+    { id: 'Kuratko', w: 2 },
+    { id: 'Elder', w: 2 },
+    { id: 'Wurglepup', w: 3 },
+    { id: 'Skeleton', w: 1 },
+    { id: 'Gargantula', w: 1 },
+  ],
+  Palace: [
+    { id: 'Bok', w: 3 },
+    { id: 'RegularBok', w: 2 },
+    { id: 'Elder', w: 2 },
+    { id: 'Bobr', w: 2 },
+    { id: 'Skeleton', w: 2 },
+    { id: 'BigHands', w: 1 },
+    { id: 'Grechka', w: 1 },
+    { id: 'Snailord', w: 1 },
   ],
 }
 
@@ -80,30 +141,60 @@ export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
   'AntitoxinVial',
   'Ash',
   'BitterHerb',
+  'BobrJuice',
+  'Bone',
   'Chisel',
   'Club',
   'ClothScrap',
   'Foodroot',
+  'Fungus',
+  'Gem',
   'GlassVial',
+  'Glowbug',
+  'Grubling',
   'HerbCirclet',
   'HerbLeaf',
   'HerbPoultice',
   'Hive',
+  'Mold',
   'MortarMeal',
+  'Moss',
+  'Mucus',
   'Mushrooms',
+  'Salt',
   'Sling',
+  'Slime',
   'SporeCap',
   'Stone',
   'StoneShard',
   'Stick',
   'Sulfur',
+  'Sweetroot',
   'Twine',
   'WaterbagEmpty',
   'WoolCap',
 ]
 
 /** NPC kinds the default table + overrides can produce (Swarm via Infested rules only). */
-export const PROCgen_ALL_NPC_KINDS: NpcKind[] = ['Wurglepup', 'Bobr', 'Skeleton', 'Catoctopus', 'Swarm']
+export const PROCgen_ALL_NPC_KINDS: NpcKind[] = [
+  'Wurglepup',
+  'Bobr',
+  'Skeleton',
+  'Catoctopus',
+  'Swarm',
+  'Chumbo',
+  'Grub',
+  'Kuratko',
+  'Grechka',
+  'Snailord',
+  'Bulba',
+  'Elder',
+  'Kerekere',
+  'Bok',
+  'RegularBok',
+  'BigHands',
+  'Gargantula',
+]
 
 /**
  * Deterministic NPC kind from floor type, room tags, and district (same RNG sequence as prior `population.ts`).
@@ -119,6 +210,11 @@ export function pickNpcKindFromTable(ctx: NpcSpawnContext, rng: Rng): NpcKind {
   if (prop === 'Infected') return 'Skeleton'
   if (prop === 'Burning') return 'Catoctopus'
   if (prop === 'Flooded') return 'Bobr'
+  if (prop === 'SporeMist') return rng.next() < 0.45 ? 'Wurglepup' : 'Bobr'
+  if (prop === 'NanoHaze') return 'Catoctopus'
+  if (prop === 'Unstable') return rng.next() < 0.55 ? 'Skeleton' : 'Wurglepup'
+  if (prop === 'Haunted') return 'Skeleton'
+  if (prop === 'RoyalMiasma') return rng.next() < 0.5 ? 'Bobr' : 'Catoctopus'
   if (func === 'Workshop') return 'Catoctopus'
   if (func === 'Storage') return 'Bobr'
 
@@ -163,6 +259,11 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
     // Even if Infected rooms are already dangerous, drop a counterplay item sometimes.
     return fp.includes('Cursed') ? 'HerbPoultice' : 'AntitoxinVial'
   }
+  if (prop === 'SporeMist') return rng.next() < 0.45 ? 'Moss' : 'Mushrooms'
+  if (prop === 'NanoHaze') return rng.next() < 0.5 ? 'Slime' : 'GlassVial'
+  if (prop === 'Unstable') return rng.next() < 0.5 ? 'Stone' : 'StoneShard'
+  if (prop === 'Haunted') return rng.next() < 0.45 ? 'Bone' : 'Twine'
+  if (prop === 'RoyalMiasma') return rng.next() < 0.4 ? 'Salt' : 'Sweetroot'
 
   if (status === 'Overgrown' && func === 'Habitat') return 'Mushrooms'
   if (fp.includes('Destroyed') && func === 'Storage') return 'Stone'

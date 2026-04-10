@@ -14,7 +14,11 @@ import {
   POI_WELL_GLOW_SRC,
   POI_WELL_SPARKLE_FRAMES,
 } from '../game/poi/poiDefs'
-import type { RoomHazardProperty } from '../game/world/hazardDefs'
+import {
+  ALL_ROOM_HAZARD_PROPERTIES,
+  isRoomHazardDecalProp,
+  type RoomHazardProperty,
+} from '../game/world/hazardDefs'
 import { ROOM_HAZARD_SPRITE_SRC, shouldPlaceHazardDecal } from '../game/world/hazardDefs'
 import { getThemeLightIntent } from './themeTuning'
 
@@ -773,7 +777,7 @@ export class WorldRenderer {
 
       for (const room of genRooms) {
         const prop = room.tags?.roomProperties
-        if (prop !== 'Burning' && prop !== 'Flooded' && prop !== 'Infected') continue
+        if (!isRoomHazardDecalProp(prop)) continue
         const { x: rx, y: ry, w: rw, h: rh } = room.rect
         for (let y = ry; y < ry + rh; y++) {
           for (let x = rx; x < rx + rw; x++) {
@@ -1031,7 +1035,7 @@ export class WorldRenderer {
       const mat = spr.material as THREE.SpriteMaterial
       mat.color.copy(this.themeSpriteColor)
     }
-    for (const prop of ['Burning', 'Flooded', 'Infected'] as const) {
+    for (const prop of ALL_ROOM_HAZARD_PROPERTIES) {
       const m = this.hazardDecalMats[prop]
       if (m) m.color.copy(this.themeSpriteColor)
     }
@@ -1265,11 +1269,11 @@ export class WorldRenderer {
     }
   }
 
-  /** Normalized ground contact from bottom of texture (same 0–1 convention as `npcGroundY_*`). */
+  /** Normalized ground contact from bottom of texture (same 0–1 convention as `npcBillboard.*.groundY`). */
   private getPoiGroundYForKind(state: GameState, kind: PoiKind) {
     if (kind === 'Well') return state.render.poiGroundY_Well
     if (kind === 'Chest') return state.render.poiGroundY_Chest
-    return state.render.npcGroundY_Wurglepup
+    return state.render.npcBillboard.Wurglepup.groundY
   }
 
   private getNpcSpriteMat(kind: NpcKind): THREE.SpriteMaterial {
@@ -1347,10 +1351,7 @@ export class WorldRenderer {
   }
 
   private getNpcGroundYForKind(state: GameState, kind: NpcKind) {
-    if (kind === 'Wurglepup') return state.render.npcGroundY_Wurglepup
-    if (kind === 'Bobr') return state.render.npcGroundY_Bobr
-    if (kind === 'Skeleton') return state.render.npcGroundY_Skeleton
-    return state.render.npcGroundY_Catoctopus
+    return state.render.npcBillboard[kind].groundY
   }
 
   private getNpcSizeForKind(state: GameState, kind: NpcKind, npcId: string) {
@@ -1362,17 +1363,11 @@ export class WorldRenderer {
   }
 
   private getNpcBaseSizeForKind(state: GameState, kind: NpcKind) {
-    if (kind === 'Wurglepup') return state.render.npcSize_Wurglepup
-    if (kind === 'Bobr') return state.render.npcSize_Bobr
-    if (kind === 'Skeleton') return state.render.npcSize_Skeleton
-    return state.render.npcSize_Catoctopus
+    return state.render.npcBillboard[kind].size
   }
 
   private getNpcSizeRandForKind(state: GameState, kind: NpcKind) {
-    if (kind === 'Wurglepup') return state.render.npcSizeRand_Wurglepup
-    if (kind === 'Bobr') return state.render.npcSizeRand_Bobr
-    if (kind === 'Skeleton') return state.render.npcSizeRand_Skeleton
-    return state.render.npcSizeRand_Catoctopus
+    return state.render.npcBillboard[kind].sizeRand
   }
 
   private signedUnitFromStr(s: string) {

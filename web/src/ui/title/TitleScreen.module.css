@@ -1,19 +1,64 @@
-.backdrop {
+/* Same asset as hub village (`HubViewport` HUB_ART.village). */
+.root {
   position: absolute;
   inset: 0;
+  box-sizing: border-box;
   display: flex;
-  align-items: center;
-  justify-content: center;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: clamp(16px, 4vmin, 40px) clamp(20px, 5vmin, 48px) clamp(20px, 5vmin, 56px);
+  background-image: url('/content/village.png');
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
 }
 
-.modal {
-  width: min(720px, calc(100% - 80px));
+.root::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(8, 10, 16, 0.45) 0%,
+    rgba(8, 10, 16, 0.2) 38%,
+    rgba(8, 10, 16, 0.55) 72%,
+    rgba(8, 10, 16, 0.88) 100%
+  );
+}
+
+.topBlock,
+.bottomBlock {
+  position: relative;
+  z-index: 1;
+}
+
+.topBlock {
+  flex: 0 0 auto;
+  max-width: min(920px, 100%);
+}
+
+.bottomBlock {
+  flex: 0 0 auto;
+  display: flex;
+  justify-content: center;
+  width: 100%;
 }
 
 .title {
   margin-bottom: 8px;
+  text-shadow: 0 2px 24px rgba(0, 0, 0, 0.85), 0 1px 3px rgba(0, 0, 0, 0.9);
 }
 
 .sub {
-  margin-bottom: 18px;
+  margin-bottom: 0;
+  text-shadow: 0 1px 12px rgba(0, 0, 0, 0.85);
+}
+
+.footerPanel {
+  box-sizing: border-box;
+  background: rgba(12, 14, 22, 0.72);
+  border: 2px solid rgba(171, 136, 107, 0.55);
+  padding: 14px 16px 16px;
+  width: min(720px, 100%);
 }

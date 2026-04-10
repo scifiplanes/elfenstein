@@ -56,7 +56,6 @@ export function PaperdollModal(props: {
             }
           : undefined
       }
-      onPointerMove={variant === 'interactive' ? cursor.onPointerMove : undefined}
       onPointerCancel={variant === 'interactive' ? cursor.cancelDrag : undefined}
       onPointerUp={
         variant === 'interactive'
@@ -118,7 +117,6 @@ export function PaperdollModal(props: {
                           e,
                         )
                       }}
-                      onPointerMove={cursor.onPointerMove}
                       onPointerCancel={cursor.cancelDrag}
                       onPointerUp={(e) => {
                         const { drop } = cursor.endPointerUp(e)

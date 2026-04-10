@@ -5,17 +5,24 @@ import styles from './HubViewport.module.css'
 
 export type HubViewportVariant = 'interactive' | 'capture'
 
-const HUB_ART: Record<'village' | 'tavern', string> = {
+const START_HUB_ART: Record<'village' | 'tavern', string> = {
   village: '/content/village.png',
   tavern: '/content/tavern_background.png',
 }
 
-const TAVERN_FG = '/content/tavern_foreground.png'
+const CAMP_HUB_ART: Record<'village' | 'tavern', string> = {
+  village: '/content/camp_village.png',
+  tavern: '/content/camp_tavern_background.png',
+}
 
-function bartenderArtUrl(nowMs: number): string {
+const TAVERN_FG_START = '/content/tavern_foreground.png'
+const TAVERN_FG_CAMP = '/content/camp_tavern_foreground.png'
+
+function bartenderArtUrl(nowMs: number, camp: boolean): string {
   const blinkWindow = nowMs % 3200
-  if (blinkWindow > 3040 && blinkWindow < 3180) return '/content/bartender_blink.png'
-  return Math.floor(nowMs / 2400) % 2 === 0 ? '/content/bartender_base.png' : '/content/bartender_idle.png'
+  const base = camp ? '/content/camp_bartender' : '/content/bartender'
+  if (blinkWindow > 3040 && blinkWindow < 3180) return `${base}_blink.png`
+  return Math.floor(nowMs / 2400) % 2 === 0 ? `${base}_base.png` : `${base}_idle.png`
 }
 
 function clamp01(n: number) {
@@ -62,8 +69,11 @@ export function HubViewport(props: {
 }) {
   const { state, dispatch, viewportRef, variant = 'interactive' } = props
   const scene = state.ui.hubScene ?? 'village'
-  const src = HUB_ART[scene]
+  const camp = state.ui.hubKind === 'camp'
+  const artMap = camp ? CAMP_HUB_ART : START_HUB_ART
+  const src = artMap[scene]
   const hs = state.hubHotspots
+  const tavernFg = camp ? TAVERN_FG_CAMP : TAVERN_FG_START
 
   return (
     <div className={styles.root} ref={viewportRef}>
@@ -94,7 +104,7 @@ export function HubViewport(props: {
           >
             <img
               className={styles.bartenderImg}
-              src={bartenderArtUrl(state.nowMs)}
+              src={bartenderArtUrl(state.nowMs, camp)}
               alt=""
               draggable={false}
               style={{
@@ -113,7 +123,7 @@ export function HubViewport(props: {
             variant={variant}
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/goVillage' }) : undefined}
           />
-          <img className={styles.foreground} src={TAVERN_FG} alt="" draggable={false} />
+          <img className={styles.foreground} src={tavernFg} alt="" draggable={false} />
         </>
       )}
     </div>

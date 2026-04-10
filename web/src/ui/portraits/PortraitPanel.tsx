@@ -356,7 +356,6 @@ export function PortraitPanel(props: {
     <div
       className={styles.root}
       style={rootNudgeStyle}
-      onPointerMove={cursor.onPointerMove}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const { drop } = cursor.endPointerUp(e)

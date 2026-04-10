@@ -4,8 +4,14 @@ import type { NpcKind, PoiKind } from '../../game/types'
 /** Base ambient loops — one per floor type, looped indefinitely. */
 export const BG_NOISE_TRACKS: Record<FloorType, string> = {
   Dungeon: '/sounds/background/bg_noise_1.mp3',
-  Cave:    '/sounds/background/bg_noise_2.mp3',
-  Ruins:   '/sounds/background/bg_noise_3.mp3',
+  Cave: '/sounds/background/bg_noise_2.mp3',
+  Ruins: '/sounds/background/bg_noise_3.mp3',
+  Jungle: '/sounds/background/bg_noise_2.mp3',
+  LivingBio: '/sounds/background/bg_noise_2.mp3',
+  Bunker: '/sounds/background/bg_noise_1.mp3',
+  Catacombs: '/sounds/background/bg_noise_3.mp3',
+  Golem: '/sounds/background/bg_noise_1.mp3',
+  Palace: '/sounds/background/bg_noise_3.mp3',
 }
 
 /** Short label for each bg track (for the debug menu). */

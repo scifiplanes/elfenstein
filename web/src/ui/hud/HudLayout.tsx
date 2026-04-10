@@ -153,11 +153,9 @@ export function HudLayout(props: {
       onPointerMove={
         interactive
           ? (e) => {
-              cursor.onPointerMove(e)
-
-              // 3D viewport hover: inject a virtual hover target so the cursor can become active
-              // over pickable scene objects even when pointer events are captured by another element.
-              if (state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
+              // Pointer position + DOM hover run on `window` (`CursorProvider`) so modals outside this
+              // grid (e.g. settings) still update the hand. Here we only add 3D pick/floor virtual hover.
+              if (state.ui.screen === 'game' && world && gameViewportRef?.current) {
                 const rect = gameViewportRef.current.getBoundingClientRect()
                 if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
                   const pick = world.pickObject(rect, e.clientX, e.clientY)

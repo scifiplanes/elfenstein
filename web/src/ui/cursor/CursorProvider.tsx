@@ -131,8 +131,9 @@ export function CursorProvider(props: PropsWithChildren) {
     }, 140)
   }, [clearHoldTimer])
 
-  const onPointerMove = useCallback((e: React.PointerEvent) => {
-    const { clientX: x, clientY: y } = e
+  const applyPointerMove = useCallback((clientX: number, clientY: number) => {
+    const x = clientX
+    const y = clientY
 
     // Promote drag on movement using refs + pending payload, not React state from the closure.
     // `beginPointerDown` sets those synchronously, but `dragging` in state may not have committed
@@ -179,6 +180,21 @@ export function CursorProvider(props: PropsWithChildren) {
       }
     })
   }, [clearHoldTimer])
+
+  const onPointerMove = useCallback(
+    (e: React.PointerEvent) => {
+      applyPointerMove(e.clientX, e.clientY)
+    },
+    [applyPointerMove],
+  )
+
+  useEffect(() => {
+    const onWinMove = (e: PointerEvent) => {
+      applyPointerMove(e.clientX, e.clientY)
+    }
+    window.addEventListener('pointermove', onWinMove, { passive: true })
+    return () => window.removeEventListener('pointermove', onWinMove)
+  }, [applyPointerMove])
 
   const cancelDrag = useCallback(() => {
     clearHoldTimer()

@@ -1,10 +1,36 @@
 /** Room tags from procgen (`GenRoom.tags.roomProperties`) that imply floor hazard art. */
-export type RoomHazardProperty = 'Burning' | 'Flooded' | 'Infected'
+export type RoomHazardProperty =
+  | 'Burning'
+  | 'Flooded'
+  | 'Infected'
+  | 'SporeMist'
+  | 'NanoHaze'
+  | 'Unstable'
+  | 'Haunted'
+  | 'RoyalMiasma'
+
+/** All keys of `ROOM_HAZARD_SPRITE_SRC` (for renderer tint loops). */
+export const ALL_ROOM_HAZARD_PROPERTIES: RoomHazardProperty[] = [
+  'Burning',
+  'Flooded',
+  'Infected',
+  'SporeMist',
+  'NanoHaze',
+  'Unstable',
+  'Haunted',
+  'RoyalMiasma',
+]
 
 export const ROOM_HAZARD_SPRITE_SRC: Record<RoomHazardProperty, string> = {
   Burning: '/content/hazard_fire.png',
   Flooded: '/content/hazard_water.png',
   Infected: '/content/hazard_poison.png',
+  // Reuse baseline hazard art until bespoke sprites ship (see DESIGN).
+  SporeMist: '/content/hazard_poison.png',
+  NanoHaze: '/content/hazard_water.png',
+  Unstable: '/content/hazard_fire.png',
+  Haunted: '/content/hazard_poison.png',
+  RoyalMiasma: '/content/hazard_water.png',
 }
 
 /** Fraction of eligible floor cells (after filters) that receive a decal, deterministic per cell. */
@@ -30,4 +56,8 @@ export function shouldPlaceHazardDecal(args: {
   const key = `${args.floorSeed}:hazardDecal:${args.roomId}:${args.prop}:${args.x},${args.y}`
   const h = hashStr(key)
   return (h % 100) < HAZARD_DECAL_SPARSE_PCT
+}
+
+export function isRoomHazardDecalProp(p: string | undefined): p is RoomHazardProperty {
+  return p != null && Object.prototype.hasOwnProperty.call(ROOM_HAZARD_SPRITE_SRC, p)
 }

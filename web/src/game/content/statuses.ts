@@ -15,5 +15,8 @@ export const DEFAULT_STATUSES: StatusEffectDef[] = [
   { id: 'Shielded', name: 'Shielded', kind: 'positive', defaultDurationMs: 12_000 },
   { id: 'Starving', name: 'Starving', kind: 'negative' },
   { id: 'Dehydrated', name: 'Dehydrated', kind: 'negative' },
+  { id: 'NanoTagged', name: 'Nano-tagged', kind: 'negative', defaultDurationMs: 25_000 },
+  { id: 'Spored', name: 'Spored', kind: 'negative', defaultDurationMs: 22_000 },
+  { id: 'Parasitized', name: 'Parasitized', kind: 'negative', defaultDurationMs: 28_000 },
 ]
 

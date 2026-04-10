@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useReducer, useState } from 'react'
+import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { CursorLayer } from '../ui/cursor/CursorLayer'
 import { CursorProvider } from '../ui/cursor/CursorProvider'
 import { DebugPanel } from '../ui/debug/DebugPanel'
@@ -20,6 +20,8 @@ export function GameApp() {
   const content = useMemo(() => ContentDB.createDefault(), [])
   const [state, dispatch] = useReducer(reduce, undefined, () => initialState(content))
   const [debugTuningHydrated, setDebugTuningHydrated] = useState(false)
+  const stateRef = useRef(state)
+  stateRef.current = state
 
   useEffect(() => {
     let cancelled = false
@@ -77,6 +79,32 @@ export function GameApp() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        const s = stateRef.current
+        if (s.ui.settingsOpen) {
+          e.preventDefault()
+          dispatch({ type: 'ui/setSettingsOpen', open: false })
+          return
+        }
+        if (s.ui.npcDialogFor || (s.ui.screen === 'game' && s.ui.debugShowNpcDialogPopup)) {
+          e.preventDefault()
+          dispatch({ type: 'ui/closeNpcDialog' })
+          return
+        }
+        if (s.ui.paperdollFor) {
+          e.preventDefault()
+          dispatch({ type: 'ui/closePaperdoll' })
+          return
+        }
+        if (s.ui.tradeSession) {
+          e.preventDefault()
+          dispatch({ type: 'trade/close' })
+          return
+        }
+        e.preventDefault()
+        dispatch({ type: 'ui/toggleSettings' })
+        return
+      }
       if (e.key === 'q' || e.key === 'Q') {
         e.preventDefault()
         dispatch({ type: 'player/turn', dir: -1 })

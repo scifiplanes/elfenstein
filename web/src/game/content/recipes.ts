@@ -48,6 +48,23 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Ash', b: 'Mushrooms', result: 'HerbLeaf', craftMs: 900, failDestroyChancePct: 10, skill: 'foraging', dc: 10 },
   { a: 'StoneShard', b: 'Twine', result: 'Chisel', craftMs: 1600, failDestroyChancePct: 25, skill: 'chipping', dc: 14 },
   { a: 'Twine', b: 'StoneShard', result: 'GlassVial', craftMs: 1600, failDestroyChancePct: 25, skill: 'weaving', dc: 14 },
+
+  // Content expansion: light, bio, food, tools.
+  { a: 'Stick', b: 'Moss', result: 'Torch', craftMs: 1000, failDestroyChancePct: 12, skill: 'foraging', dc: 9 },
+  { a: 'Glowbug', b: 'Twine', result: 'Headlamp', craftMs: 1400, failDestroyChancePct: 14, skill: 'weaving', dc: 11 },
+  { a: 'Torch', b: 'BobrJuice', result: 'Lantern', craftMs: 1500, failDestroyChancePct: 16, skill: 'cooking', dc: 11 },
+  { a: 'Sweetroot', b: 'Stone', result: 'MushedRoot', craftMs: 1000, failDestroyChancePct: 11, skill: 'cooking', dc: 9 },
+  { a: 'MushedRoot', b: 'Fungus', result: 'Shroomcake', craftMs: 1400, failDestroyChancePct: 14, skill: 'cooking', dc: 10 },
+  { a: 'Shroomcake', b: 'Sweetroot', result: 'Shroompie', craftMs: 1600, failDestroyChancePct: 15, skill: 'cooking', dc: 11 },
+  { a: 'MushedRoot', b: 'WaterbagFull', result: 'Rootsoup', craftMs: 1500, failDestroyChancePct: 14, skill: 'cooking', dc: 10 },
+  { a: 'Rootsoup', b: 'Salt', result: 'RootsoupSalted', craftMs: 1200, failDestroyChancePct: 10, skill: 'cooking', dc: 10 },
+  { a: 'Grubling', b: 'Salt', result: 'PreservedGrub', craftMs: 1300, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
+  { a: 'Slime', b: 'Moss', result: 'Fungus', craftMs: 1100, failDestroyChancePct: 12, skill: 'foraging', dc: 10 },
+  { a: 'Mucus', b: 'Fungus', result: 'Mold', craftMs: 1000, failDestroyChancePct: 18, skill: 'foraging', dc: 11 },
+  { a: 'Fungus', b: 'Mucus', result: 'Slime', craftMs: 900, failDestroyChancePct: 15, skill: 'foraging', dc: 10 },
+  { a: 'Bone', b: 'StoneShard', result: 'BoneSpike', craftMs: 1300, failDestroyChancePct: 16, skill: 'chipping', dc: 11 },
+  { a: 'Stick', b: 'Gem', result: 'Staff', craftMs: 1700, failDestroyChancePct: 18, skill: 'chipping', dc: 12 },
+  { a: 'Staff', b: 'Figurine', result: 'AttunedStaff', craftMs: 2000, failDestroyChancePct: 20, skill: 'weaving', dc: 13 },
 ]
 
 export function findRecipe(defA: ItemDefId, defB: ItemDefId): RecipeDef | null {

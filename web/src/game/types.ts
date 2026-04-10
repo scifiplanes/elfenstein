@@ -24,8 +24,32 @@ export type StatusEffectId =
   | 'Shielded'
   | 'Starving'
   | 'Dehydrated'
+  | 'NanoTagged'
+  | 'Spored'
+  | 'Parasitized'
 export type NpcLanguage = 'DeepGnome' | 'Zalgo' | 'Mojibake'
-export type NpcKind = 'Wurglepup' | 'Bobr' | 'Skeleton' | 'Catoctopus' | 'Swarm'
+export type NpcKind =
+  | 'Wurglepup'
+  | 'Bobr'
+  | 'Skeleton'
+  | 'Catoctopus'
+  | 'Swarm'
+  | 'Chumbo'
+  | 'Grub'
+  | 'Kuratko'
+  | 'Grechka'
+  | 'Snailord'
+  | 'Bulba'
+  | 'Elder'
+  | 'Kerekere'
+  | 'Bok'
+  | 'RegularBok'
+  | 'BigHands'
+  | 'Gargantula'
+
+/** Per-kind NPC sprite billboard pivot and height (F2-tunable). */
+export type NpcBillboardRow = { groundY: number; size: number; sizeRand: number }
+export type NpcBillboardByKind = Record<NpcKind, NpcBillboardRow>
 
 export type EquipmentSlot =
   | 'head'
@@ -97,7 +121,17 @@ export type Character = {
 export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
 
 /** F2 room-property telegraph override (compositor tint). */
-export type RoomTelegraphMode = 'auto' | 'off' | 'Burning' | 'Flooded' | 'Infected'
+export type RoomTelegraphMode =
+  | 'auto'
+  | 'off'
+  | 'Burning'
+  | 'Flooded'
+  | 'Infected'
+  | 'SporeMist'
+  | 'NanoHaze'
+  | 'Unstable'
+  | 'Haunted'
+  | 'RoyalMiasma'
 
 export type UiScreen = 'title' | 'hub' | 'game'
 
@@ -131,8 +165,12 @@ export type TradeSession =
 
 export type UiState = {
   screen: UiScreen
+  /** Escape / pause: audio and run controls (blocks dungeon/hub input while open). */
+  settingsOpen: boolean
   /** When `screen === 'hub'`, which bespoke 2D scene is shown. */
   hubScene?: 'village' | 'tavern'
+  /** Mid-run rest hub after every `render.campEveryFloors` floors; uses camp art/trade. */
+  hubKind?: 'camp'
   /** Active barter UI (tavern innkeeper or a trading floor NPC). */
   tradeSession?: TradeSession
   debugOpen: boolean
@@ -169,7 +207,7 @@ export type UiState = {
   }>
   /** Short-lived portrait “mouth visible” interaction cue. */
   portraitMouth?: { characterId: CharacterId; startedAtMs: number; untilMs: number }
-  /** Short-lived portrait frame shake (inspect/feed resolution). */
+  /** Short-lived portrait frame shake (inspect/feed resolution; NPC hit damage). */
   portraitShake?: { characterId: CharacterId; untilMs: number; magnitude: number; startedAtMs: number }
   /** Brief idle-overlay visibility after a portrait-frame tap (opens paperdoll). */
   portraitIdlePulse?: { characterId: CharacterId; untilMs: number }
@@ -329,15 +367,15 @@ export type RenderTuning = {
   portraitMouthFlickerAmount: number
 
   /**
-   * Portrait interaction shake envelope: hold at full strength (ms) before fade.
-   * Used by `ui.portraitShake` (inspect/feed resolution).
+   * Portrait shake envelope: hold at full strength (ms) before fade.
+   * Used by `ui.portraitShake` (inspect/feed and NPC hit damage).
    */
   portraitShakeLengthMs: number
-  /** Portrait interaction shake linear fade duration (ms) after hold. */
+  /** Portrait shake linear fade duration (ms) after hold. */
   portraitShakeDecayMs: number
   /** Multiplies `ui.portraitShake.magnitude` (0..n, debug-tunable). */
   portraitShakeMagnitudeScale: number
-  /** Portrait interaction shake oscillation frequency (Hz). */
+  /** Portrait shake oscillation frequency (Hz). */
   portraitShakeHz: number
 
   /**
@@ -348,15 +386,13 @@ export type RenderTuning = {
   npcFootLift: number
   /**
    * NPC sprite “ground point” within the sprite’s height (in sprite-height units from the bottom).
-   * 0.0 means use the bottom edge of the image rectangle (legacy).\n
+   * 0.0 means use the bottom edge of the image rectangle (legacy).
    * Positive values move the sprite down (as if the feet are higher in the image);
    * negative values move the sprite up (as if the feet are lower than the image bottom).
+   * Stored per `NpcKind` in `npcBillboard` (see `NpcBillboardRow`).
    */
-  npcGroundY_Wurglepup: number
-  npcGroundY_Bobr: number
-  npcGroundY_Skeleton: number
-  npcGroundY_Catoctopus: number
-  /** POI Well billboard ground pivot (same units as `npcGroundY_*`). */
+  npcBillboard: NpcBillboardByKind
+  /** POI Well billboard ground pivot (same units as `npcBillboard.*.groundY`). */
   poiGroundY_Well: number
   /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
   poiGroundY_Chest: number
@@ -367,16 +403,10 @@ export type RenderTuning = {
    * Independent of `npcFootLift`; use F2 to nudge POIs vs the floor without moving NPCs.
    */
   poiFootLift: number
-  npcSize_Wurglepup: number
-  npcSizeRand_Wurglepup: number
-  npcSize_Bobr: number
-  npcSizeRand_Bobr: number
-  npcSize_Skeleton: number
-  npcSizeRand_Skeleton: number
-  npcSize_Catoctopus: number
-  npcSizeRand_Catoctopus: number
   /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not change the hotspot rect. */
   hubInnkeeperSpriteScale: number
+  /** Dungeon floors per segment before a camp hub (1–99; default 10). */
+  campEveryFloors: number
 }
 
 export type AudioTuning = {
@@ -507,6 +537,11 @@ export type GameState = {
     }>
     playerPos: Vec2
     playerDir: 0 | 1 | 2 | 3
+    /**
+     * Last procgen room id for which `applyRoomHazardOnEnter` already ran this visit.
+     * Cleared when stepping into a cell with no `roomProperties`; re-applies after leaving and re-entering the same room.
+     */
+    roomHazardAppliedForRoomId?: string
   }
 
   party: {

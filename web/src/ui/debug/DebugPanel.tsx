@@ -16,6 +16,7 @@ import {
 } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
 import type { FloorProperty } from '../../procgen/types'
+import { PROCgen_ALL_NPC_KINDS } from '../../procgen/spawnTables'
 import { getThemeLightIntent } from '../../world/themeTuning'
 import { BG_NOISE_LABELS, BG_NOISE_TRACKS, BG_SFX_TRACKS } from '../audio/musicTracks'
 import { selectBgTrack } from '../audio/musicRules'
@@ -180,6 +181,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'baseEmissive', label: 'Base emissive lift', min: 0, max: 0.4, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'dropAheadCells', label: 'Drop length (cells ahead)', min: 0, max: 2.5, step: 0.05, format: (v) => v.toFixed(2) },
       { key: 'dropRangeCells', label: 'Drop range (Manhattan cells)', min: 0, max: 20, step: 1, format: (v) => String(Math.round(v)) },
+      { key: 'campEveryFloors', label: 'Camp every N dungeon floors', min: 1, max: 99, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'dropJitterRadius', label: 'Drop jitter radius', min: 0, max: 0.45, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'lanternIntensity', label: 'Lantern intensity', min: 0, max: 40, step: 0.01 },
       { key: 'lanternDistance', label: 'Lantern distance', min: 2, max: 80, step: 0.5, format: (v) => v.toFixed(1) },
@@ -271,7 +273,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
 
-  const npcSliders: Array<Omit<Slider, 'key'> & { key: keyof GameState['render'] }> = useMemo(
+  const npcSliders: Array<Omit<Slider, 'key'> & { key: Exclude<keyof GameState['render'], 'npcBillboard'> }> = useMemo(
     () => [
       {
         key: 'hubInnkeeperSpriteScale',
@@ -286,21 +288,39 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiGroundY_Chest', label: 'POI Chest groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcGroundY_Wurglepup', label: 'Wurglepup groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSize_Wurglepup', label: 'Wurglepup size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSizeRand_Wurglepup', label: 'Wurglepup size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
-      { key: 'npcGroundY_Bobr', label: 'Bobr groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSize_Bobr', label: 'Bobr size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSizeRand_Bobr', label: 'Bobr size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
-      { key: 'npcGroundY_Skeleton', label: 'Skeleton groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSize_Skeleton', label: 'Skeleton size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSizeRand_Skeleton', label: 'Skeleton size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
-      { key: 'npcGroundY_Catoctopus', label: 'Catoctopus groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSize_Catoctopus', label: 'Catoctopus size (height)', min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'npcSizeRand_Catoctopus', label: 'Catoctopus size rand (±%)', min: 0, max: 1.0, step: 0.01, format: (v) => `${Math.round(v * 100)}%` },
     ],
     [],
   )
+
+  type NpcBillboardField = 'groundY' | 'size' | 'sizeRand'
+  type NpcBillboardSliderDef = {
+    kind: NpcKind
+    field: NpcBillboardField
+    label: string
+    min: number
+    max: number
+    step: number
+    format?: (v: number) => string
+  }
+  const npcBillboardSliderDefs: NpcBillboardSliderDef[] = useMemo(() => {
+    const rows: NpcBillboardSliderDef[] = []
+    for (const kind of PROCgen_ALL_NPC_KINDS) {
+      rows.push(
+        { kind, field: 'groundY', label: `${kind} groundY`, min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+        { kind, field: 'size', label: `${kind} size (height)`, min: 0.1, max: 2.5, step: 0.01, format: (v) => v.toFixed(2) },
+        {
+          kind,
+          field: 'sizeRand',
+          label: `${kind} size rand (±%)`,
+          min: 0,
+          max: 1.0,
+          step: 0.01,
+          format: (v) => `${Math.round(v * 100)}%`,
+        },
+      )
+    }
+    return rows
+  }, [])
 
   if (!state.ui.debugOpen) return null
 
@@ -319,6 +339,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   const visibleRender = q ? renderSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : renderSliders
   const visibleAudio = q ? audioSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : audioSliders
   const visibleNpc = q ? npcSliders.filter((s) => `${s.label} ${s.key}`.toLowerCase().includes(q)) : npcSliders
+  const visibleNpcBillboard = q ? npcBillboardSliderDefs.filter((s) => s.label.toLowerCase().includes(q)) : npcBillboardSliderDefs
 
   const canonicalYaw = canonicalYawForDir(state.floor.playerDir)
   const yawRaw = state.view.anim?.kind === 'turn' ? state.view.camYaw : canonicalYaw
@@ -339,7 +360,6 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
   return (
     <div
       className={styles.root}
-      onPointerMove={cursor.onPointerMove}
       onPointerUp={cursor.endPointerUp}
       onPointerCancel={cursor.cancelDrag}
     >
@@ -366,7 +386,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
             type="button"
             className={styles.headerBtn}
             onClick={() => dispatch({ type: 'floor/debugCycleRealizer' })}
-            title="Cycles Dungeon → Cave → Ruins for the next Regen"
+            title="Cycles segment floor-type order (Cave → … → Golem) for the next Regen"
           >
             Cycle type
           </button>
@@ -578,8 +598,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 value={spawnNpcKind}
                 onChange={(e) => setSpawnNpcKind(e.target.value as NpcKind)}
               >
-                {(['Skeleton', 'Bobr', 'Wurglepup', 'Catoctopus'] satisfies NpcKind[]).map((k) => (
-                  <option key={k} value={k}>{k}</option>
+                {PROCgen_ALL_NPC_KINDS.map((k) => (
+                  <option key={k} value={k}>
+                    {k}
+                  </option>
                 ))}
               </select>
             </div>
@@ -1190,6 +1212,33 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                 step={s.step}
                 value={v}
                 onChange={(e) => dispatch({ type: 'render/set', key: s.key, value: Number(e.target.value) })}
+              />
+            </div>
+          )
+        })}
+        {visibleNpcBillboard.map((s) => {
+          const raw = state.render.npcBillboard[s.kind][s.field]
+          const v = typeof raw === 'number' && Number.isFinite(raw) ? raw : s.min
+          const sliderLike: Slider = { key: `${s.kind}-${s.field}`, label: s.label, min: s.min, max: s.max, step: s.step, format: s.format }
+          return (
+            <div key={`${s.kind}-${s.field}`} className={styles.row}>
+              <div className={styles.label}>{s.label}</div>
+              <div className={styles.value}>{formatSliderValue(sliderLike, v)}</div>
+              <input
+                className={styles.slider}
+                type="range"
+                min={s.min}
+                max={s.max}
+                step={s.step}
+                value={v}
+                onChange={(e) =>
+                  dispatch({
+                    type: 'render/npcBillboard',
+                    kind: s.kind,
+                    field: s.field,
+                    value: Number(e.target.value),
+                  })
+                }
               />
             </div>
           )

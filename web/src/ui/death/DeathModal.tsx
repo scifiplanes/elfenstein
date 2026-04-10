@@ -51,7 +51,6 @@ export function DeathModal(props: {
   const pointerHandlers =
     variant === 'interactive'
       ? {
-          onPointerMove: cursor.onPointerMove,
           onPointerCancel: cursor.cancelDrag,
         }
       : {}

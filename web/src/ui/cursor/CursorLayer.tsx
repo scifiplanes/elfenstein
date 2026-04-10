@@ -4,6 +4,7 @@ import styles from './CursorLayer.module.css'
 import type { GameState } from '../../game/types'
 import type { ContentDB } from '../../game/content/contentDb'
 import { shakeTransform } from '../feedback/shakeTransform'
+import { CURSOR_HAND_ACTIVE_SELECTOR } from './cursorHandActiveAttr'
 import { findRecipe, recipeKey } from '../../game/content/recipes'
 import { currentTurn } from '../../game/state/combat'
 import { resolveWeaponItemIdForPcTurn } from '../../game/state/equipment'
@@ -104,7 +105,11 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   })()
 
   const isHold = Boolean(dragging?.started || isPointerDown)
-  const isActive = !isHold && Boolean(hoverTarget) && hoverTarget?.kind !== 'floorDrop'
+  const handActiveChrome =
+    typeof document !== 'undefined' && document.elementFromPoint(x, y)?.closest?.(CURSOR_HAND_ACTIVE_SELECTOR)
+  const isActive =
+    !isHold &&
+    ((Boolean(hoverTarget) && hoverTarget?.kind !== 'floorDrop') || Boolean(handActiveChrome))
 
   const ghost =
     dragging?.started && dragging.payload

@@ -1,4 +1,5 @@
 import type { AudioTuning, RenderTuning } from './types'
+import { DEFAULT_NPC_BILLBOARD } from './npcBillboardTuning'
 
 /** Baseline render/audio tuning when no `public/debug-settings.json` exists or keys are missing. */
 export const DEFAULT_RENDER: RenderTuning = {
@@ -81,24 +82,14 @@ export const DEFAULT_RENDER: RenderTuning = {
   // NPC billboard sizing (height in world units; width derived from texture aspect).
   // Defaults chosen to roughly match the prior hardcoded 0.65 scale used for all NPCs.
   npcFootLift: 0.02,
-  npcGroundY_Wurglepup: 0.0,
-  npcGroundY_Bobr: 0.0,
-  npcGroundY_Skeleton: 0.0,
-  npcGroundY_Catoctopus: 0.0,
+  npcBillboard: DEFAULT_NPC_BILLBOARD,
   poiGroundY_Well: 0.0,
   /** ~opaque bottom of `chest_closed.png` / `chest_open.png` (~3% from texture bottom). */
   poiGroundY_Chest: 0.04,
   poiSpriteBoost: 1.5,
   poiFootLift: 0.02,
-  npcSize_Wurglepup: 0.65,
-  npcSizeRand_Wurglepup: 0.0,
-  npcSize_Bobr: 0.65,
-  npcSizeRand_Bobr: 0.0,
-  npcSize_Skeleton: 0.65,
-  npcSizeRand_Skeleton: 0.0,
-  npcSize_Catoctopus: 0.65,
-  npcSizeRand_Catoctopus: 0.0,
   hubInnkeeperSpriteScale: 1,
+  campEveryFloors: 10,
 }
 
 export const DEFAULT_AUDIO: AudioTuning = {

@@ -66,6 +66,7 @@ function gameShell(overrides: Partial<GameState> & { floor: GameState['floor']; 
     nowMs: 0,
     ui: {
       screen: 'game',
+      settingsOpen: false,
       debugOpen: false,
       roomTelegraphMode: 'auto',
       roomTelegraphStrength: 0.2,
@@ -453,5 +454,76 @@ describe('npcTakeTurn quest shout', () => {
     const next = npcTakeTurn(state, 'n1')
     const texts = (next.ui.activityLog ?? []).map((e) => e.text)
     expect(texts.some((t) => t.includes('bring me'))).toBe(false)
+  })
+})
+
+describe('npcTakeTurn portrait shake', () => {
+  const encId = 'enc_portrait_shake_test'
+
+  function mkState(seed: number): GameState {
+    const combat = {
+      encounterId: encId,
+      startedAtMs: 0,
+      participants: { party: ['c1'], npcs: ['n1'] },
+      turnQueue: [
+        { kind: 'npc' as const, id: 'n1', initiative: 10 },
+        { kind: 'pc' as const, id: 'c1', initiative: 5 },
+      ],
+      turnIndex: 0,
+    }
+    return gameShell({
+      nowMs: 1000,
+      combat,
+      floor: {
+        seed,
+        floorIndex: 0,
+        floorType: 'Dungeon',
+        floorProperties: [],
+        difficulty: 1,
+        w: 10,
+        h: 10,
+        tiles: Array(100).fill('floor') as GameState['floor']['tiles'],
+        pois: [],
+        itemsOnFloor: [],
+        floorGeomRevision: 0,
+        npcs: [mkNpc('n1', 'Skeleton', { x: 1, y: 1 })],
+        playerPos: { x: 2, y: 2 },
+        playerDir: 0,
+      },
+      party: {
+        chars: [mkChar('c1', 5, 100)],
+        inventory: { cols: 10, rows: 2, slots: emptySlots(20) },
+        items: {},
+      },
+    })
+  }
+
+  it('sets ui.portraitShake for the damaged PC on a hit', () => {
+    let found = false
+    for (let seed = 0; seed < 30_000; seed++) {
+      const next = npcTakeTurn(mkState(seed), 'n1')
+      const texts = (next.ui.activityLog ?? []).map((e) => e.text)
+      if (!texts.some((t) => t.includes('— hit'))) continue
+      found = true
+      const ps = next.ui.portraitShake
+      expect(ps?.characterId).toBe('c1')
+      expect(ps!.untilMs).toBeGreaterThan(ps!.startedAtMs)
+      expect([0.18, 0.24]).toContain(ps!.magnitude)
+      break
+    }
+    expect(found).toBe(true)
+  })
+
+  it('does not set portrait shake on a miss', () => {
+    let found = false
+    for (let seed = 0; seed < 30_000; seed++) {
+      const next = npcTakeTurn(mkState(seed), 'n1')
+      const texts = (next.ui.activityLog ?? []).map((e) => e.text)
+      if (!texts.some((t) => t.includes('— miss.'))) continue
+      found = true
+      expect(next.ui.portraitShake).toBeUndefined()
+      break
+    }
+    expect(found).toBe(true)
   })
 })

@@ -9,6 +9,22 @@ import { bfsDistances, exitNeighborReachableWithPoiBlocking, floorCellTouchesOrt
 import { findNearestFloor, pickClosestDistanceCell, pickFarthestUnusedFloor } from './layoutPasses'
 import { buildRoomAdjacency } from './districtsTags'
 
+/** Item defs referenced in neutral NPC `quest.wants` / `quest.hated` (procgen population). */
+export const PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS: readonly ItemDefId[] = [
+  'Mushrooms',
+  'Foodroot',
+  'Ash',
+  'Sulfur',
+  'Stick',
+  'Stone',
+  'Glowbug',
+  'Salt',
+  'Gem',
+  'Sweetroot',
+  'Figurine',
+]
+export const PROCgen_NPC_QUEST_HATED_ITEM_DEF_IDS: readonly ItemDefId[] = ['Stone', 'Stick', 'Mushrooms', 'Foodroot']
+
 function shortestPathCellSet(tiles: Tile[], w: number, h: number, entrance: Vec2, exit: Vec2): Set<string> {
   const path = shortestPathIndices(tiles, w, h, entrance, exit)
   if (!path) return new Set()
@@ -117,12 +133,25 @@ export function placePois(args: {
   const exitIdx = exit.x + exit.y * w
   const maxD = exitIdx >= 0 && exitIdx < dist.length ? dist[exitIdx] : -1
   const targetD = Math.max(0, Math.floor(maxD * 0.45))
+  const harshRoomProperties = (p: GenRoom['tags'] | undefined) => {
+    const x = p?.roomProperties
+    return (
+      x === 'Burning' ||
+      x === 'Infected' ||
+      x === 'SporeMist' ||
+      x === 'NanoHaze' ||
+      x === 'Unstable' ||
+      x === 'Haunted' ||
+      x === 'RoyalMiasma'
+    )
+  }
+
   const isBedRoomOk = (r: GenRoom) => {
     const f = r.tags?.roomFunction
     const p = r.tags?.roomProperties
     // Keep bed out of connector/junction rooms (pre-tagged Passage).
     if (r.id.startsWith('r_junc_')) return false
-    return (f === 'Habitat' || f === 'Communal') && p !== 'Burning' && p !== 'Infected'
+    return (f === 'Habitat' || f === 'Communal') && !harshRoomProperties(r.tags)
   }
   const bedRoomScored = rooms
     .filter((r) => isBedRoomOk(r) && ok(r.center))
@@ -228,8 +257,7 @@ export function placePois(args: {
   // Shrine: prefer communal spaces and cursed floors.
   const shrineCenter = pickTaggedRoomCenter((r) => {
     const f = r.tags?.roomFunction
-    const p = r.tags?.roomProperties
-    if (p === 'Burning' || p === 'Infected') return false
+    if (harshRoomProperties(r.tags)) return false
     if (floorProperties.includes('Cursed')) return f === 'Communal' || f === 'Habitat'
     return f === 'Communal'
   })
@@ -319,7 +347,7 @@ export function spawnNpcsAndItems(args: {
   const nearRooms = candidates.slice(-Math.min(2, candidates.length)).map((x) => x.r)
 
   const langList: NpcLanguage[] = ['DeepGnome', 'Zalgo', 'Mojibake']
-  const wants: ItemDefId[] = ['Mushrooms', 'Foodroot', 'Ash', 'Sulfur', 'Stick', 'Stone']
+  const wants: ItemDefId[] = [...PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS]
   const hated: ItemDefId[] = ['Stone', 'Stick', 'Mushrooms', 'Foodroot']
 
   const pickQuest = (i: number) => {
@@ -347,7 +375,20 @@ export function spawnNpcsAndItems(args: {
       rng,
     )
 
-    const status: GenNpc['status'] = kind === 'Skeleton' ? 'hostile' : isNear ? 'neutral' : rng.next() < 0.25 ? 'hostile' : 'neutral'
+    const forceHostile =
+      kind === 'Skeleton' ||
+      kind === 'Gargantula' ||
+      kind === 'BigHands' ||
+      kind === 'Grub' ||
+      kind === 'Chumbo' ||
+      kind === 'Kuratko'
+    const preferFriendly =
+      kind === 'Elder' || kind === 'Snailord' || kind === 'Bok' || kind === 'RegularBok' || kind === 'Grechka'
+
+    let status: GenNpc['status']
+    if (forceHostile) status = 'hostile'
+    else if (preferFriendly) status = isNear ? 'friendly' : 'neutral'
+    else status = isNear ? 'neutral' : rng.next() < 0.25 ? 'hostile' : 'neutral'
     const language = langList[(idx * 17 + (kind.charCodeAt(0) % 7)) % langList.length]
     const name = kind
     const hpMax = npcKindHpMax(kind)
@@ -403,17 +444,6 @@ export function spawnNpcsAndItems(args: {
 
   return { npcs, floorItems }
 }
-
-/** Item defs referenced in neutral NPC `quest.wants` / `quest.hated` (procgen population). */
-export const PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS: readonly ItemDefId[] = [
-  'Mushrooms',
-  'Foodroot',
-  'Ash',
-  'Sulfur',
-  'Stick',
-  'Stone',
-]
-export const PROCgen_NPC_QUEST_HATED_ITEM_DEF_IDS: readonly ItemDefId[] = ['Stone', 'Stick', 'Mushrooms', 'Foodroot']
 
 /** POI ids always emitted by `placePois`. */
 export const PROCgen_POI_IDS_ALWAYS = [

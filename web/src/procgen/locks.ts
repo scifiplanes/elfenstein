@@ -3,12 +3,14 @@ import type { ItemDefId, Tile, Vec2 } from '../game/types'
 import type { FloorGenDifficulty, FloorProperty, GenDoor, GenFloorItem, FloorGenOutput } from './types'
 import { findNearestUnusedFloor } from './layoutPasses'
 import {
-  allReachable,
-  bfsDistances,
+  allReachableWithLocks,
+  bfsDistancesWithLocks,
   exitNeighborReachableWithPoiBlocking,
   isWalkable,
-  shortestPathLatticeStats,
+  shortestPathLatticeStatsWithLocks,
 } from './validate'
+
+const lockedDoorsBlock: { lockedDoorsAreWalkable: boolean } = { lockedDoorsAreWalkable: false }
 
 /** Keys placed by `placeLocksOnPath` (for content coverage audits). */
 export const PROCgen_LOCK_KEY_ITEM_DEF_IDS: ItemDefId[] = ['IronKey', 'BrassKey']
@@ -29,6 +31,8 @@ export function shortestPathIndices(
   _h: number,
   entrance: Vec2,
   exit: Vec2,
+  /** When set, shuffles orthogonal neighbor order per expansion so tie-breaking among equal-length shortest paths is seeded (helps lock placement find separating cells). */
+  pathChoiceRng?: { next(): number },
 ): number[] | null {
   const prev = new Int32Array(tiles.length)
   prev.fill(-1)
@@ -42,14 +46,26 @@ export function shortestPathIndices(
 
   const q: number[] = [s]
   dist[s] = 0
+  const deltaIdx = [0, 1, 2, 3]
+  const dxy = [1, -1, w, -w]
 
   for (let qi = 0; qi < q.length; qi++) {
     const i = q[qi]
     if (i === goal) break
     const x = i % w
     const y = (i / w) | 0
-    const neigh = [i + 1, i - 1, i + w, i - w]
-    for (const j of neigh) {
+    let order = deltaIdx
+    if (pathChoiceRng) {
+      order = deltaIdx.slice()
+      for (let ui = order.length - 1; ui > 0; ui--) {
+        const jj = Math.floor(pathChoiceRng.next() * (ui + 1))
+        const tmp = order[ui]!
+        order[ui] = order[jj]!
+        order[jj] = tmp
+      }
+    }
+    for (const oi of order) {
+      const j = i + dxy[oi]!
       if (j < 0 || j >= tiles.length) continue
       const nx = j % w
       const ny = (j / w) | 0
@@ -80,7 +96,7 @@ function separatesExit(
 ): boolean {
   const test = baseTiles.slice()
   test[lockIdx] = 'lockedDoor'
-  const exitReachable = allReachable(test, w, h, entrance, [exit])
+  const exitReachable = allReachableWithLocks(test, w, h, entrance, [exit], lockedDoorsBlock)
   return !exitReachable
 }
 
@@ -120,12 +136,12 @@ function lockThresholds(difficulty: FloorGenDifficulty): {
   allowTwoLock: boolean
 } {
   if (difficulty === 0) {
-    return { minPathAnyLock: 10, minPathTwoLock: 14, allowTwoLock: false }
+    return { minPathAnyLock: 8, minPathTwoLock: 12, allowTwoLock: false }
   }
   if (difficulty === 2) {
-    return { minPathAnyLock: 5, minPathTwoLock: 11, allowTwoLock: true }
+    return { minPathAnyLock: 4, minPathTwoLock: 9, allowTwoLock: true }
   }
-  return { minPathAnyLock: 6, minPathTwoLock: 14, allowTwoLock: true }
+  return { minPathAnyLock: 4, minPathTwoLock: 11, allowTwoLock: true }
 }
 
 /** Deterministic roll: some procgen locks render as octopus doors (see `lockedDoorOctopus`). */
@@ -155,7 +171,7 @@ export function placeLocksOnPath(args: {
   const difficulty = args.difficulty ?? 1
   const { minPathAnyLock, minPathTwoLock, allowTwoLock } = lockThresholds(difficulty)
 
-  const path = shortestPathIndices(tiles, w, h, entrance, exit)
+  const path = shortestPathIndices(tiles, w, h, entrance, exit, rng)
   if (!path || path.length < minPathAnyLock) return { doors: [], floorItems: [] }
 
   // Prefer placing locks on “door frame” throats (Dungeon identity).
@@ -189,7 +205,7 @@ export function placeLocksOnPath(args: {
         const testOpenFirst = tiles.slice()
         testOpenFirst[c1] = 'floor'
         testOpenFirst[c2] = 'lockedDoor'
-        if (allReachable(testOpenFirst, w, h, entrance, [exit])) continue
+        if (allReachableWithLocks(testOpenFirst, w, h, entrance, [exit], lockedDoorsBlock)) continue
 
         const key1Idx = clampInt(Math.floor(i1 * 0.4 + (rng.next() - 0.5) * 2), 1, i1 - 1)
         const key2Idx = clampInt(Math.floor(i1 + (i2 - i1) * 0.45 + (rng.next() - 0.5) * 2), i1 + 1, i2 - 1)
@@ -290,8 +306,16 @@ export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean 
   if (locked.length === 0) return true
 
   {
-    const { shortestLen: L, latticeCells } = shortestPathLatticeStats(gen.tiles, w, h, gen.entrance, gen.exit)
-    if (L < 3 || latticeCells <= L + 2) return false
+    const { shortestLen: L, latticeCells } = shortestPathLatticeStatsWithLocks(
+      gen.tiles,
+      w,
+      h,
+      gen.entrance,
+      gen.exit,
+      lockedDoorsBlock,
+    )
+    // Slightly looser than “strict spine” so lock floors validate more often (still needs a 2+ cell-wide shortest-path band).
+    if (L < 3 || latticeCells <= L + 1) return false
   }
 
   for (const d of locked) {
@@ -304,16 +328,16 @@ export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean 
     const sim = tilesWithFirstKLocksOpen(gen, w, h, k)
     const key = keys.find((it) => it.forLockId === locked[k].lockId)
     if (!key) return false
-    if (!allReachable(sim, w, h, gen.entrance, [key.pos])) return false
+    if (!allReachableWithLocks(sim, w, h, gen.entrance, [key.pos], lockedDoorsBlock)) return false
   }
 
   const allClosed = tilesWithFirstKLocksOpen(gen, w, h, 0)
-  if (allReachable(allClosed, w, h, gen.entrance, [gen.exit])) return false
+  if (allReachableWithLocks(allClosed, w, h, gen.entrance, [gen.exit], lockedDoorsBlock)) return false
 
   const allOpen = tilesWithFirstKLocksOpen(gen, w, h, locked.length)
-  if (!allReachable(allOpen, w, h, gen.entrance, [gen.exit])) return false
+  if (!allReachableWithLocks(allOpen, w, h, gen.entrance, [gen.exit], lockedDoorsBlock)) return false
 
-  const distFromEntrance = bfsDistances(gen.tiles, w, h, gen.entrance)
+  const distFromEntrance = bfsDistancesWithLocks(gen.tiles, w, h, gen.entrance, lockedDoorsBlock)
   const well = gen.pois.find((p) => p.kind === 'Well')
   if (well) {
     const wi = well.pos.x + well.pos.y * w

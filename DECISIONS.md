@@ -4206,3 +4206,151 @@ Date: 2026-04-10
 
 ### Consequences
 - **`web/src/game/state/poi.ts`** (`applyPoiUse`), **`web/src/game/state/poi.test.ts`**, **`DESIGN.md`** §9 (Barrel / Crate bullets).
+
+---
+
+## ADR-0269 — Procgen lock placement uses lock-blocking reachability
+Date: 2026-04-10
+
+### Decision
+- **`separatesExit`** and the two-lock probe in **`web/src/procgen/locks.ts`** use **`allReachableWithLocks(..., { lockedDoorsAreWalkable: false })`** instead of **`allReachable`**, so a probe **`lockedDoor`** cell actually blocks BFS.
+- **`validateGen`** (when any procgen locks exist) uses **`shortestPathLatticeStatsWithLocks`**, **`allReachableWithLocks`** for partial-open simulations, and **`bfsDistancesWithLocks`** for Well/Bed distance from **`entrance`**, all with **`lockedDoorsAreWalkable: false`**, matching gameplay.
+- **`web/src/procgen/validate.ts`** adds **`bfsDistancesWithLocks`** and **`shortestPathLatticeStatsWithLocks`**; existing **`bfsDistances`** / **`shortestPathLatticeStats`** stay unchanged for other callers.
+- **`web/src/procgen/locks.test.ts`** covers a corridor “bridge” map so **`placeLocksOnPath`** places at least one lock when the path is long enough.
+
+### Rationale
+**`isWalkable`** treats every door tile (including locked) as traversable for generic graph metrics. **`separatesExit`** temporarily set a cell to **`lockedDoor`** but still called **`allReachable`**, so connectivity never changed and **`placeLocksOnPath`** almost always returned no doors. Validation had the same mismatch for lock-aware puzzles.
+
+### Consequences
+- Locked wooden and octopus doors can appear again on valid floors; stricter validation may reject more attempts (bounded rerolls + last-attempt fallback unchanged). **`layoutScore`** lattice/branch bonuses still use the pre-lock walkability model as before.
+
+
+---
+
+## ADR-0270 — More common procgen locked doors
+Date: 2026-04-10
+
+### Decision
+- Lower **`lockThresholds`** min path lengths: easy **8** / **12** (was 10 / 14), normal **4** / **11** (was 6 / 14), hard **4** / **9** (was 5 / 11).
+- **`validateGen`** lock lattice rule: require **`latticeCells > shortestLen + 1`** instead of **`> shortestLen + 2`** (still blocks a pure 1-wide spine; accepts one step thinner bands).
+- **`shortestPathIndices`** accepts optional **`pathChoiceRng`**: **`placeLocksOnPath`** passes the **locks** stream so BFS tie-breaking among equal-length shortest paths is seeded, improving odds a chosen path contains a **cut** cell for **`separatesExit`**.
+
+### Rationale
+After fixing lock-aware reachability, doors were still rare because many layouts have **no** articulation on the canonical shortest path, validation rejected thin lattices, and minimum path length excluded shorter runs.
+
+### Consequences
+- **`web/src/procgen/locks.ts`**, **`DESIGN.md`** §8.1 / §8.2 / §8.3; other callers of **`shortestPathIndices`** unchanged (no RNG → deterministic neighbor order).
+
+---
+
+## ADR-0271 — Reskin-first floor expansion via layout profiles
+Date: 2026-04-10
+
+### Decision
+Add six **`FloorType`** values (**`Jungle`**, **`LivingBio`**, **`Bunker`**, **`Catacombs`**, **`Golem`** (shipped historically as **`MagicalNano`**), **`Palace`**) that **do not** get bespoke generators yet. Each maps through **`layoutProfile(floorType)`** to reuse **Cave**, **Ruins**, or **Dungeon** procgen (including door frames only on the Dungeon profile, junction caps keyed off profile). Differentiation uses **per-type theme pools**, **env texture mapping** (often aliased to existing PNG triples), **music**, **spawn bias**, and **debug / descent cycling** through all nine types.
+
+### Rationale
+Ships a wider fantasy palette without multiplying layout bugs or validation surface; keeps determinism and save/debug ids stable. Art can replace aliased textures later without changing topology rules.
+
+### Consequences
+- **`web/src/procgen/floorLayoutProfile.ts`**, **`generateDungeon.ts`**, **`shapeRooms.ts`**, **`floorTheme.ts`**, **`dungeonEnvTextures.ts`**, **`floorProgression.ts`**, **`DESIGN.md`** §8. Bespoke generators remain future work.
+
+---
+
+## ADR-0272 — Room hazards, statuses, NPC/items/recipes expansion + NPC billboard tuning
+Date: 2026-04-10
+
+### Decision
+- Extend **`roomProperties`** with **SporeMist**, **NanoHaze**, **Unstable**, **Haunted**, **RoyalMiasma**; wire **decals**, **HUD telegraph**, **`applyRoomHazardOnEnter`**, **districts/spawn/population** nudges, and debug telegraph modes.
+- Add **StatusEffectId** values **NanoTagged**, **Spored**, **Parasitized** with **DEFAULT_STATUSES**, feed/remedy hooks, and light **encounter** modifiers (PC to-hit / defense).
+- Add **twelve** **`NpcKind`** values with **combat**, **loot**, **sprites** (placeholder paths), **spawn tables**, and **population** hostility hints.
+- Add **items** and **recipes** (light/food/bio/bone line); **procgen** tables + **allowlist** for craft-only ids; extend **NPC quest want** pools in **`population.ts`** (constants live beside **`spawnNpcsAndItems`**, not **`spawnTables`**, to avoid circular imports).
+- Replace flat **`npcGroundY_*` / `npcSize_*`** render keys with **`render.npcBillboard: Record<NpcKind, { groundY, size, sizeRand }>`**, **legacy JSON merge** for old **`debug-settings.json`**, and F2 sliders for **every** kind.
+
+### Rationale
+One vertical slice ties content to systems players see (hazards, combat, crafting, debug tuning). Table-driven NPC tuning scales to **17** kinds without growing **WorldRenderer** if-chains. Status combat hooks stay minimal but make new debuffs mechanically meaningful.
+
+### Consequences
+- **`hazardDefs.ts`**, **`WorldRenderer.ts`**, **`DitheredFrameRoot.tsx`**, **`reducer.ts`**, **`districtsTags.ts`**, **`population.ts`**, **`spawnTables.ts`**, **`types.ts`**, **`statuses.ts`**, **`interactions.ts`**, **`combat.ts`**, **`items.ts`**, **`recipes.ts`**, **`npcCombat.ts`**, **`npcLoot.ts`**, **`npcDefs.ts`**, **`npcBillboardTuning.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`DESIGN.md`** §7 / §8 / §11.
+
+---
+
+## ADR-0273 — Room hazards once per visit; Moss feed for NanoTagged
+Date: 2026-04-10
+
+### Decision
+- **Room hazards**: track **`floor.roomHazardAppliedForRoomId`** so **`applyRoomHazardOnEnter`** runs **once per procgen-room visit** (first step into a tagged room or when the party is **spawned** there after **initial state**, **new run**, **regen**, **descend**, or **Exit** POI). Leaving a tagged room clears the guard so **re-entry** triggers again. Walking **within** the same room does **not** re-run HP chips or rolls each tile.
+- **Moss**: give **`Moss`** a neutral **`feed`** entry (and **`food`** tag) so portrait **feed** reaches the existing **`NanoTagged`** remedy branch in **`feedCharacter`** (previously blocked by “refuse to eat” when **`!def.feed`**).
+
+### Rationale
+Per-tile hazard application matched neither the design intent (“on entering a room”) nor readable balance. **Moss** was documented as a remedy but could never be fed.
+
+### Consequences
+- **`web/src/game/types.ts`**, **`web/src/game/reducer.ts`**, **`web/src/game/state/floorProgression.ts`**, **`web/src/game/content/items.ts`**, **`DESIGN.md`** (room-hazard gameplay bullet).
+
+---
+
+## ADR-0274 — Portrait shake on NPC hit damage
+Date: 2026-04-10
+
+### Decision
+When **`npcTakeTurn`** resolves a **hit** against a PC, set **`ui.portraitShake`** for **that** character’s id (same transform and **`RenderTuning`** envelope/HZ/amplitude as inspect/feed). Use **`state.nowMs`** for **`startedAtMs` / `untilMs`**. Base magnitudes: **0.18** normal hit, **0.24** on **nat 20**; duration **`max(180ms, portraitShakeLengthMs + portraitShakeDecayMs)`**. Existing **`applyUiShake`** on hits is unchanged.
+
+### Rationale
+Reuses the proven portrait feedback channel instead of a parallel effect; ties the wiggle to the **victim** so multi-character parties read clearly.
+
+### Consequences
+- **`web/src/game/state/combat.ts`**, **`web/src/game/state/combat.test.ts`**, **`web/src/game/types.ts`** (comments), **`DESIGN.md`** §6.3 / §7.1.
+
+---
+
+## ADR-0276 — Camp hubs, segment floor typing, `Golem` floor type
+Date: 2026-04-10
+
+### Decision
+- **Mid-run camp**: After every **`campEveryFloors`** completed dungeon floors (**default 10**, F2 **`RenderTuning.campEveryFloors`**), descending (Exit POI or debug) **pre-generates** the next floor, applies normal **+12 XP**, sets **`ui.screen === 'hub'`**, **`hubScene === 'village'`**, **`ui.hubKind === 'camp'`**, and clears **`run.hubInnkeeperTradeStock`** so the camp merchant uses **`CAMP_INNKEEPER_TRADE`**. **`hub/enterDungeon`** clears **`hubKind`** and enters 3D with the already-generated floor (mirrors starting village).
+- **Segment typing**: **`floorType`** for floor index **`i`** is **`FLOOR_TYPE_ORDER[floor(i / N) % 9]`** with **`N = clamp(campEveryFloors)`** and order **Cave → Ruins → Dungeon → Jungle → Catacombs → Palace → Bunker → LivingBio → Golem**. Replaces **per-descent** cycling of **`floorType`**.
+- **Difficulty by segment**: segments **0–1** → **`0`**, **2–4** → **`1`**, **5+** → **`2`** (**`FloorGenDifficulty`**).
+- **Rename**: **`FloorType` `MagicalNano` → `Golem`** (same layout profile and nano-themed assets/spawns until bespoke art).
+- **Camp art**: Duplicate PNGs under **`Content/camp_*.png`** (copies of village/tavern/bartender assets) served at **`/content/camp_*.png`**.
+
+### Rationale
+Gives predictable pacing and thematic escalation without new procgen realizers; camp reuses proven hub UX. **`Golem`** matches player-facing vocabulary; behavior stays aligned with the former nano reskin.
+
+### Consequences
+- **`runFloorSchedule.ts`**, **`floorProgression.ts`**, **`initialState.ts`**, **`types.ts`** (**`hubKind`**, **`campEveryFloors`**), **`trade.ts`**, **`trading.ts`**, **`HubViewport.tsx`**, **`reducer.ts`**, **`DebugPanel.tsx`**, **`procgen/types.ts`**, **`floorLayoutProfile.ts`**, **`floorTheme.ts`**, **`spawnTables.ts`**, **`dungeonEnvTextures.ts`**, **`musicTracks.ts`**, **`Content/camp_*.png`**, **`runFloorSchedule.test.ts`**, **`DESIGN.md`** §8.1.
+
+---
+
+## ADR-0275 — Main menu at cold start; Escape settings menu
+Date: 2026-04-10
+
+### Decision
+- **Bootstrap**: **`makeInitialState`** uses **`ui.screen: 'title'`** (was **`game`**) so **`TitleScreen`** shows on first paint.
+- **`ui.settingsOpen`** + actions **`ui/toggleSettings`** / **`ui/setSettingsOpen`**: when **`true`**, an early reducer guard blocks gameplay (same allowlist idea as title/hub/death gates). Clear **`settingsOpen`** on **`ui/goTitle`**, **`run/new`**, and **`run/reloadCheckpoint`**.
+- **Settings UI**: **`SettingsMenu`** in **`DitheredFrameRoot`** **`stageModalLayer`** (above **`interactiveHud`**); **capture** tree renders **`SettingsMenu`** alongside title/paperdoll/trade when open. Sliders use existing **`audio/set`** (persisted with F2 tuning via **`debugSettingsPersistence`**).
+- **Title screen**: primary label **Start**; **Quit** uses **`quitApplication()`** (**`window.close()`** then **`location.replace('about:blank')`**).
+- **Escape** in **`GameApp`**: **`stateRef`** + priority **settings → NPC dialog → paperdoll → trade → toggle settings**.
+
+### Rationale
+Ships a conventional main menu and pause/settings without a second audio state: player volume and dev sliders stay aligned. **`stageModalLayer`** already hosted NPC dialog; settings stacks above it so pause is reachable over modals when appropriate, while Escape ordering closes the topmost blocking UI first.
+
+### Consequences
+- **`web/src/game/types.ts`**, **`web/src/game/state/initialState.ts`**, **`web/src/game/reducer.ts`**, **`web/src/app/GameApp.tsx`**, **`web/src/ui/frame/DitheredFrameRoot.tsx`**, **`web/src/ui/settings/*`**, **`web/src/ui/title/TitleScreen.tsx`**, **`web/src/game/state/combat.test.ts`**, **`DESIGN.md`** §5.1 / §6.4.
+
+---
+
+## ADR-0277 — Global cursor pointermove; game-only 3D virtual hover; title/settings hand-active
+Date: 2026-04-10
+
+### Decision
+- **`CursorProvider`**: extract **`applyPointerMove(x, y)`**; subscribe to **`window` `pointermove`** (**`passive: true`**) so pointer position and DOM hover update outside **`HudLayout`** (e.g. **Settings** in **`stageModalLayer`**). Remove redundant **`onPointerMove={cursor.onPointerMove}`** from HUD/modal widgets so virtual-hover ordering stays correct (**`HudLayout`** **`setVirtualHover`** in the same tick, then the **`window`** listener consumes the ref).
+- **`HudLayout`**: run **3D pick / `floorDrop` virtual hover** only when **`ui.screen === 'game'`** (was “not hub”, which still ran on **title**).
+- **`CursorLayer`**: treat **`data-cursor-hand-active`** (on **Title** / **Settings** buttons) as **`Hand_Active`** when hit-testing with **`elementFromPoint`**.
+
+### Rationale
+Settings and other stage modals are siblings of **`.interactiveHud`**; pointer moves there never reached **`HudLayout`**, so the custom hand lagged or froze. Pinning **`floorDrop`** on the title screen kept **`hoverTarget`** non-interactive for **`Hand_Active`**. A single global move path avoids duplicate ref churn and preserves **`setVirtualHover`** semantics.
+
+### Consequences
+- **`web/src/ui/cursor/CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`cursorHandActiveAttr.ts`**, **`HudLayout.tsx`**, **`TitleScreen.tsx`**, **`SettingsMenu.tsx`**, and removal of move forwarding from **viewport / inventory / portraits / trade / death / NPC dialog / paperdoll / debug** panels. **`DESIGN.md`** §6.1 / §6.2.
+

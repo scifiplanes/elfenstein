@@ -29,6 +29,7 @@ import { runCaveLayout } from './realizeCave'
 import { runRuinsLayout } from './realizeRuins'
 import type { FloorPoi, PoiKind, Tile } from '../game/types'
 import { shortestPathLatticeStats } from './validate'
+import { layoutProfile } from './floorLayoutProfile'
 import { applyRoomShapingGuarded } from './shapeRooms'
 import { applyDungeonDoorFramesGuarded } from './doorFrames'
 import { deriveJunctionRooms } from './deriveRooms'
@@ -167,10 +168,11 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
 
   let tiles: Tile[]
   let genRooms: GenRoom[]
+  const profile = layoutProfile(floorType)
 
-  if (floorType === 'Cave') {
+  if (profile === 'Cave') {
     ;({ tiles, genRooms } = runCaveLayout(w, h, layoutRng))
-  } else if (floorType === 'Ruins') {
+  } else if (profile === 'Ruins') {
     ;({ tiles, genRooms } = runRuinsLayout(w, h, layoutRng))
   } else {
     ;({ tiles, genRooms } = runDungeonBspLayout(w, h, layoutRng))
@@ -186,7 +188,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   const loopsAdded = injectLoops({ tiles, w, h, rooms: genRooms, entrance, exit, rng: layoutRng }).added
 
   const doorFrames =
-    floorType === 'Dungeon' ? applyDungeonDoorFramesGuarded({ tiles, w, h, rng: layoutRng, maxFrames: 10 }) : { applied: false, framesApplied: 0 }
+    profile === 'Dungeon' ? applyDungeonDoorFramesGuarded({ tiles, w, h, rng: layoutRng, maxFrames: 10 }) : { applied: false, framesApplied: 0 }
 
   const lattice = shortestPathLatticeStats(tiles, w, h, entrance, exit)
   const wideness = lattice.shortestLen >= 0 ? lattice.latticeCells - lattice.shortestLen : 0
@@ -195,7 +197,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
 
   // Derived connector/junction rooms provide additional semantic anchors for tags/spawns.
   // These are stable and bounded and should not affect geometry.
-  genRooms = genRooms.concat(deriveJunctionRooms({ tiles, w, h, maxRooms: floorType === 'Dungeon' ? 6 : 4 }))
+  genRooms = genRooms.concat(deriveJunctionRooms({ tiles, w, h, maxRooms: profile === 'Dungeon' ? 6 : 4 }))
 
   assignDistrictsToRooms(genRooms, w, h, districtRng)
   tagRoomsWithQuotas(genRooms, floorProperties, tagsRng)

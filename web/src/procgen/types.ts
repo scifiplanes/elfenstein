@@ -1,6 +1,15 @@
 import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, StatusEffectId, Tile, Vec2 } from '../game/types'
 
-export type FloorType = 'Dungeon' | 'Cave' | 'Ruins'
+export type FloorType =
+  | 'Dungeon'
+  | 'Cave'
+  | 'Ruins'
+  | 'Jungle'
+  | 'LivingBio'
+  | 'Bunker'
+  | 'Catacombs'
+  | 'Golem'
+  | 'Palace'
 
 export type FloorProperty = 'Infested' | 'Cursed' | 'Destroyed' | 'Overgrown'
 
@@ -36,7 +45,15 @@ export type GenRoom = {
   district?: DistrictTag
   tags?: {
     roomFunction?: 'Passage' | 'Habitat' | 'Workshop' | 'Communal' | 'Storage'
-    roomProperties?: 'Burning' | 'Flooded' | 'Infected'
+    roomProperties?:
+      | 'Burning'
+      | 'Flooded'
+      | 'Infected'
+      | 'SporeMist'
+      | 'NanoHaze'
+      | 'Unstable'
+      | 'Haunted'
+      | 'RoyalMiasma'
     roomStatus?: 'Overgrown' | 'Destroyed' | 'Collapsed'
     size?: 'tiny' | 'medium' | 'large'
   }

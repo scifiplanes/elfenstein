@@ -37,11 +37,6 @@ export function GameViewport(props: {
           cursor.beginPointerDown({ itemId: pick.id, source: { kind: 'floorItem', itemId: pick.id } }, e)
         }
       }}
-      onPointerMove={(e) => {
-        // Primary cursor tracking runs at the HUD root. Keep this forwarding for redundancy
-        // (e.g. when the pointer is not captured and events do reach the viewport).
-        cursor.onPointerMove(e)
-      }}
       onPointerCancel={cursor.cancelDrag}
       onClick={(e) => {
         // Avoid firing click actions after a press+hold drag gesture begins.

@@ -1,0 +1,52 @@
+.backdrop {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.modal {
+  width: min(560px, calc(100% - 48px));
+}
+
+.title {
+  margin-bottom: 14px;
+}
+
+.sliderRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-rows: auto auto;
+  gap: 4px 12px;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.sliderLabel {
+  font-family: var(--buttonTitleFontFamily);
+  font-size: 21px;
+  font-weight: var(--buttonTitleFontWeight);
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+}
+
+.sliderValue {
+  font-family: var(--mono);
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.slider {
+  grid-column: 1 / -1;
+  width: 100%;
+  accent-color: rgba(171, 136, 107, 0.95);
+}
+
+.divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.12);
+  margin: 14px 0 12px;
+}

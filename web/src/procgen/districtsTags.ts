@@ -214,8 +214,13 @@ export function tagRoomsWithQuotas(
     const roomStatus =
       has('Overgrown') && rng.next() < 0.35 ? 'Overgrown' : has('Destroyed') && rng.next() < 0.25 ? 'Destroyed' : undefined
 
-    const roomProperties =
-      has('Infested') && rng.next() < 0.28 ? 'Infected' : has('Cursed') && rng.next() < 0.12 ? 'Burning' : undefined
+    let roomProperties: NonNullable<GenRoom['tags']>['roomProperties'] = undefined
+    if (has('Infested') && rng.next() < 0.28) roomProperties = 'Infected'
+    else if (has('Cursed') && rng.next() < 0.12) roomProperties = 'Burning'
+    else if (has('Overgrown') && rng.next() < 0.14) roomProperties = 'SporeMist'
+    else if (has('Destroyed') && rng.next() < 0.1) roomProperties = 'Unstable'
+    else if (has('Cursed') && rng.next() < 0.07) roomProperties = rng.next() < 0.5 ? 'Haunted' : 'RoyalMiasma'
+    else if (has('Cursed') && rng.next() < 0.06) roomProperties = 'NanoHaze'
 
     r.tags = { ...(r.tags ?? {}), size, roomFunction, roomStatus, roomProperties }
   }
@@ -265,7 +270,10 @@ function scoreRoomAssignment(args: {
   if (floorProps.includes('Overgrown') && status === 'Overgrown') s += 4
   if (floorProps.includes('Destroyed') && (status === 'Destroyed' || status === 'Collapsed')) s += 3
   if (floorProps.includes('Infested') && prop === 'Infected') s += 3
-  if (floorProps.includes('Cursed') && (prop === 'Flooded' || prop === 'Burning')) s += 2
+  if (floorProps.includes('Overgrown') && prop === 'SporeMist') s += 3
+  if (floorProps.includes('Cursed') && (prop === 'Flooded' || prop === 'Burning' || prop === 'Haunted' || prop === 'RoyalMiasma' || prop === 'NanoHaze'))
+    s += 2
+  if (floorProps.includes('Destroyed') && prop === 'Unstable') s += 3
 
   // Light pacing preference: Storage tends to feel better off the main band.
   if (args.onPathBand?.has(room.id)) {
@@ -318,7 +326,17 @@ export function solveRoomTags(args: {
 
   const steps = Math.max(30, Math.min(80, rooms.length * 4))
   const statuses: Array<RoomStatus | undefined> = [undefined, 'Overgrown', 'Destroyed', 'Collapsed']
-  const props: Array<RoomProp | undefined> = [undefined, 'Burning', 'Flooded', 'Infected']
+  const props: Array<RoomProp | undefined> = [
+    undefined,
+    'Burning',
+    'Flooded',
+    'Infected',
+    'SporeMist',
+    'NanoHaze',
+    'Unstable',
+    'Haunted',
+    'RoyalMiasma',
+  ]
 
   for (let it = 0; it < steps; it++) {
     const r = rooms[rng.int(0, rooms.length)]
@@ -426,7 +444,7 @@ export function applyTagConstraints(
     const flooded = sorted.filter((r) => r.tags?.roomProperties === 'Flooded')
     const infected = sorted.filter((r) => r.tags?.roomProperties === 'Infected')
 
-    const expandCluster = (seed: GenRoom, propId: 'Flooded' | 'Infected', p1: number, p2: number) => {
+    const expandCluster = (seed: GenRoom, propId: RoomProp, p1: number, p2: number) => {
       const q: Array<{ id: string; depth: number }> = [{ id: seed.id, depth: 0 }]
       const seen = new Set<string>([seed.id])
       for (let qi = 0; qi < q.length; qi++) {
@@ -454,6 +472,35 @@ export function applyTagConstraints(
     if (infected.length) {
       const seed = infected.slice().sort((a, b) => a.id.localeCompare(b.id))[0]!
       expandCluster(seed, 'Infected', 0.45, 0.18)
+    }
+  }
+
+  if (props.includes('Overgrown')) {
+    const spore = sorted.filter((r) => r.tags?.roomProperties === 'SporeMist')
+    if (spore.length) {
+      const adj = buildRoomAdjacency(sorted, tiles, w)
+      const expandSporeCluster = (seed: GenRoom, propId: RoomProp, p1: number, p2: number) => {
+        const q: Array<{ id: string; depth: number }> = [{ id: seed.id, depth: 0 }]
+        const seen = new Set<string>([seed.id])
+        for (let qi = 0; qi < q.length; qi++) {
+          const cur = q[qi]
+          const neigh = adj.get(cur.id) ?? []
+          for (const nid of neigh) {
+            if (seen.has(nid)) continue
+            seen.add(nid)
+            const n = sorted.find((rr) => rr.id === nid)
+            if (!n) continue
+            if (n.tags?.roomProperties === propId) continue
+            const roll = cur.depth === 0 ? p1 : p2
+            if (rng.next() < roll) {
+              n.tags = { ...(n.tags ?? {}), roomProperties: propId }
+              if (cur.depth < 1) q.push({ id: nid, depth: cur.depth + 1 })
+            }
+          }
+        }
+      }
+      const seed = spore.slice().sort((a, b) => a.id.localeCompare(b.id))[0]!
+      expandSporeCluster(seed, 'SporeMist', 0.42, 0.2)
     }
   }
 }

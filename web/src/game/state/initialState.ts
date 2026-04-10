@@ -7,6 +7,12 @@ import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
 import { pickPlayerSpawnCell } from './playerFloorCell'
 import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
+import {
+  clampCampEveryFloors,
+  difficultyForSegment,
+  floorTypeForFloorIndex,
+  segmentIndexForFloor,
+} from './runFloorSchedule'
 
 function mkInventory(cols: number, rows: number): InventoryGrid {
   return { cols, rows, slots: Array.from({ length: cols * rows }, () => null) }
@@ -56,9 +62,10 @@ export function makeInitialState(_content: ContentDB): GameState {
   const w = DEFAULT_FLOOR_W
   const h = DEFAULT_FLOOR_H
   const floorIndex = 0
-  const floorType = 'Dungeon' as const
+  const every = clampCampEveryFloors(DEFAULT_RENDER.campEveryFloors)
+  const floorType = floorTypeForFloorIndex(floorIndex, every)
   const floorProperties = [] as import('../../procgen/types').FloorProperty[]
-  const difficulty = 1 as const
+  const difficulty = difficultyForSegment(segmentIndexForFloor(floorIndex, every))
   const gen = generateDungeon({
     seed: floorSeed,
     w,
@@ -75,7 +82,8 @@ export function makeInitialState(_content: ContentDB): GameState {
   return {
     nowMs,
     ui: {
-      screen: 'game',
+      screen: 'title',
+      settingsOpen: false,
       debugOpen: false,
       sfxQueue: [],
       procgenDebugOverlay: undefined,

@@ -65,6 +65,10 @@ function remedyHint(defId: ItemDefId, c: Character, state: GameState): string | 
   if (defId === 'BandageStrip' && hasActiveStatus(c, state, 'Bleeding')) return 'This could help with your bleeding.'
   if (defId === 'AntitoxinVial' && hasActiveStatus(c, state, 'Poisoned')) return 'This could help with your poisoning.'
   if (defId === 'HerbPoultice' && hasActiveStatus(c, state, 'Sick')) return 'This could help with your sickness.'
+  if (defId === 'Salt' && (hasActiveStatus(c, state, 'Spored') || hasActiveStatus(c, state, 'Parasitized')))
+    return 'This might calm the irritation.'
+  if (defId === 'Moss' && hasActiveStatus(c, state, 'NanoTagged')) return 'This might draw the haze out of you.'
+  if (defId === 'AntitoxinVial' && hasActiveStatus(c, state, 'Parasitized')) return 'This could help with parasites.'
   return null
 }
 
@@ -231,6 +235,12 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
     const roll2 = ((statusSeed >>> 8) % 100) + 1
     if (roll2 <= 12) nextState = addStatus(nextState, characterId, 'Drowsy')
   }
+  if (item.defId === 'Salt') {
+    nextState = removeStatus(nextState, characterId, 'Spored')
+    nextState = removeStatus(nextState, characterId, 'Parasitized')
+  }
+  if (item.defId === 'Moss') nextState = removeStatus(nextState, characterId, 'NanoTagged')
+  if (item.defId === 'AntitoxinVial') nextState = removeStatus(nextState, characterId, 'Parasitized')
 
   nextState = consumeItem(nextState, itemId)
   const q = nextState.ui.sfxQueue ?? []

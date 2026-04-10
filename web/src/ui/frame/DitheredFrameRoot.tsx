@@ -1,7 +1,7 @@
 import html2canvas from 'html2canvas'
 import * as THREE from 'three'
 import type { Dispatch } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
@@ -11,6 +11,7 @@ import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { NpcDialogModal } from '../npc/NpcDialogModal'
 import { DeathModal } from '../death/DeathModal'
 import { TradeModal } from '../trade/TradeModal'
+import { SettingsMenu } from '../settings/SettingsMenu'
 import { TitleScreen } from '../title/TitleScreen'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
@@ -539,33 +540,40 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const hr = interactiveHudRef.current?.getBoundingClientRect() ?? pr
 
     const party = latestStateRef.current.party.chars.slice(0, 4)
-    const portraitRectsPx = party.map((c) => {
-      const root = interactiveHudRef.current
-      if (!root || !hr) return { left: 0, top: 0, width: 0, height: 0 }
-      const el = root.querySelector(`[data-portrait-character-id="${c.id}"]`) as HTMLElement | null
-      if (!el) return { left: 0, top: 0, width: 0, height: 0 }
-      const r = el.getBoundingClientRect()
-      return {
-        left: (r.left - (hr.left ?? 0)) / outerS,
-        top: (r.top - (hr.top ?? 0)) / outerS,
-        width: r.width / outerS,
-        height: r.height / outerS,
-      }
-    })
+    const onTitleScreen = latestStateRef.current.ui.screen === 'title'
+    const emptyPortraitRect = { left: 0, top: 0, width: 0, height: 0 }
 
-    const portraitStatsRectsPx = party.map((c) => {
-      const root = interactiveHudRef.current
-      if (!root || !hr) return { left: 0, top: 0, width: 0, height: 0 }
-      const el = root.querySelector(`[data-portrait-character-id="${c.id}"] [data-portrait-stats="true"]`) as HTMLElement | null
-      if (!el) return { left: 0, top: 0, width: 0, height: 0 }
-      const r = el.getBoundingClientRect()
-      return {
-        left: (r.left - (hr.left ?? 0)) / outerS,
-        top: (r.top - (hr.top ?? 0)) / outerS,
-        width: r.width / outerS,
-        height: r.height / outerS,
-      }
-    })
+    const portraitRectsPx = onTitleScreen
+      ? party.map(() => emptyPortraitRect)
+      : party.map((c) => {
+          const root = interactiveHudRef.current
+          if (!root || !hr) return emptyPortraitRect
+          const el = root.querySelector(`[data-portrait-character-id="${c.id}"]`) as HTMLElement | null
+          if (!el) return emptyPortraitRect
+          const r = el.getBoundingClientRect()
+          return {
+            left: (r.left - (hr.left ?? 0)) / outerS,
+            top: (r.top - (hr.top ?? 0)) / outerS,
+            width: r.width / outerS,
+            height: r.height / outerS,
+          }
+        })
+
+    const portraitStatsRectsPx = onTitleScreen
+      ? party.map(() => emptyPortraitRect)
+      : party.map((c) => {
+          const root = interactiveHudRef.current
+          if (!root || !hr) return emptyPortraitRect
+          const el = root.querySelector(`[data-portrait-character-id="${c.id}"] [data-portrait-stats="true"]`) as HTMLElement | null
+          if (!el) return emptyPortraitRect
+          const r = el.getBoundingClientRect()
+          return {
+            left: (r.left - (hr.left ?? 0)) / outerS,
+            top: (r.top - (hr.top ?? 0)) / outerS,
+            width: r.width / outerS,
+            height: r.height / outerS,
+          }
+        })
 
     const navRectsPx = (() => {
       const root = interactiveHudRef.current
@@ -614,9 +622,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const portraitIdleAr: number[] = []
     const portraitEyesInspectAr: number[] = []
     const portraitMouthOnForShader: number[] = []
-    for (const c of party) {
-      const urls = portraitOverlayUrlsForSpecies(c.species)
-      if (!urls) {
+    if (onTitleScreen) {
+      for (const _ of party) {
         portraitMouthTex.push(null)
         portraitIdleTex.push(null)
         portraitEyesInspectTex.push(null)
@@ -624,41 +631,54 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         portraitIdleAr.push(1)
         portraitEyesInspectAr.push(1)
         portraitMouthOnForShader.push(0)
-        continue
       }
-      const loader = textureLoaderRef.current
-      const cache = portraitTexCacheRef.current
-      const arCache = portraitArCacheRef.current
-      const getTex = (src: string) => {
-        const existing = cache.get(src)
-        if (existing) return existing
-        if (!loader) return null
-        const tex = loader.load(src, () => {
-          const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
-          const w = Number(img?.naturalWidth ?? img?.width ?? 0)
-          const h = Number(img?.naturalHeight ?? img?.height ?? 0)
-          if (w > 0 && h > 0) arCache.set(src, w / h)
-        })
-        tex.colorSpace = THREE.SRGBColorSpace
-        tex.minFilter = THREE.LinearFilter
-        tex.magFilter = THREE.LinearFilter
-        tex.generateMipmaps = false
-        cache.set(src, tex)
-        return tex
+    } else {
+      for (const c of party) {
+        const urls = portraitOverlayUrlsForSpecies(c.species)
+        if (!urls) {
+          portraitMouthTex.push(null)
+          portraitIdleTex.push(null)
+          portraitEyesInspectTex.push(null)
+          portraitMouthAr.push(1)
+          portraitIdleAr.push(1)
+          portraitEyesInspectAr.push(1)
+          portraitMouthOnForShader.push(0)
+          continue
+        }
+        const loader = textureLoaderRef.current
+        const cache = portraitTexCacheRef.current
+        const arCache = portraitArCacheRef.current
+        const getTex = (src: string) => {
+          const existing = cache.get(src)
+          if (existing) return existing
+          if (!loader) return null
+          const tex = loader.load(src, () => {
+            const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
+            const w = Number(img?.naturalWidth ?? img?.width ?? 0)
+            const h = Number(img?.naturalHeight ?? img?.height ?? 0)
+            if (w > 0 && h > 0) arCache.set(src, w / h)
+          })
+          tex.colorSpace = THREE.SRGBColorSpace
+          tex.minFilter = THREE.LinearFilter
+          tex.magFilter = THREE.LinearFilter
+          tex.generateMipmaps = false
+          cache.set(src, tex)
+          return tex
+        }
+        const idx = portraitMouthTex.length
+        const isOpen = (portraitMouthIsOpen[idx] ?? 0) > 0
+        const hasClosed = !!urls.mouthClosedSrc
+        const mouthSrc = isOpen ? urls.mouthSrc : (urls.mouthClosedSrc ?? urls.mouthSrc)
+        portraitMouthTex.push(getTex(mouthSrc))
+        portraitIdleTex.push(getTex(urls.idleSrc))
+        portraitEyesInspectTex.push(getTex(urls.eyesInspectSrc))
+        portraitMouthAr.push(arCache.get(mouthSrc) ?? 1)
+        portraitIdleAr.push(arCache.get(urls.idleSrc) ?? 1)
+        portraitEyesInspectAr.push(arCache.get(urls.eyesInspectSrc) ?? 1)
+        // If the species has a closed-mouth art, keep the compositor mouth overlay always active,
+        // swapping textures between open/closed for instant transitions without capture latency.
+        portraitMouthOnForShader.push(hasClosed ? 1 : isOpen ? 1 : 0)
       }
-      const idx = portraitMouthTex.length
-      const isOpen = (portraitMouthIsOpen[idx] ?? 0) > 0
-      const hasClosed = !!urls.mouthClosedSrc
-      const mouthSrc = isOpen ? urls.mouthSrc : (urls.mouthClosedSrc ?? urls.mouthSrc)
-      portraitMouthTex.push(getTex(mouthSrc))
-      portraitIdleTex.push(getTex(urls.idleSrc))
-      portraitEyesInspectTex.push(getTex(urls.eyesInspectSrc))
-      portraitMouthAr.push(arCache.get(mouthSrc) ?? 1)
-      portraitIdleAr.push(arCache.get(urls.idleSrc) ?? 1)
-      portraitEyesInspectAr.push(arCache.get(urls.eyesInspectSrc) ?? 1)
-      // If the species has a closed-mouth art, keep the compositor mouth overlay always active,
-      // swapping textures between open/closed for instant transitions without capture latency.
-      portraitMouthOnForShader.push(hasClosed ? 1 : isOpen ? 1 : 0)
     }
 
     const activeRoomPropRaw = roomPropertyUnderPlayer(latestStateRef.current)
@@ -697,13 +717,52 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
           tintMode: 1 as const,
           color: { r: 0.15, g: 0.95, b: 0.2 },
         }
+      if (activeRoomProp === 'SporeMist')
+        return {
+          strength: strength(0.55),
+          tintMode: 1 as const,
+          color: { r: 0.2, g: 0.85, b: 0.25 },
+        }
+      if (activeRoomProp === 'NanoHaze')
+        return {
+          strength: strength(0.58),
+          tintMode: 1 as const,
+          color: { r: 0.25, g: 0.85, b: 0.95 },
+        }
+      if (activeRoomProp === 'Unstable')
+        return {
+          strength: strength(0.64),
+          tintMode: 1 as const,
+          color: { r: 1.0, g: 0.55, b: 0.12 },
+        }
+      if (activeRoomProp === 'Haunted')
+        return {
+          strength: strength(0.62),
+          tintMode: 1 as const,
+          color: { r: 0.45, g: 0.2, b: 0.75 },
+        }
+      if (activeRoomProp === 'RoyalMiasma')
+        return {
+          strength: strength(0.52),
+          tintMode: 1 as const,
+          color: { r: 0.95, g: 0.75, b: 0.35 },
+        }
       return { strength: 0.0, tintMode: 0 as const, color: { r: 1.0, g: 1.0, b: 1.0 } }
     })()
     const hazardPulseMs = 3800
-    const hazardTintPulse =
-      activeRoomProp === 'Burning' || activeRoomProp === 'Flooded' || activeRoomProp === 'Infected'
-        ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
-        : 1
+    const hazardPulseProps = new Set([
+      'Burning',
+      'Flooded',
+      'Infected',
+      'SporeMist',
+      'NanoHaze',
+      'Unstable',
+      'Haunted',
+      'RoyalMiasma',
+    ])
+    const hazardTintPulse = activeRoomProp && hazardPulseProps.has(activeRoomProp)
+      ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
+      : 1
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
       uiTex: uiTexRef.current,
@@ -722,9 +781,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       portraitMouthTex,
       portraitIdleTex,
       portraitMouthOn: portraitMouthOnForShader,
-      portraitIdleOn,
+      portraitIdleOn: onTitleScreen ? [0, 0, 0, 0] : portraitIdleOn,
       portraitEyesInspectTex,
-      portraitEyesInspectOn: portraitHoverEyesOn,
+      portraitEyesInspectOn: onTitleScreen ? [0, 0, 0, 0] : portraitHoverEyesOn,
       portraitMouthAr,
       portraitIdleAr,
       portraitEyesInspectAr,
@@ -874,6 +933,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         </div>
       ) : null}
 
+      {state.ui.settingsOpen ? (
+        <div className={styles.stageModalLayer} style={{ pointerEvents: 'auto' }}>
+          <SettingsMenu state={state} dispatch={dispatch} />
+        </div>
+      ) : null}
+
       {captureMountEl
         ? createPortal(
             <div
@@ -903,13 +968,18 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
                     ) : null
                   }
                   captureFullHudOverlay={
-                    state.ui.screen === 'title' ? (
-                      <TitleScreen variant="capture" state={state} dispatch={noopDispatch} />
-                    ) : state.ui.paperdollFor ? (
-                      <PaperdollModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
-                    ) : tradeModalOpen ? (
-                      <TradeModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
-                    ) : null
+                    <Fragment>
+                      {state.ui.screen === 'title' ? (
+                        <TitleScreen variant="capture" state={state} dispatch={noopDispatch} />
+                      ) : state.ui.paperdollFor ? (
+                        <PaperdollModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
+                      ) : tradeModalOpen ? (
+                        <TradeModal variant="capture" state={state} dispatch={noopDispatch} content={content} />
+                      ) : null}
+                      {state.ui.settingsOpen ? (
+                        <SettingsMenu variant="capture" state={state} dispatch={noopDispatch} />
+                      ) : null}
+                    </Fragment>
                   }
                 />
               </div>

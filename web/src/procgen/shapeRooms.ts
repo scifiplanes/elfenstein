@@ -1,6 +1,7 @@
 import { isAnyDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
+import { layoutProfile } from './floorLayoutProfile'
 import type { FloorType, GenRoom } from './types'
 import { floodFillReachable, isWalkable } from './validate'
 
@@ -262,15 +263,16 @@ export function applyRoomShaping(args: {
   rng: Pick<Rng, 'next' | 'int'>
 }): { pillarsAdded: number; alcovesCarved: number; notchesCarved: number } {
   const { tiles, w, h, rooms, floorType, rng } = args
+  const profile = layoutProfile(floorType)
 
-  if (floorType === 'Dungeon') {
+  if (profile === 'Dungeon') {
     const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: 3 })
     const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: 0.18 })
     const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: 0.12 })
     return { pillarsAdded: p.pillarsAdded, alcovesCarved: a.alcovesCarved, notchesCarved: j.notchesCarved }
   }
 
-  if (floorType === 'Ruins') {
+  if (profile === 'Ruins') {
     const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: 0 })
     const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: 0.5 })
     const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: 0.42 })

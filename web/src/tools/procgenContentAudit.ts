@@ -59,7 +59,26 @@ export function runProcgenContentAudit(): ProcgenContentAuditResult {
   const lootAll = uniq([...CHEST_LOOT_DEF_IDS, ...CONTAINER_LOOT_DEF_IDS])
   const orphanLootIds = lootAll.filter((id) => !seedSet.has(id))
 
-  const npcUnion: NpcKind[] = ['Wurglepup', 'Bobr', 'Skeleton', 'Catoctopus', 'Swarm']
+  /** Keep in sync with `NpcKind` in `game/types.ts` (every kind should appear in procgen tables). */
+  const npcUnion: NpcKind[] = [
+    'Wurglepup',
+    'Bobr',
+    'Skeleton',
+    'Catoctopus',
+    'Swarm',
+    'Chumbo',
+    'Grub',
+    'Kuratko',
+    'Grechka',
+    'Snailord',
+    'Bulba',
+    'Elder',
+    'Kerekere',
+    'Bok',
+    'RegularBok',
+    'BigHands',
+    'Gargantula',
+  ]
   const npcMissingFromTable = npcUnion.filter((k) => !PROCgen_ALL_NPC_KINDS.includes(k))
 
   lines.push('=== Procgen / floor content audit ===')
