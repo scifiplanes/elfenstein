@@ -5359,3 +5359,17 @@ The repo JSON is the player-visible default after **Clear local overrides** and 
 **`web/public/debug-settings.json`**, **`web/src/game/hubHotspotDefaults.ts`**, **`DESIGN.md`** (hub trade copy, lighting bullets, header).
 
 ---
+
+## ADR-0323 — Single compositor rAF + idle HUD capture bursts
+Date: 2026-04-10
+
+### Decision
+In **`DitheredFrameRoot`**, drive **`renderOnce`** from **one** continuous **`requestAnimationFrame`** loop via **`renderOnceRef`** (so the latest closure is used each frame). Remove the duplicate path that called **`renderOnce`** from a **`useEffect` on `state`** while a second rAF loop also called it when “active” (shake, telegraph, etc.). Sync **`latestStateRef` / `latestContentRef`** during render (not only in **`useEffect`**) so the compositor reads the current **`GameState`** snapshot. For **`html2canvas`** when **`immediateCapture`** is true, prefer **`requestIdleCallback(..., { timeout: 48 })`** over **`setTimeout(0)`**, with **`setTimeout`** fallback when rIC is missing.
+
+### Rationale
+Two **`renderOnce`** invocations in quick succession (effect + conditional inner rAF) doubled **WebGL + composer** work and produced uneven frame times. Bumping **`layoutTick`** on resize only existed to retrigger that effect; the compositor loop already rereads layout **`clientWidth` / `clientHeight`** each frame. Idle-scheduled burst captures reduce main-thread contention with the compositor rAF.
+
+### Consequences
+Slightly more deferrable HUD texture updates during interaction bursts (capped by rIC **timeout**). **`DESIGN.md`** renderer bullet documents the single-rAF model. Resize **`ResizeObserver`** path no longer forces an extra React state bump for compositor pacing.
+
+---

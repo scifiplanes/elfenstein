@@ -129,6 +129,11 @@ function computePortraitMouthOn(args: {
 export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
   const { state, dispatch, content } = props
 
+  const latestStateRef = useRef<GameState>(state)
+  const latestContentRef = useRef(content)
+  latestStateRef.current = state
+  latestContentRef.current = content
+
   const fixedStageOuterScale = useFixedStageOuterScale()
   const fixedStageOuterScaleRef = useRef(1)
   fixedStageOuterScaleRef.current = fixedStageOuterScale
@@ -140,7 +145,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureHudRef = useRef<HTMLDivElement | null>(null)
   const captureGameViewportRef = useRef<HTMLDivElement | null>(null)
   const gameViewportRef = useRef<HTMLDivElement | null>(null)
-  const [layoutTick, setLayoutTick] = useState(0)
 
   const [captureMountEl, setCaptureMountEl] = useState<HTMLElement | null>(null)
 
@@ -157,8 +161,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureInFlightRef = useRef(false)
   const lastUiCaptureSizeRef = useRef<{ w: number; h: number } | null>(null)
   const observedElRef = useRef<Element | null>(null)
-  const latestStateRef = useRef<GameState>(state)
-  const latestContentRef = useRef(content)
   const renderBurstUntilMsRef = useRef(0)
   const prevHighFpsUiRef = useRef(false)
   const prevPoseKeyRef = useRef<string>('')
@@ -169,6 +171,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const captureScheduledRef = useRef(false)
   const lastHudKeyRef = useRef<string>('')
   const pendingHudKeyRef = useRef<string>('')
+  const renderOnceRef = useRef<() => boolean>(() => false)
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
   const [titleCutsceneMountEl, setTitleCutsceneMountEl] = useState<HTMLDivElement | null>(null)
@@ -181,6 +184,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   cursorLatestRef.current = cursor.state
   const pointerDownStartedAtMsRef = useRef<number | null>(null)
   const prevPointerDownRef = useRef(false)
+
+  {
+    const prev = prevPointerDownRef.current
+    const cur = cursor.state.isPointerDown
+    prevPointerDownRef.current = cur
+    if (!prev && cur) pointerDownStartedAtMsRef.current = performance.now()
+    if (prev && !cur) pointerDownStartedAtMsRef.current = null
+  }
 
   const onNavPadVisualPress = useCallback((id: NavPadButtonId) => {
     setNavPadPressedId(id)
@@ -202,17 +213,11 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   }, [])
 
   useEffect(() => {
-    latestStateRef.current = state
-    latestContentRef.current = content
-  }, [state, content])
-
-  useEffect(() => {
     void state.ui.npcDialogFor
     lastCaptureMsRef.current = 0
   }, [state.ui.npcDialogFor])
 
   useEffect(() => {
-    let raf = 0
     let ro: ResizeObserver | null = null
 
     const tryObserve = () => {
@@ -228,11 +233,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const bump = () => {
       tryObserve()
       renderBurstUntilMsRef.current = performance.now() + 250
-      if (raf) return
-      raf = window.requestAnimationFrame(() => {
-        raf = 0
-        setLayoutTick((x) => x + 1)
-      })
     }
 
     window.addEventListener('resize', bump)
@@ -249,7 +249,6 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       window.visualViewport?.removeEventListener('resize', bump)
       window.visualViewport?.removeEventListener('scroll', bump)
       ro?.disconnect()
-      if (raf) window.cancelAnimationFrame(raf)
     }
   }, [])
 
@@ -352,7 +351,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const gameCssH = gameEl.clientHeight
     if (gameCssW < 1 || gameCssH < 1) return false
 
-    // rAF loop (deps `[world]`) holds a stale `renderOnce` closure; always read cursor from ref.
+    // `renderOnceRef` keeps the latest closure; still read cursor from a ref (not `cursor` capture).
     const cs = cursorLatestRef.current
 
     const outerS = Math.max(1e-6, fixedStageOuterScaleRef.current)
@@ -500,14 +499,18 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     if (shouldAttemptCapture) {
       captureScheduledRef.current = true
       const schedule = (cb: () => void) => {
-        // For interaction bursts, run capture ASAP (idle callbacks can be delayed under load).
-        if (immediateCapture) {
-          window.setTimeout(cb, 0)
-          return
-        }
         const ric = (window as any).requestIdleCallback as
           | undefined
           | ((fn: () => void, opts?: { timeout?: number }) => number)
+        // Bursts: idle + short timeout avoids stacking on the compositor rAF; non-bursts use a longer idle budget.
+        if (immediateCapture) {
+          if (typeof ric === 'function') {
+            captureIdleHandleRef.current = ric(cb, { timeout: 48 })
+            return
+          }
+          window.setTimeout(cb, 0)
+          return
+        }
         if (typeof ric === 'function') {
           captureIdleHandleRef.current = ric(cb, { timeout: 120 })
           return
@@ -928,40 +931,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     return true
   }
 
-  // Render on state changes (normal gameplay).
-  useEffect(() => {
-    const prev = prevPointerDownRef.current
-    const cur = cursor.state.isPointerDown
-    prevPointerDownRef.current = cur
-    if (!prev && cur) pointerDownStartedAtMsRef.current = performance.now()
-    if (prev && !cur) pointerDownStartedAtMsRef.current = null
-    renderOnce()
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [world, layoutTick, state, navPadPressedId, cursor.state.hoverTarget, cursor.state.dragging?.started, cursor.state.isPointerDown])
+  renderOnceRef.current = renderOnce
 
-  // During resize, the browser can stretch stale frames; keep redrawing for a short burst.
   useEffect(() => {
     let raf = 0
     let stopped = false
     const loop = () => {
       if (stopped) return
-      const now = performance.now()
-      const s = latestStateRef.current
-      const ui = s.ui
-      const anyShakeActive = (!!ui.shake && ui.shake.untilMs > s.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > s.nowMs)
-      const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > s.nowMs
-      const hazardTelegraphActive = roomPropertyUnderPlayer(s) != null
-      const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
-      const cs = cursorLatestRef.current
-      const portraitPressActive = cs.isPointerDown && getPressedPortraitCharacterId(cs) != null
-      const active =
-        now < renderBurstUntilMsRef.current ||
-        anyShakeActive ||
-        mouthActive ||
-        hazardTelegraphActive ||
-        idlePulseActive ||
-        portraitPressActive
-      if (active) renderOnce()
+      renderOnceRef.current()
       raf = window.requestAnimationFrame(loop)
     }
     raf = window.requestAnimationFrame(loop)
@@ -969,8 +946,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       stopped = true
       if (raf) window.cancelAnimationFrame(raf)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [world])
+  }, [])
 
   useEffect(() => {
     return () => {
