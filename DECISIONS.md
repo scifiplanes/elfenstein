@@ -5345,3 +5345,17 @@ Those POIs previously shared the **Wurglepup** NPC ground pivot, which was easy 
 **`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**; **`DESIGN.md`** §8 / §9. Defaults **`0`** match the prior **Wurglepup** default; players who had tuned **Wurglepup** only for POIs must set the new POI sliders.
 
 ---
+
+## ADR-0322 — Ship author-tuned `debug-settings.json` + align hub trade defaults
+Date: 2026-04-10
+
+### Decision
+Commit the current **`web/public/debug-settings.json`** as the shipped cold-load baseline, including **`render.torchDistance` 2**, **`render.shadowFilter` 0** (Basic), and **`hubHotspots.tavern.innkeeperTrade`** **`x` 0.31 / `w` 0.34 / `h` 0.58** (still with **`HubViewport`** **`top: 350px`** for trade). Update **`DEFAULT_HUB_HOTSPOTS.innkeeperTrade`** in **`hubHotspotDefaults.ts`** to match so tests and no-JSON fallbacks agree with the shipped file.
+
+### Rationale
+The repo JSON is the player-visible default after **Clear local overrides** and on first load; keeping it aligned with **`DEFAULT_HUB_HOTSPOTS`** avoids drift between “no persistence” paths and the built **`public/`** snapshot.
+
+### Consequences
+**`web/public/debug-settings.json`**, **`web/src/game/hubHotspotDefaults.ts`**, **`DESIGN.md`** (hub trade copy, lighting bullets, header).
+
+---
