@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { ItemDefId, NpcLanguage } from '../types'
 import { npcQuestEnglishLine, npcQuestGibberishLine, QUEST_SPEECH_GIBBERISH_SEED_XOR } from './npcQuestSpeech'
 
 describe('npcQuestEnglishLine', () => {
@@ -19,7 +20,7 @@ describe('npcQuestGibberishLine', () => {
   const npcBase = {
     id: 'npc_a',
     language: 'DeepGnome' as const,
-    quest: { wants: 'IronKey' as const, hated: [] as const },
+    quest: { wants: 'IronKey' as const, hated: [] as ItemDefId[] },
   }
 
   it('returns null when there is no quest want', () => {
@@ -27,7 +28,7 @@ describe('npcQuestGibberishLine', () => {
   })
 
   it('is deterministic for seed, id, and language', () => {
-    const g = (lang: typeof npcBase.language) =>
+    const g = (lang: NpcLanguage) =>
       npcQuestGibberishLine({ ...npcBase, language: lang }, (id) => (id === 'IronKey' ? 'Iron key' : id), 42)
     const a = g('DeepGnome')
     const b = g('DeepGnome')

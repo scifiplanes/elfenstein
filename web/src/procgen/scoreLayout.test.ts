@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import type { Tile } from '../game/types'
 import type { FloorGenOutput } from './types'
 import { scoreLayout } from './scoreLayout'
 
@@ -18,7 +19,7 @@ function emptyMeta(w: number, h: number): FloorGenOutput['meta'] {
 function corridorGen(centerTile: 'floor' | 'lockedDoor', doors: FloorGenOutput['doors']): FloorGenOutput {
   const w = 5
   const h = 5
-  const tiles = Array.from({ length: w * h }, () => 'wall' as const)
+  const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       if (y === 2 && x >= 1 && x <= 3) {
