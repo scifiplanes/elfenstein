@@ -77,6 +77,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
         knownRecipes: state.ui.knownRecipes,
       },
     }
+    const wellSfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_well`, kind: 'well' as const }])
     return pushActivityLog(
       {
         ...state,
@@ -84,6 +85,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
         ui: {
           ...state.ui,
           shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 120, magnitude: 0.18 },
+          sfxQueue: wellSfxQueue,
         },
       },
       'Game saved at the well.',
