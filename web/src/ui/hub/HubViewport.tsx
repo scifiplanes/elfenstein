@@ -1,5 +1,7 @@
 import { useEffect, useState, type Dispatch, type RefObject } from 'react'
 import type { Action } from '../../game/reducer'
+import { clampCampEveryFloors, floorTypeForFloorIndex } from '../../game/state/runFloorSchedule'
+import { layoutProfile } from '../../procgen/floorLayoutProfile'
 import type { FloorType } from '../../procgen/types'
 import type { GameState, HubNormRect } from '../../game/types'
 import popup from '../shared/GamePopup.module.css'
@@ -14,9 +16,11 @@ const START_HUB_ART: Record<'village' | 'tavern', string> = {
 
 const CAMP_TAVERN_BG = '/content/camp_tavern_background.png'
 
+/** Camp village art triples follow `layoutProfile` so reskins match their geometry realizer. */
 function campVillageSkinId(floorType: FloorType): 'village' | 'cave' | 'dungeon' {
-  if (floorType === 'Cave') return 'cave'
-  if (floorType === 'Dungeon') return 'dungeon'
+  const p = layoutProfile(floorType)
+  if (p === 'Cave') return 'cave'
+  if (p === 'Dungeon') return 'dungeon'
   return 'village'
 }
 
@@ -85,7 +89,10 @@ export function HubViewport(props: {
   const { state, dispatch, viewportRef, variant = 'interactive' } = props
   const scene = state.ui.hubScene ?? 'village'
   const camp = state.ui.hubKind === 'camp'
-  const campSkin = campVillageSkinId(state.floor.floorType)
+  const campEvery = clampCampEveryFloors(state.render.campEveryFloors)
+  const campSkin = camp
+    ? campVillageSkinId(floorTypeForFloorIndex(Math.max(0, state.floor.floorIndex - 1), campEvery))
+    : 'village'
   const mainArtSrc =
     scene === 'village'
       ? camp

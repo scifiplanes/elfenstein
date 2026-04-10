@@ -5150,3 +5150,31 @@ Phase 2 from the content roadmap: more recipe discovery without new combat syste
 
 ### Consequences
 **`DESIGN.md`** §7.3, §9 POI list; new ADR (this entry).
+
+---
+
+## ADR-0309 — Camp hub village skin uses `layoutProfile` (not raw `FloorType`)
+Date: 2026-04-10
+
+### Decision
+**`HubViewport`** **`campVillageSkinId`**: map **`/content/camp_<skin>.png`** and matching **`_tavern_hover` / `_dungeon_hover`** from **`layoutProfile(state.floor.floorType)`** (**`floorLayoutProfile.ts`**): **`Cave`** profile → **`cave`**, **`Dungeon`** profile → **`dungeon`**, **`Ruins`** profile → **`village`**.
+
+### Rationale
+Mapping only exact **`Cave`** / **`Dungeon`** **`FloorType`** values meant most segment boundaries (e.g. **`Jungle`**, **`Bunker`**) never loaded **`camp_cave`** / **`camp_dungeon`** art; the three camp PNG sets align with the **three layout realizers**, not the nine-type rotation.
+
+### Consequences
+**`web/src/ui/hub/HubViewport.tsx`**, **`DESIGN.md`** §5.1 and §8.1; supersedes the skin table in **ADR-0306** (camp hub themed art).
+
+---
+
+## ADR-0310 — Camp hub skin from completed segment, not next `floor.floorType`
+Date: 2026-04-10
+
+### Decision
+**`HubViewport`**: when **`hubKind === 'camp'`**, derive **`campVillageSkinId`** input from **`floorTypeForFloorIndex(max(0, floor.floorIndex - 1), clampCampEveryFloors(render.campEveryFloors))`**, then **`layoutProfile`** → **`camp_cave` / `camp_dungeon` / `camp_village`** URLs (unchanged triple). **`state.floor`** at camp already describes the **pre-generated next** floor, so **index − 1** is the last floor of the segment that triggered the camp.
+
+### Rationale
+Camp art should reflect the expedition **just cleared** (cave- vs dungeon- vs ruins-layout segment), not the **upcoming** segment’s type.
+
+### Consequences
+**`web/src/ui/hub/HubViewport.tsx`** (imports **`runFloorSchedule`**); **`DESIGN.md`** §5.1 / §8.1; refines **ADR-0309** (which keyed off **`floor.floorType`** at camp).
