@@ -1,12 +1,13 @@
 import type { GameState } from '../../game/types'
-import { BG_NOISE_TRACKS, PROXIMITY_OVERLAYS, TITLE_THEME_TRACK } from './musicTracks'
+import { BG_NOISE_TRACKS, PROXIMITY_OVERLAYS, TITLE_THEME_TRACK, VILLAGE_TRACK } from './musicTracks'
 
 /**
  * Returns the URL of the track that should loop as the primary background.
- * Title screen gets the menu theme; in-game uses the floor-type ambient loop.
+ * Title → menu theme; village hub → village loop; in-game → floor-type ambient.
  */
 export function selectBgTrack(state: GameState): string {
   if (state.ui.screen === 'title') return TITLE_THEME_TRACK
+  if (state.ui.screen === 'hub' && state.ui.hubScene === 'village') return VILLAGE_TRACK
   return BG_NOISE_TRACKS[state.floor.floorType] ?? BG_NOISE_TRACKS.Dungeon
 }
 

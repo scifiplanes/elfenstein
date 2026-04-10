@@ -40,6 +40,8 @@ export function MusicLayer(props: { state: GameState }) {
   const sfxTimerRef       = useRef<number>(0)
   /** Latest masterMusic value — read inside the sfx setTimeout callback. */
   const masterMusicRef    = useRef(state.audio.masterMusic)
+  /** Latest screen — used to suppress bg sfx outside the dungeon. */
+  const screenRef         = useRef(state.ui.screen)
   /** Last debugBgSfxTrigger seq we acted on — detects new triggers. */
   const lastSfxSeqRef     = useRef(-1)
 
@@ -89,7 +91,7 @@ export function MusicLayer(props: { state: GameState }) {
     const scheduleSfx = () => {
       const delaySec = BG_SFX_MIN_SEC + Math.random() * (BG_SFX_MAX_SEC - BG_SFX_MIN_SEC)
       sfxTimerRef.current = window.setTimeout(() => {
-        sfxPlayer.play(masterMusicRef.current)
+        if (screenRef.current === 'game') sfxPlayer.play(masterMusicRef.current)
         scheduleSfx()
       }, delaySec * 1000)
     }
@@ -105,9 +107,10 @@ export function MusicLayer(props: { state: GameState }) {
     }
   }, [bgPlayer, overlayPlayers, sfxPlayer])
 
-  // ── Keep masterMusicRef in sync before effects run (avoids stale closure in sfx timer). ──
+  // ── Keep refs in sync before effects run (avoids stale closures in sfx timer). ──
   useLayoutEffect(() => {
     masterMusicRef.current = state.audio.masterMusic
+    screenRef.current = state.ui.screen
   })
 
   // ── Master volume ────────────────────────────────────────────────────────────
