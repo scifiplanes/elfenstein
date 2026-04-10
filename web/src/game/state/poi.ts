@@ -1,5 +1,5 @@
 import type { ContentDB } from '../content/contentDb'
-import { CHEST_LOOT_DEF_IDS, CONTAINER_LOOT_DEF_IDS } from '../content/poiLootTables'
+import { STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR } from '../content/poiLootTables'
 import type { GameState, ItemId } from '../types'
 import { addStatus, removeStatus } from './status'
 import { consumeItem } from './inventory'
@@ -334,14 +334,21 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
   return state
 }
 
+function storageLootPoolForFloor(state: GameState): readonly string[] {
+  const pool = STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR[state.floor.floorType]
+  return pool.length ? pool : STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR.Dungeon
+}
+
 function pickChestLootDefId(state: GameState, poiId: string): string {
+  const pool = storageLootPoolForFloor(state)
   const seed = hashStr(`${state.floor.seed}:chest:${poiId}`)
-  return CHEST_LOOT_DEF_IDS[seed % CHEST_LOOT_DEF_IDS.length]
+  return pool[seed % pool.length]!
 }
 
 function pickContainerLootDefId(state: GameState, poiId: string): string {
+  const pool = storageLootPoolForFloor(state)
   const seed = hashStr(`${state.floor.seed}:container:${poiId}`)
-  return CONTAINER_LOOT_DEF_IDS[seed % CONTAINER_LOOT_DEF_IDS.length]
+  return pool[seed % pool.length]!
 }
 
 function hashStr(s: string) {

@@ -5304,7 +5304,7 @@ Date: 2026-04-10
 - Add **`@playwright/test`** under **`web/`** with **`playwright.config.ts`**: **`testDir`** **`e2e/`**, **`webServer`** runs **`npm run build && npm run preview`** on **`127.0.0.1:4173`** with **`strictPort`**, **`reuseExistingServer`** off in CI.
 - Set **`PLAYWRIGHT_BROWSERS_PATH`** to **`web/node_modules/.cache/ms-playwright`** in config (and **`scripts/playwright-install.mjs`**) so installs are project-local and predictable when a parent sets a broken global cache.
 - **`npm run playwright:install`**: install Chromium; append **`--with-deps`** when **`CI`** is set (Linux agents).
-- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → wait for Bobr intro → village hub (**ADR-0329**: no skip click).
+- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → wait for Bobr intro → village hub (**ADR-0355**: no skip click).
 - GitHub Actions **`.github/workflows/web.yml`**: **`npm ci`**, **`npm test`** (Vitest), **`npm run playwright:install`**, **`npm run test:e2e`**.
 
 ### Rationale
@@ -5374,7 +5374,7 @@ Slightly more deferrable HUD texture updates during interaction bursts (capped b
 
 ---
 
-## ADR-0324 — Hub/title: hide minimap + nav; inventory width unchanged
+## ADR-0350 — Hub/title: hide minimap + nav; inventory width unchanged
 Date: 2026-04-10
 
 ### Decision
@@ -5388,7 +5388,7 @@ Town/hub does not need dungeon navigation chrome; keeping the **same** inventory
 
 ---
 
-## ADR-0325 — Title screen: `ui_logo.png` + copyright stack
+## ADR-0351 — Title screen: `ui_logo.png` + copyright stack
 Date: 2026-04-10
 
 ### Decision
@@ -5402,7 +5402,7 @@ Brand reads from authored logo art instead of live text; layout keeps the **foot
 
 ---
 
-## ADR-0326 — Title→hub: no stale title `uiTex` after Bobr intro
+## ADR-0352 — Title→hub: no stale title `uiTex` after Bobr intro
 Date: 2026-04-10
 
 ### Decision
@@ -5416,7 +5416,7 @@ The **Bobr** intro is rendered in a **portal** above **`presentCanvas`**, not in
 
 ---
 
-## ADR-0327 — Title→hub boot `uiTex`: track last captured screen + never fall back to stale title
+## ADR-0353 — Title→hub boot `uiTex`: track last captured screen + never fall back to stale title
 Date: 2026-04-10
 
 ### Decision
@@ -5430,11 +5430,11 @@ Parsing **`screen=`** from **`lastHudKeyRef`** was fragile; requiring **`uiTexRe
 
 ---
 
-## ADR-0328 — Bobr intro over an already-active hub (`bobrIntroUntilMs`)
+## ADR-0354 — Bobr intro over an already-active hub (`bobrIntroUntilMs`)
 Date: 2026-04-10
 
 ### Decision
-**Start** dispatches **`run/new`** with **`playBobrIntro: true`**, which sets **`screen: 'hub'`** immediately and stores **`ui.bobrIntroUntilMs`** (absolute **`nowMs` + `BOBR_INTRO_TOTAL_MS`**). **`BobrIntroPortal`** in **`DitheredFrameRoot`** renders the Bobr **`createPortal`** while that deadline is in the future; **`time/tick`** past the deadline, **`animationend`**, the **8.6s** timer, or **`ui/dismissBobrIntro`** from those automated paths clear it—**not** pointer skip (**ADR-0329**). Other **`run/new`** call sites omit **`playBobrIntro`**.
+**Start** dispatches **`run/new`** with **`playBobrIntro: true`**, which sets **`screen: 'hub'`** immediately and stores **`ui.bobrIntroUntilMs`** (absolute **`nowMs` + `BOBR_INTRO_TOTAL_MS`**). **`BobrIntroPortal`** in **`DitheredFrameRoot`** renders the Bobr **`createPortal`** while that deadline is in the future; **`time/tick`** past the deadline, **`animationend`**, the **8.6s** timer, or **`ui/dismissBobrIntro`** from those automated paths clear it—**not** pointer skip (**ADR-0355**). Other **`run/new`** call sites omit **`playBobrIntro`**.
 
 ### Rationale
 The **title** **`TitleScreen`** unmounts as soon as **`screen !== 'title'`**, so Bobr could not stay on screen if **`run/new`** ran only at intro end. Running **hub** under the full-screen Bobr avoids a visible transition at intro completion.
@@ -5444,7 +5444,7 @@ The **title** **`TitleScreen`** unmounts as soon as **`screen !== 'title'`**, so
 
 ---
 
-## ADR-0329 — Bobr intro: no pointer skip
+## ADR-0355 — Bobr intro: no pointer skip
 Date: 2026-04-10
 
 ### Decision
@@ -5455,3 +5455,305 @@ Authors want the full Bobr beat to play every time.
 
 ### Consequences
 - **`web/src/ui/title/BobrIntroPortal.tsx`**, **`web/e2e/helpers.ts`** (**`bobrIntroSettleMs`** wait), **`web/e2e/smoke.spec.ts`**, **`DESIGN.md`** §3 / §5.1.
+
+---
+
+## ADR-0324 — Innkeeper opening trade speech: mojibake-only (no English prefix)
+Date: 2026-04-10
+
+### Decision
+**`innkeeperSpeechWelcome`** in **`web/src/game/npc/innkeeperTradeMojibake.ts`** no longer prepends **“Welcome. I take ”**; the opening **`ui.hubInnkeeperSpeech`** line is only the comma-separated mojibake tokens for **They want** (or one short fake word when **`wants`** is empty).
+
+### Rationale
+Keeps the innkeeper’s voice consistently garbled and avoids readable English that spelled out the barter frame.
+
+### Consequences
+**`innkeeperTradeMojibake.ts`**, **`DESIGN.md`** §5.1, **`trade.test.ts`** (opening speech assertion).
+
+---
+
+## ADR-0325 — `validateGen` lattice width uses geometric walkability, not closed locks
+Date: 2026-04-10
+
+### Decision
+In **`web/src/procgen/locks.ts`** **`validateGen`**, the entrance→exit shortest-path **lattice** width check (minimum **`shortestLen`**, **`latticeCells` > **`shortestLen + 1`**) uses **`shortestPathLatticeStats`** (same as **`isWalkable`**: door tiles passable) instead of **`shortestPathLatticeStatsWithLocks`** with **`lockedDoorsAreWalkable: false`**.
+
+### Rationale
+A gate that correctly blocks the **exit** when all locks are closed has **no** lock-aware path from **entrance** to **exit**, so the old metric returned **`shortestLen === -1`** and every floor with procgen locks failed validation—**`generateDungeon`** never kept those attempts, so **locked doors never appeared** in play. The lattice rule’s intent is **layout geometry** (a wide enough shortest-path *band*), not “can you reach the exit while locks are closed.” The latter is already enforced separately (**`allReachableWithLocks`** on **`tilesWithFirstKLocksOpen(..., 0)`**).
+
+### Consequences
+**`locks.ts`**, **`locks.test.ts`** (regression: **`generateDungeon`** seed **12** yields locks and passes **`validateGen`**); **`DESIGN.md`** §8.3 validation paragraph updated for the split between geometric lattice vs lock-aware BFS.
+
+---
+
+## ADR-0326 — Default party display name equals species
+Date: 2026-04-10
+
+### Decision
+Set each shipped default character’s **`Character.name`** in **`initialState.ts`** to its **`species`** (**Igor**, **Mycyclops**, **Frosch**, **Afonso**) instead of **Char1**–**Char4**. Reword **`speciesFeedHint`** in **`interactions.ts`** so copy does not repeat the species when name and species match. **`PortraitPanel`** **`aria-label`** uses **`species`** only when **`name === species`**, otherwise **`name, species`**.
+
+### Rationale
+HUD and logs already key off **`name`** (combat indicator, paperdoll, activity log). Aligning defaults with species removes placeholder labels without threading **`species`** through every call site.
+
+### Consequences
+**`initialState.ts`**, **`interactions.ts`**, **`PortraitPanel.tsx`**, **`DESIGN.md`** §7.1.
+
+---
+
+## ADR-0327 — Rename species Igor→Ihor, Mycyclops→Miclops
+Date: 2026-04-10
+
+### Decision
+Change **`Species`** and all references: **`Igor`** → **`Ihor`**, **`Mycyclops`** → **`Miclops`**. Default party **`name`** and **`species`** in **`initialState.ts`**, **`SPECIES_PORTRAIT`** / fallbacks in **`PortraitPanel.tsx`**, compositor portrait paths in **`DitheredFrameRoot.tsx`**, mushroom **`onlySpecies`** in **`items.ts`**, and **`combat.test`** fixtures follow the new ids. **`DESIGN.md`** species list and portrait bullets use the new spellings (Boblin/myclops art filenames unchanged).
+
+### Rationale
+Player-facing and type-level naming should match the requested labels without keeping dead spellings in code.
+
+### Consequences
+**`types.ts`**, **`initialState.ts`**, **`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`items.ts`**, **`combat.test.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0328 — Display names only: Ihor / Miclops vs species Igor / Mycyclops
+Date: 2026-04-10
+
+### Decision
+Revert **`Species`** to **`Igor`** and **`Mycyclops`** (undo **ADR-0327** type renames). Keep **ADR-0327**-style **player-facing spellings** only on **`Character.name`** in **`initialState.ts`**: **`Ihor`** for **`species: 'Igor'`**, **`Miclops`** for **`species: 'Mycyclops'`**. Portrait maps, compositor URLs, mushroom **`onlySpecies`**, and tests use **`species`** ids again.
+
+### Rationale
+Canonical species stays stable for content and mechanics; HUD and logs show the preferred display names without renaming the type surface.
+
+### Consequences
+**`types.ts`**, **`initialState.ts`**, **`PortraitPanel.tsx`**, **`DitheredFrameRoot.tsx`**, **`items.ts`**, **`combat.test.ts`**, **`DESIGN.md`** §7.1. **ADR-0327** rationale is superseded for **`Species`**; entry retained as history.
+
+---
+
+## ADR-0329 — Combat quest shout uses gibberish, not English
+Date: 2026-04-10
+
+### Decision
+When the **20%** deterministic **quest shout** fires in **`npcTakeTurn`** ([**`combat.ts`**](web/src/game/state/combat.ts)), the activity log line uses **`npcQuestGibberishLine`** ([**`npcQuestSpeech.ts`**](web/src/game/npc/npcQuestSpeech.ts))—same **`toGibberish`** seed (**`Math.floor(floor.seed) ^ 0xabc`**) and **`npc.id`** salt as **`NpcDialogModal`**—instead of pushing plain English from **`npcQuestEnglishLine`**.
+
+### Rationale
+Keeps diegetic NPC voice consistent between the dialog speech strip and combat log; the wanted item is not spelled in readable English in the log.
+
+### Consequences
+**`npcQuestSpeech.ts`** (**`QUEST_SPEECH_GIBBERISH_SEED_XOR`**, **`npcQuestGibberishSeed`**, **`npcQuestGibberishLine`**), **`NpcDialogModal.tsx`** (uses the helper), **`combat.ts`**, **`npcQuestSpeech.test.ts`**, **`combat.test.ts`**, **`DESIGN.md`** §7.7.
+
+---
+
+## ADR-0330 — Higher NPC density + floor-typed storage POI loot
+Date: 2026-04-10
+
+### Decision
+- **`spawnNpcsAndItems`** ([**`population.ts`**](web/src/procgen/population.ts)): roll **6–12** NPCs per floor (**`rng.int(6, 13)`**), clamp to deduped **free floor** cells inside **candidate room rects**, **Fisher–Yates** shuffle on the **`population`** RNG stream; **near** rooms = **bottom quartile** of entrance BFS distance among candidates; remove the old **fourth NPC only if all hostile** gate.
+- **Chest / barrel / crate**: one shared **`STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR`** ([**`poiLootTables.ts`**](web/src/game/content/poiLootTables.ts)); **`pickChestLootDefId`** / **`pickContainerLootDefId`** ([**`poi.ts`**](web/src/game/state/poi.ts)) use **`floor.floorType`** with separate **`:chest:`** vs **`:container:`** hash prefixes.
+
+### Rationale
+Roughly **2–3×** more encounters per floor for pacing; thematic loot matches **dungeon skin** (**`FloorType`**) instead of a single global uniform table.
+
+### Consequences
+Same numeric **procgen seed** no longer reproduces pre-change **NPC placement/kinds** (extra RNG draw + new placement). **`procgenContentAudit`** unions **`PROCgen_ALL_STORAGE_POI_LOOT_DEF_IDS`**. **`DESIGN.md`** §7.5, §9, §13.2; tests in **`population.npcCount.test.ts`**.
+
+---
+
+## ADR-0331 — Debug-tunable NPC spawn count (default mean ~6)
+Date: 2026-04-10
+
+### Decision
+Add **`render.npcSpawnCountMin`** and **`render.npcSpawnCountMax`** (inclusive uniform integer roll per floor, clamped to spawn slots). Defaults **4** and **8** (mean **6**, ~**2×** pre-**ADR-0330** typical **~3**). Thread through **`FloorGenInput`** into **`spawnNpcsAndItems`**. F2 **Render** sliders + **`pickRenderTuningForPersistence`** / shipped **`debug-settings.json`**.
+
+### Rationale
+Lets authors stress-test density without code changes; default stays a **doubled** baseline vs. legacy sparse floors.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`npcSpawnTuning.ts`**, **`reducer.ts`** (`clampRenderTuning`), **`DebugPanel.tsx`**, **`generateDungeon`**, **`initialState`**, **`floorProgression`**, **`public/debug-settings.json`**, **`DESIGN.md`** §7.5.
+
+**Follow-up (same ADR):** **`pickRenderTuningForPersistence`** uses **`?? DEFAULT_RENDER`** per key so **`debug-settings.json`** always serializes a full render schema (including **NPC spawn** counts) even if in-memory state ever lacked a field; **`GameApp`** save **`useEffect`** dependency lists include **`npcSpawnCountMin`** / **`npcSpawnCountMax`** so edits trigger local + project writes like other render sliders.
+
+---
+
+## ADR-0332 — `layoutScore`: walkable passage includes locked doors + lock presence bonus
+Date: 2026-04-10
+
+### Decision
+In **`web/src/procgen/scoreLayout.ts`**:
+- Count **reachable mass**, **junctions**, and **dead ends** on **`isWalkable`** cells (not **`tile === 'floor'`** only), so **`lockedDoor` / `lockedDoorOctopus`** are not penalized vs **`floor`**.
+- Add an unconditional **`lockPresenceBonus`** (**`LOCK_PRESENCE_BASE`** scaled by the same **`difficulty`** factor as the existing lock+loop term) when **`gen.doors`** includes an ordered lock.
+
+### Rationale
+After **ADR-0325**, layouts with procgen locks could **validate**, but **`generateDungeon`** still picked no-lock rerolls almost always: **`scoreLayout`** excluded door tiles from the main heuristic mass, and **`lockLoopBonus`** required a stricter lattice branch threshold than **`validateGen`**, so lock attempts rarely scored highest.
+
+### Consequences
+**`scoreLayout.ts`**, **`scoreLayout.test.ts`**, **`DESIGN.md`** §8.3; players should see locked doors more often when any valid attempt places them.
+
+---
+
+## ADR-0333 — F2 debug full-floor minimap modal
+Date: 2026-04-10
+
+### Decision
+Add a **Minimap** control on the F2 **`DebugPanel`** that opens **`DebugMinimapModal`**: a **`createPortal`** overlay above the debug panel showing the full **`floor.w` × `floor.h`** grid with the same cell **`data-kind`** styling as **`MinimapPanel`**, live **POI** / **player** precedence, **NPC** dots colored by **`status`**, and **inset rings** on **`floor.gen.entrance`** / **`floor.gen.exit`** when **`gen`** is present. **Escape**, click on the dimmed area outside the dialog, and **Close** dismiss the modal. The dimmer and dialog are confined to the viewport left of a fixed right **lane** (**`14px + 360px + 14px`**, matching **`DebugPanel`**) that stays clear and **`pointer-events: none`** so the F2 menu remains visible and interactive.
+
+### Rationale
+Authors need a quick, in-client view of topology, locks/doors (via current **`tiles`**), spawns, and procgen entrance/exit alignment without exporting JSON or reading logs alone.
+
+### Consequences
+New files **`web/src/ui/debug/DebugMinimapModal.tsx`**, **`DebugMinimapModal.module.css`**; **`DebugPanel.tsx`** wires the button + local open state. **`DESIGN.md`** §3 Debug (F2). **Follow-up:** grid layout **`backdrop` / `dimmed` / `panelLane`** reserves the F2 panel strip so the minimap does not cover it.
+
+---
+
+## ADR-0334 — NPC spawn: do not drop whole room when POI sits on room center
+Date: 2026-04-10
+
+### Decision
+In **`spawnNpcsAndItems`** ([**`population.ts`**](web/src/procgen/population.ts)), treat a **`GenRoom`** as an NPC spawn **candidate** when its **`rect`** contains **≥1** unoccupied **floor** cell (same occupancy rules as slot collection), instead of requiring **`isFreeFloor(room.center)`**. Added **`rectHasAnyFreeFloorCell`** helper; **`roomScore`** / **near** quartile logic still uses BFS distance at **`room.center`**.
+
+### Rationale
+**POI** placement often uses **room centers** (bed, storage POIs, etc.). The old filter removed the **entire** room from candidates when the center was reserved, so **`slots.length`** could collapse to **0** or a tiny number on **single-chamber** caves or large rooms—ignoring **`npcSpawnCountMin`** / **`max`** in practice.
+
+### Consequences
+Higher realized NPC counts when space exists; **procgen seeds** change vs. pre-fix placement. **`DESIGN.md`** §7.5; regression test in **`population.npcCount.test.ts`**.
+
+---
+
+## ADR-0335 — Per-`FloorType` topology tuning (shared realizers)
+Date: 2026-04-10
+
+### Decision
+Add **`web/src/procgen/floorTopologyTuning.ts`** with **`TOPOLOGY_BY_FLOOR_TYPE`** and **`resolveTopologyTuning(floorType, floorProperties)`**. Wire **`generateDungeonOnce`** to pass tuning into **`runDungeonBspLayout`**, **`runCaveLayout`**, **`runRuinsLayout`**, **`applyRoomShapingGuarded`** (now takes **`RoomShapingTuning`**), **`smoothWallsCarveOnly`**, **`injectLoops`**, **`deriveJunctionRooms`**, **`applyDungeonDoorFramesGuarded`**, and **`scoreLayout`** (optional **`LayoutScoreWeights`**; defaults preserve legacy math for **`Dungeon`**, **`Cave`**, **`Ruins`**). Reskin types diverge with small authored deltas (e.g. **Bunker** straighter / fewer loops; **Jungle** branchier caves). **`floorProperties`** apply small guarded deltas (e.g. **Destroyed** +1 loop cap, slightly more jitter).
+
+### Rationale
+Nine **`FloorType`** values shared only three geometries; art/spawns were not enough for distinct **navigational** feel. Central data keeps tuning auditable and avoids nine copy-pasted generators.
+
+### Consequences
+**`realizeDungeonBsp.ts`**, **`realizeCave.ts`**, **`realizeRuins.ts`**, **`shapeRooms.ts`**, **`scoreLayout.ts`**, **`generateDungeon.ts`**, **`floorTopologyTuning.test.ts`**. Same **`inputSeed`** / **`floorIndex`** can yield **different** winning rerolls or tiles when reskin weights differ; **`genVersion`** stays **5** (no new **`meta`** fields). **Not done here:** fourth **`LayoutProfile`** or **`planMissionBeforeGeometry`** embedding (**`missionFirst.ts`**). **`DESIGN.md`** §8.1–8.3 updated.
+
+---
+
+## ADR-0336 — F2 door billboard size and placement (`render.doorSprite*`)
+Date: 2026-04-10
+
+### Decision
+Add **`RenderTuning`** fields **`doorSpriteHeight`**, **`doorSpriteCenterY`**, **`doorSpriteNudgeX`**, **`doorSpriteNudgeZ`** (defaults preserve prior implicit **1×1** scale and **Y = 0.55**), clamp in **`clampRenderTuning`**, persist via **`DEFAULT_RENDER`** / **`debug-settings.json`**. **`WorldRenderer.syncDoorSprites`** applies them each frame to **all** door-tile pickable billboards (**wooden** + **octopus**) and to **`doorFxTracked`** open-FX sprites (width from texture aspect). F2 **DebugPanel** exposes four sliders alongside other NPC/POI render tuning.
+
+### Rationale
+Door art alignment was hardcoded; debug needs the same live iteration loop as NPC/POI billboards without separate per-variant sliders.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`DESIGN.md`** §3 / §8.
+
+---
+
+## ADR-0337 — Persistent passable open-door tiles (`doorOpen` / `doorOpenOctopus`)
+Date: 2026-04-10
+
+### Decision
+Extend **`Tile`** with **`doorOpen`** and **`doorOpenOctopus`**. **`tryOpenDoor`** writes those instead of **`floor`**; **`attemptMoveTo`** treats them like **`floor`** for stepping. **`isWalkable`** / **`isWalkableWithLocks`** include them. **`WorldRenderer.buildGeometry`** draws **floor + ceiling +** static open sprite (**`door_open.png`** or **`door_octopus_opening_03.png`** via new **`getDoorOctopusOpenStaticMat`**). Stop appending **`ui.doorOpenFx`** from **`tryOpenDoor`** ( **`syncDoorFx`** remains for empty/legacy). Minimap **`data-kind`** styling, **GameViewport** door click steps through open doors, **`layoutPasses`** / overgrown / procgen debug overlays treat **`doorOpen*`** like walkable ground.
+
+### Rationale
+Players should still **see** the doorway after it opens; **`floor`** removed the prop entirely. Short-lived FX alone did not leave a readable landmark.
+
+### Consequences
+**`tiles.ts`**, **`validate.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`layoutPasses.ts`**, **`playerFloorCell.ts`**, **`GameViewport.tsx`**, **`MinimapPanel.module.css`**, **`tiles.openDoor.test.ts`**, **`DESIGN.md`** §8.1. Octopus **3-frame** opening **animation** in the separate FX group is **not** used on normal open anymore (follow-up possible).
+
+---
+
+## ADR-0338 — Topology follow-up: loop inject tuning, ruins cell reskins, metrics snapshots, debug readout
+Date: 2026-04-10
+
+### Decision
+Extend **`LayoutTopologyTuning`** with **`loopInject`** (**`LoopInjectTuning`**) merged into **`injectLoops`** (**`layoutPasses.ts`**) with **`LEGACY_LOOP_INJECT_TUNING`** matching pre-change behavior. Set **`Catacombs.ruins.cellSize`** to **4** and **`Palace`** to **6**; nudge **`loopInject.thickCorridorChance`** on those reskins and **`randomFloorSamples`** on **Jungle**. Add Vitest **`toMatchSnapshot`** on **`floor.gen.meta.layoutMetrics`** per **`FloorType`** at a fixed **`FloorGenInput`**, plus tile-digest inequality tests (reskin vs base). F2 **Procgen** shows a one-line **`topologyTuning`** summary from **`resolveTopologyTuning`**.
+
+### Rationale
+Follow-up to **ADR-0335**: regression coverage for silent procgen drift, stronger **Ruins** reskin contrast without a new realizer, and faster author feedback in debug.
+
+### Consequences
+**`floorTopologyTuning.ts`**, **`layoutPasses.ts`**, **`generateDungeon.ts`**, **`floorTopologyTuning.test.ts`**, **`floorLayoutMetrics.snap.test.ts`** + **`__snapshots__/`**, **`DebugPanel.tsx`**, **`DESIGN.md`** §8.1–8.4. **Still deferred:** fourth **`LayoutProfile`** and **`planMissionBeforeGeometry`** (**`missionFirst.ts`**).
+
+---
+
+## ADR-0339 — Lock placement articulation fallback (full grid, door frames first)
+Date: 2026-04-10
+
+### Decision
+After the existing **`placeLocksOnPath`** shortest-path placement (including two-lock) finds no valid separating cell, run a **fallback** that enumerates **`floor`** tiles (excluding **`occupied`**, **`entrance`**, **`exit`**), prefers **`isDoorFrameCandidate`** cells in **ascending** index order (near-entrance first), then other floors ascending, and places a single **A** / **IronKey** lock when **`separatesExit`** holds. Key position comes from **`shortestPathIndices(entrance → lock)`** with a **length-2** path using **`entrance`** as key cell.
+
+### Rationale
+**`injectLoops`** often removes separating cells along **one** shortest path, so path-only lock placement rarely fired; validation and **`layoutScore`** fixes did not increase **placement** frequency.
+
+### Consequences
+**`locks.ts`**, **`locks.test.ts`**, **`DESIGN.md`** §8.2 step 8.
+
+---
+
+## ADR-0340 — Combat encounter join range (Chebyshev from player)
+Date: 2026-04-10
+
+### Decision
+After building the encounter candidate set (**same procgen room** as the trigger NPC, or **Chebyshev ≤ 1** from the player when no room), filter **non-primary** hostiles: they join only if **Chebyshev distance** to **`floor.playerPos`** is **≤ `render.combatEncounterJoinChebyshevMax`** (clamped **1–32**, default **5**). The **trigger NPC** always remains on the roster when **`hostileJoinsEncounter`** allows them, even if beyond the cap.
+
+### Rationale
+Same-room roster pulled **every** hostile in a large room, producing oversized “dogpile” encounters; a distance cap keeps fights local to the player without changing corridor defaults (**cap ≥ 1** preserves **≤ 1** candidate pool).
+
+### Consequences
+**`collectEncounterNpcIds`** (**`combat.ts`**), **`RenderTuning`** + **`DEFAULT_RENDER`** + **`clampRenderTuning`**, F2 slider (**`DebugPanel.tsx`**), **`combat.test.ts`**, shipped **`debug-settings.json`** key, **`DESIGN.md`** §7.7 + F2 paragraph.
+
+---
+
+## ADR-0341 — Passable open-door billboards excluded from 3D picking
+Date: 2026-04-10
+
+### Decision
+In **`WorldRenderer.buildGeometry`**, static sprites for **`doorOpen`** / **`doorOpenOctopus`** tiles keep **`pickables` membership** (so **`syncDoorSprites`** tuning still applies) but use a **no-op `raycast`**, so **`WorldRenderer.pickTarget`** / **`pickObject`** never register hits on them. **Closed** door sprites keep default raycasting.
+
+### Rationale
+Open-door billboards are large in screen space and often sat **closest** on the camera ray vs **POI** / **NPC** / **floor-item** targets behind them, stealing hover and click.
+
+### Consequences
+**`WorldRenderer.ts`**, **`DESIGN.md`** §6.2 / §6.4 viewport bullet. **Mouse click** no longer triggers **`GameViewport`’s** forward-step path when aiming at the **open** door sprite only (grid movement still walks through).
+
+---
+
+## ADR-0342 — Decorative closed doors on Dungeon door-frame throats
+Date: 2026-04-10
+
+### Decision
+After **`placeLocksOnPath`**, **Dungeon** profile floors run **`applyDecorativeDoorsOnDoorFrames`**: remaining unused **`isDoorFrameCandidate`** **`floor`** cells (skipping **`occupied`**) each roll **`decorativeDoorFrameChance`** from **`LayoutTopologyTuning`** (default **0.75**) to become **closed** **`door` / `doorOctopus`** (same octopus probability curve as locked doors). A dedicated RNG stream **`decorDoors`** (`splitSeed(attemptSeed, 9)`) drives the pass. No **`GenDoor`** rows; gameplay already opens **`door` / `doorOctopus`** without a key.
+
+### Rationale
+Door frames created many choke-shaped **`floor`** cells but only **0–2** became locked doors, so most “doorways” had no door billboard. Closed non-locked doors should outnumber locked ones and read clearly as doorways.
+
+### Consequences
+**`locks.ts`** (export **`isDoorFrameCandidate`**, **`pickDecorativeDoorTile`**), **`doorFrames.ts`**, **`generateDungeon.ts`**, **`floorTopologyTuning.ts`**, **`types.ts`** (**`layoutMetrics.decorativeDoorsApplied`**, **`streams.decorDoors`**), **`doorFrames.test.ts`**, **`floorTopologyTuning.test.ts`**, **`floorLayoutMetrics` snapshots**, **`DESIGN.md`** §8.1–8.3.
+
+---
+
+## ADR-0343 — Vitest parity check for `debug-settings.json`
+Date: 2026-04-10
+
+### Decision
+Add **`web/src/app/debugSettingsJsonParity.test.ts`**: it asserts **`web/public/debug-settings.json`** has **`render`** / **`audio`** key sets identical to **`DEFAULT_RENDER`** / **`DEFAULT_AUDIO`** (the same objects **`pickRenderTuningForPersistence`** / **`pickAudioTuningForPersistence`** iterate), and that **`hubHotspots`** / **`debugUi`** sections exist.
+
+### Rationale
+After adding render/audio tuning keys, it is easy to update types and **`DEFAULT_*`** but forget to re-save the JSON; CI then fails until the file is updated, keeping the shipped schema aligned with persistence.
+
+### Consequences
+Run **`npm test`** (or **`vitest run src/app/debugSettingsJsonParity.test.ts`**) after changing tuning defaults or the checked-in debug file.
+
+---
+
+## ADR-0344 — Canonical `Content/` for well glow + more NPC idle billboards
+Date: 2026-04-10
+
+### Decision
+- Keep **`/content/npc_well_glow.png`** in repo **`Content/`** (it was referenced by **`poiDefs.ts`** / **`WorldRenderer`** but missing from the canonical tree; only **`web/public/content/`** had a copy).
+- Extend **`NPC_SPRITE_IDLE_SRC`** in **`web/src/game/npc/npcDefs.ts`** so **Bobr**, **Chumbo**, **Grub**, **Kuratko**, and **Snailord** use their existing **`npc_*_idle.png`** assets with the same **~2 s** base/idle swap as **Skeleton**, **Catoctopus**, and **Wurglepup** (**`WorldRenderer.syncNpcIdleFrames`**).
+
+### Rationale
+Vite serves **`/content/*`** from **`Content/`** in dev and copies that tree into **`dist/content/`** on build; glow art must live there to avoid 404s on case-sensitive hosts and to match the documented POI stack. Idle PNGs already existed on disk but were unused in code.
+
+### Consequences
+**`npcDefs.ts`**, **`Content/npc_well_glow.png`**, **`DESIGN.md`** §7.5 NPC rendering bullet.
+
+---

@@ -33,6 +33,8 @@ export function descendToNextFloor(state: GameState): GameState {
     floorType: nextFloorType,
     floorProperties: state.floor.floorProperties,
     difficulty: nextDifficulty,
+    npcSpawnCountMin: state.render.npcSpawnCountMin,
+    npcSpawnCountMax: state.render.npcSpawnCountMax,
   })
 
   const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)

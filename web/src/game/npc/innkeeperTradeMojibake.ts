@@ -9,11 +9,10 @@ function mix(seed: number, salt: string): number {
   return h >>> 0
 }
 
-const WELCOME_PREFIX = 'Welcome. I take '
-
 /**
- * Opening trade: readable English frame + one mojibake token per wanted **`ItemDefId`**
+ * Opening trade: one mojibake token per wanted **`ItemDefId`**
  * (same order as **They want** in `TradeModal`). Pure-ASCII names use a fake word seeded from id + label.
+ * When there are no wants, a short single fake word is used instead.
  */
 export function innkeeperSpeechWelcome(
   wants: readonly ItemDefId[],
@@ -22,7 +21,7 @@ export function innkeeperSpeechWelcome(
 ): string {
   if (wants.length === 0) {
     const w = mojibakeFakeWords(2, mix(seed, '|wel0|'))
-    return `${WELCOME_PREFIX}${w[0]}.`
+    return `${w[0]}.`
   }
   const garbled = wants.map((id, i) => {
     const name = itemDisplayName(id)
@@ -30,7 +29,7 @@ export function innkeeperSpeechWelcome(
     if (fromUtf8 !== name) return fromUtf8
     return mojibakeFakeWord(mix(mix(mix(seed, `|want${i}|`), id), name))
   })
-  return `${WELCOME_PREFIX}${garbled.join(', ')}.`
+  return `${garbled.join(', ')}.`
 }
 
 /** Player selected stock; offer slot empty. At most two mojibake “words”. */

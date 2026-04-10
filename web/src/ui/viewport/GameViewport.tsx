@@ -2,7 +2,7 @@ import type { Dispatch } from 'react'
 import type { RefObject } from 'react'
 import { useRef } from 'react'
 import type { Action } from '../../game/reducer'
-import { isAnyDoorTile } from '../../game/tiles'
+import { isAnyDoorTile, isPassableOpenDoorTile } from '../../game/tiles'
 import type { GameState } from '../../game/types'
 import { useCursor } from '../cursor/useCursor'
 import styles from './GameViewport.module.css'
@@ -60,8 +60,8 @@ export function GameViewport(props: {
           if (Number.isFinite(x) && Number.isFinite(y)) {
             const idx = x + y * state.floor.w
             const tile = state.floor.tiles[idx]
-            if (isAnyDoorTile(tile)) {
-              // Attempt open by walking “into” it.
+            if (isAnyDoorTile(tile) || isPassableOpenDoorTile(tile)) {
+              // Closed: open by walking into it; open: step through.
               dispatch({ type: 'player/step', forward: 1 })
             }
           }

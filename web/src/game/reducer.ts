@@ -20,6 +20,7 @@ import type {
 import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
 import { applyGpuTierToRender, isTierOwnedRenderKey } from './gpuTierPresets'
 import { DEFAULT_RENDER } from './tuningDefaults'
+import { clampNpcSpawnCountRange } from './npcSpawnTuning'
 import {
   LEGACY_NPC_FLAT_KEYS,
   buildNpcBillboardFromInput,
@@ -50,7 +51,7 @@ import { npcKindHpMax } from './content/npcCombat'
 import { hydrateFloorNpcs, npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { pickNpcLootDefId } from './content/npcLoot'
-import { doorFxVisualForTile, isAnyDoorTile, isOpenDoorTile } from './tiles'
+import { isAnyDoorTile, isOpenDoorTile, isPassableOpenDoorTile, tileAfterDoorOpens } from './tiles'
 import { findRecipe } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
@@ -1008,6 +1009,8 @@ export function reduce(state: GameState, action: Action): GameState {
         floorType: state.floor.floorType,
         floorProperties: state.floor.floorProperties,
         difficulty: normalizeFloorGenDifficulty(state.floor.difficulty),
+        npcSpawnCountMin: state.render.npcSpawnCountMin,
+        npcSpawnCountMax: state.render.npcSpawnCountMax,
       })
       const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
       const playerDir = 0 as const
@@ -1730,7 +1733,16 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const poiSpriteBoost = Math.max(0, Math.min(3, Number(src.poiSpriteBoost ?? 1.0)))
   const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(src.poiFootLift ?? 0.02)))
   const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(src.hubInnkeeperSpriteScale ?? 1)))
+  const doorSpriteHeight = Math.max(0.05, Math.min(3, Number(src.doorSpriteHeight ?? 1)))
+  const doorSpriteCenterY = Math.max(0, Math.min(2, Number(src.doorSpriteCenterY ?? 0.55)))
+  const doorSpriteNudgeX = Math.max(-0.5, Math.min(0.5, Number(src.doorSpriteNudgeX ?? 0)))
+  const doorSpriteNudgeZ = Math.max(-0.5, Math.min(0.5, Number(src.doorSpriteNudgeZ ?? 0)))
   const campEveryFloors = Math.min(99, Math.max(1, Math.round(Number(src.campEveryFloors ?? 10))))
+  const { min: npcSpawnCountMin, max: npcSpawnCountMax } = clampNpcSpawnCountRange(
+    src.npcSpawnCountMin,
+    src.npcSpawnCountMax,
+  )
+  const combatEncounterJoinChebyshevMax = Math.max(1, Math.min(32, Math.round(Number(src.combatEncounterJoinChebyshevMax ?? 5))))
   return {
     ...src,
     globalIntensity,
@@ -1797,7 +1809,14 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     poiSpriteBoost,
     poiFootLift,
     hubInnkeeperSpriteScale,
+    doorSpriteHeight,
+    doorSpriteCenterY,
+    doorSpriteNudgeX,
+    doorSpriteNudgeZ,
     campEveryFloors,
+    npcSpawnCountMin,
+    npcSpawnCountMax,
+    combatEncounterJoinChebyshevMax,
   }
 }
 
@@ -2052,7 +2071,7 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
   if (isAnyDoorTile(tile)) {
     return tryOpenDoor(state, idx, tile)
   }
-  if (tile !== 'floor') return bump(state)
+  if (tile !== 'floor' && !isPassableOpenDoorTile(tile)) return bump(state)
 
   const npc = state.floor.npcs.find((n) => n.pos.x === nx && n.pos.y === ny)
   if (npc?.status === 'hostile') {
@@ -2110,29 +2129,14 @@ function tickViewAnimation(state: GameState): GameState {
 }
 
 function tryOpenDoor(state: GameState, idx: number, tile: Tile): GameState {
-  const fxVisual = doorFxVisualForTile(tile)
-  const fxDurationMs = fxVisual === 'octopus' ? 900 : 420
+  const openedTile = tileAfterDoorOpens(tile)
 
   if (isOpenDoorTile(tile)) {
     const tiles = state.floor.tiles.slice()
-    tiles[idx] = 'floor'
-    const w = state.floor.w
-    const doorX = idx % w
-    const doorY = (idx / w) | 0
-    const keep = (state.ui.doorOpenFx ?? []).filter((x) => x.untilMs > state.nowMs)
-    const doorOpenFx = keep.concat([
-      {
-        id: `doorFx_${state.nowMs}_${doorX},${doorY}`,
-        pos: { x: doorX, y: doorY },
-        startedAtMs: state.nowMs,
-        untilMs: state.nowMs + fxDurationMs,
-        visual: fxVisual,
-      },
-    ])
+    tiles[idx] = openedTile
     const next = {
       ...state,
       floor: { ...state.floor, tiles, floorGeomRevision: state.floor.floorGeomRevision + 1 },
-      ui: { ...state.ui, doorOpenFx },
     }
     return reduce(next, { type: 'ui/toast', text: 'The door creaks open.', ms: 900 })
   }
@@ -2152,21 +2156,10 @@ function tryOpenDoor(state: GameState, idx: number, tile: Tile): GameState {
   const keyId = keyItem.id
   const consumed = keyId ? consumeItem(state, keyId) : state
   const tiles = consumed.floor.tiles.slice()
-  tiles[idx] = 'floor'
-  const keep = (consumed.ui.doorOpenFx ?? []).filter((x) => x.untilMs > consumed.nowMs)
-  const doorOpenFx = keep.concat([
-    {
-      id: `doorFx_${consumed.nowMs}_${doorX},${doorY}`,
-      pos: { x: doorX, y: doorY },
-      startedAtMs: consumed.nowMs,
-      untilMs: consumed.nowMs + fxDurationMs,
-      visual: fxVisual,
-    },
-  ])
+  tiles[idx] = openedTile
   const opened = {
     ...consumed,
     floor: { ...consumed.floor, tiles, floorGeomRevision: consumed.floor.floorGeomRevision + 1 },
-    ui: { ...consumed.ui, doorOpenFx },
   }
   let next: GameState = opened
   const xpRes = applyXp(next, 18)

@@ -61,7 +61,16 @@ export type EquipmentSlot =
 
 export type PortraitDropTarget = 'eyes' | 'mouth' | 'hat' | 'hands'
 
-export type Tile = 'wall' | 'floor' | 'door' | 'lockedDoor' | 'doorOctopus' | 'lockedDoorOctopus'
+export type Tile =
+  | 'wall'
+  | 'floor'
+  | 'door'
+  | 'lockedDoor'
+  | 'doorOctopus'
+  | 'lockedDoorOctopus'
+  /** Passable like `floor`; keeps open-door billboard in 3D. */
+  | 'doorOpen'
+  | 'doorOpenOctopus'
 
 export type PoiKind = 'Well' | 'Chest' | 'Barrel' | 'Crate' | 'Bed' | 'Shrine' | 'CrackedWall' | 'Exit'
 
@@ -205,7 +214,10 @@ export type UiState = {
   activityLog?: Array<{ id: Id; text: string; atMs: number }>
   shake?: { untilMs: number; magnitude: number; startedAtMs: number }
   sfxQueue?: Array<{ id: Id; kind: 'ui' | 'hit' | 'swing' | 'reject' | 'pickup' | 'munch' | 'step' | 'bump' | 'nav' | 'bones' | 'well' | 'deep_gnome' }>
-  /** Short-lived sprite FX when opening a door (rendered in 3D viewport). */
+  /**
+   * Optional short-lived door-open sprite overlay (3D viewport). Open doors normally use tiles
+   * **`doorOpen`** / **`doorOpenOctopus`** with a persistent mesh billboard instead.
+   */
   doorOpenFx?: Array<{
     id: Id
     pos: Vec2
@@ -447,8 +459,31 @@ export type RenderTuning = {
   poiFootLift: number
   /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not resize hub hotspot rects. */
   hubInnkeeperSpriteScale: number
+  /**
+   * Door billboards (wooden + octopus, closed and **`doorOpen`** / **`doorOpenOctopus`** tiles, plus legacy **`ui.doorOpenFx`**):
+   * height in world units; width = height × texture aspect. F2 debug; persisted in `debug-settings.json`.
+   */
+  doorSpriteHeight: number
+  /** World Y of the door sprite center (pivot). */
+  doorSpriteCenterY: number
+  /** Additive world X offset on the cell center (same units as floor mesh wx). */
+  doorSpriteNudgeX: number
+  /** Additive world Z offset on the cell center (same units as floor mesh wz). */
+  doorSpriteNudgeZ: number
   /** Dungeon floors per segment before a camp hub (1–99; default 10). */
   campEveryFloors: number
+  /**
+   * Procgen NPC count per floor: uniform integer in **[npcSpawnCountMin, npcSpawnCountMax]** (inclusive).
+   * Persisted in F2 / `debug-settings.json`; takes effect on **Regen** / **Descend** / new floor gen.
+   */
+  npcSpawnCountMin: number
+  npcSpawnCountMax: number
+  /**
+   * Encounter roster: non-primary hostiles must be within this Chebyshev distance of the player.
+   * The NPC that triggered combat always joins (when `hostileJoinsEncounter` allows).
+   * F2 / `debug-settings.json`; default 5.
+   */
+  combatEncounterJoinChebyshevMax: number
 
   /** Player/debug GPU preset; `custom` when shadow, DPR cap, or dither tier knobs diverge via sliders. */
   gpuTier: GpuTier

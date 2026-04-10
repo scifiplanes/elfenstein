@@ -68,6 +68,8 @@ export function GameApp() {
   }, [
     debugTuningHydrated,
     state.render,
+    state.render.npcSpawnCountMin,
+    state.render.npcSpawnCountMax,
     state.audio,
     state.hubHotspots,
     state.ui.debugBgTrack,
@@ -94,6 +96,8 @@ export function GameApp() {
   }, [
     debugTuningHydrated,
     state.render,
+    state.render.npcSpawnCountMin,
+    state.render.npcSpawnCountMax,
     state.audio,
     state.hubHotspots,
     state.ui.debugBgTrack,

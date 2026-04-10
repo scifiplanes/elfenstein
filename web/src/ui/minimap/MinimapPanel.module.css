@@ -96,3 +96,11 @@
 .cell[data-kind='lockedDoorOctopus'] {
   background: rgb(178, 62, 52);
 }
+
+.cell[data-kind='doorOpen'] {
+  background: rgb(148, 188, 138);
+}
+
+.cell[data-kind='doorOpenOctopus'] {
+  background: rgb(148, 188, 138);
+}

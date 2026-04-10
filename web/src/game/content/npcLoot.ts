@@ -51,7 +51,7 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
     { defId: 'Foodroot', weight: 2 },
     { defId: 'Ash', weight: 2 },
     { defId: 'Sulfur', weight: 2 },
-    { defId: 'BobrJuice', weight: 2 },
+    { defId: 'BobrJuice', weight: 4 },
   ],
   Chumbo: [
     { defId: 'Bone', weight: 4 },
@@ -61,7 +61,7 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
   ],
   Grub: [
     { defId: 'Grubling', weight: 4 },
-    { defId: 'Moss', weight: 3 },
+    { defId: 'Moss', weight: 5 },
     { defId: 'Slime', weight: 2 },
   ],
   Kuratko: [

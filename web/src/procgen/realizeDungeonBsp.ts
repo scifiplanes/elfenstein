@@ -1,6 +1,7 @@
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import type { GenRoom } from './types'
+import { LEGACY_BSP_TUNING, type BspLayoutTuning } from './floorTopologyTuning'
 import { carveCorridor, carveRect, center, type Rect } from './layoutPasses'
 
 type BspNode =
@@ -11,15 +12,21 @@ function manhattan(a: Vec2, b: Vec2): number {
   return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
 }
 
-export function runDungeonBspLayout(w: number, h: number, layoutRng: Rng): { tiles: Tile[]; genRooms: GenRoom[] } {
+export function runDungeonBspLayout(
+  w: number,
+  h: number,
+  layoutRng: Rng,
+  tuning: BspLayoutTuning = LEGACY_BSP_TUNING,
+): { tiles: Tile[]; genRooms: GenRoom[] } {
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   const genRooms: GenRoom[] = []
+  const minLeaf = Math.max(3, Math.min(12, Math.floor(tuning.minLeaf)))
+  const maxDepth = Math.max(2, Math.min(12, Math.floor(tuning.maxDepth)))
 
   function split(rect: Rect, depth: number): BspNode {
-    const minLeaf = 6
-    if (depth >= 6 || rect.w < minLeaf * 2 || rect.h < minLeaf * 2) {
-      const rw = Math.max(3, Math.floor(rect.w * (0.45 + layoutRng.next() * 0.25)))
-      const rh = Math.max(3, Math.floor(rect.h * (0.45 + layoutRng.next() * 0.25)))
+    if (depth >= maxDepth || rect.w < minLeaf * 2 || rect.h < minLeaf * 2) {
+      const rw = Math.max(3, Math.floor(rect.w * (tuning.roomWMinFrac + layoutRng.next() * tuning.roomWRandSpan)))
+      const rh = Math.max(3, Math.floor(rect.h * (tuning.roomHMinFrac + layoutRng.next() * tuning.roomHRandSpan)))
       const rx = rect.x + layoutRng.int(0, Math.max(1, rect.w - rw))
       const ry = rect.y + layoutRng.int(0, Math.max(1, rect.h - rh))
       const room = { x: rx, y: ry, w: rw, h: rh }
@@ -55,20 +62,23 @@ export function runDungeonBspLayout(w: number, h: number, layoutRng: Rng): { til
   // Add a small number of extra connectors for cycles/alternate routes.
   // Deterministic via the existing layout RNG stream.
   if (genRooms.length >= 4) {
-    const maxExtra = layoutRng.next() < 0.35 ? 2 : 1
+    const maxExtra = layoutRng.next() < tuning.extraConnectorHighChance ? 2 : 1
     const usedPairs = new Set<string>()
+    const dMin = Math.max(4, Math.floor(tuning.extraConnectorMinDist))
+    const dMax = Math.max(dMin + 2, Math.floor(tuning.extraConnectorMaxDist))
+    const pairTries = Math.max(6, Math.min(40, Math.floor(tuning.extraConnectorTries)))
     for (let k = 0; k < maxExtra; k++) {
       let bestA: Vec2 | null = null
       let bestB: Vec2 | null = null
       let bestD = -1
-      for (let tries = 0; tries < 18; tries++) {
+      for (let tries = 0; tries < pairTries; tries++) {
         const i = layoutRng.int(0, genRooms.length)
         const j = layoutRng.int(0, genRooms.length)
         if (i === j) continue
         const a = genRooms[i].center
         const b = genRooms[j].center
         const d = manhattan(a, b)
-        if (d < 8 || d > 24) continue
+        if (d < dMin || d > dMax) continue
         const key = i < j ? `${i}-${j}` : `${j}-${i}`
         if (usedPairs.has(key)) continue
         if (d > bestD) {

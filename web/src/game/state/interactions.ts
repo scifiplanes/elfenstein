@@ -78,7 +78,7 @@ function speciesFeedHint(def: ItemDef, c: Character): string | null {
   if (!def.feed?.statusChances?.length) return null
   for (const sc of def.feed.statusChances) {
     if (sc.onlySpecies === c.species) {
-      return `It might affect ${c.name} differently than others (${c.species} affinity).`
+      return `Effects may differ for this species (${c.species} affinity).`
     }
   }
   return null

@@ -1,14 +1,14 @@
 import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId, WeaponDamageStat } from '../types'
 import { ContentDB } from '../content/contentDb'
 import { npcCombatTuningFromContent } from '../content/npcCombat'
-import { npcQuestEnglishLine } from '../npc/npcQuestSpeech'
+import { npcQuestGibberishLine } from '../npc/npcQuestSpeech'
 import { pushActivityLog } from './activityLog'
 import { addStatus, addStatusToNpc } from './status'
 import { roomForCell } from './roomGeometry'
 
 const COMBAT_CONTENT = ContentDB.createDefault()
 
-/** Chance per NPC turn (deterministic roll) to echo quest text in the activity log. */
+/** Chance per NPC turn (deterministic roll) to echo quest gibberish in the activity log. */
 export const QUEST_SHOUT_CHANCE_PCT = 20
 
 /** For tests: same roll as `npcTakeTurn` quest shout. */
@@ -75,7 +75,16 @@ function hostileJoinsEncounter(state: GameState, npc: GameState['floor']['npcs']
   return true
 }
 
-/** Hostiles in the same procgen room as the primary NPC, or Chebyshev-adjacent to the player if no room. */
+function chebyshevToPlayer(state: GameState, nx: number, ny: number): number {
+  const px = state.floor.playerPos.x
+  const py = state.floor.playerPos.y
+  return Math.max(Math.abs(nx - px), Math.abs(ny - py))
+}
+
+/**
+ * Hostiles in the same procgen room as the primary NPC, or Chebyshev-adjacent to the player if no room.
+ * Non-primary roster members must also be within `render.combatEncounterJoinChebyshevMax` of the player (Chebyshev).
+ */
 export function collectEncounterNpcIds(state: GameState, primaryNpcId: Id): Id[] {
   const primary = state.floor.npcs.find((n) => n.id === primaryNpcId)
   if (!primary || !hostileJoinsEncounter(state, primary)) return []
@@ -83,6 +92,7 @@ export function collectEncounterNpcIds(state: GameState, primaryNpcId: Id): Id[]
   const room = roomForCell(state, primary.pos.x, primary.pos.y)
   const px = state.floor.playerPos.x
   const py = state.floor.playerPos.y
+  const joinMax = state.render.combatEncounterJoinChebyshevMax
   const ids = new Set<Id>([primary.id])
 
   if (room) {
@@ -99,7 +109,18 @@ export function collectEncounterNpcIds(state: GameState, primaryNpcId: Id): Id[]
     }
   }
 
-  return [...ids].sort((a, b) => a.localeCompare(b))
+  const filtered = new Set<Id>()
+  for (const id of ids) {
+    if (id === primaryNpcId) {
+      filtered.add(id)
+      continue
+    }
+    const n = state.floor.npcs.find((x) => x.id === id)
+    if (!n) continue
+    if (chebyshevToPlayer(state, n.pos.x, n.pos.y) <= joinMax) filtered.add(id)
+  }
+
+  return [...filtered].sort((a, b) => a.localeCompare(b))
 }
 
 export function buildEncounterTurnQueue(state: GameState, encounterId: Id, partyIds: Id[], npcIds: Id[]): CombatTurn[] {
@@ -423,9 +444,12 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
 
   let st = state
   if (combat) {
-    const english = npcQuestEnglishLine(npc, (id) => COMBAT_CONTENT.item(id).name)
-    if (english != null && questShoutRollMod100(st.floor.seed, combat.encounterId, npc.id, combat.turnIndex) < QUEST_SHOUT_CHANCE_PCT) {
-      st = pushActivityLog(st, `${npc.name}: "${english}"`)
+    const gibberish = npcQuestGibberishLine(npc, (id) => COMBAT_CONTENT.item(id).name, st.floor.seed)
+    if (
+      gibberish != null &&
+      questShoutRollMod100(st.floor.seed, combat.encounterId, npc.id, combat.turnIndex) < QUEST_SHOUT_CHANCE_PCT
+    ) {
+      st = pushActivityLog(st, `${npc.name}: "${gibberish}"`)
     }
   }
 

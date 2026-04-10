@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import type { Character, GameState } from '../types'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { DEFAULT_HUB_HOTSPOTS } from '../hubHotspotDefaults'
+import { ContentDB } from '../content/contentDb'
+import { npcQuestGibberishLine } from '../npc/npcQuestSpeech'
 import {
   advanceTurnIndex,
   attemptFlee,
@@ -10,6 +12,8 @@ import {
   QUEST_SHOUT_CHANCE_PCT,
   questShoutRollMod100,
 } from './combat'
+
+const COMBAT_SPEECH_CONTENT = ContentDB.createDefault()
 
 function mkChar(id: string, speed: number, stamina: number): Character {
   return {
@@ -128,7 +132,7 @@ describe('collectEncounterNpcIds', () => {
         itemsOnFloor: [],
         floorGeomRevision: 0,
         npcs: [n1, n2, n3],
-        playerPos: { x: 10, y: 10 },
+        playerPos: { x: 5, y: 5 },
         playerDir: 0,
       },
       party: {
@@ -139,6 +143,45 @@ describe('collectEncounterNpcIds', () => {
     })
     const ids = collectEncounterNpcIds(state, 'n1')
     expect(ids.sort()).toEqual(['n1', 'n2'].sort())
+  })
+
+  it('excludes same-room hostiles beyond join range of player except the primary', () => {
+    const n1 = mkNpc('n1', 'Skeleton', { x: 3, y: 3 })
+    const n2 = mkNpc('n2', 'Skeleton', { x: 4, y: 3 })
+    const state = gameShell({
+      floor: {
+        seed: 11,
+        floorIndex: 0,
+        floorType: 'Dungeon',
+        floorProperties: [],
+        difficulty: 1,
+        w: 31,
+        h: 31,
+        tiles: Array(31 * 31).fill('floor') as GameState['floor']['tiles'],
+        pois: [],
+        gen: {
+          rooms: [
+            {
+              id: 'r1',
+              rect: { x: 2, y: 2, w: 6, h: 6 },
+              center: { x: 5, y: 5 },
+              leafDepth: 1,
+            },
+          ],
+        } as GameState['floor']['gen'],
+        itemsOnFloor: [],
+        floorGeomRevision: 0,
+        npcs: [n1, n2],
+        playerPos: { x: 10, y: 10 },
+        playerDir: 0,
+      },
+      party: {
+        chars: [mkChar('c1', 5, 30)],
+        inventory: { cols: 10, rows: 2, slots: emptySlots(20) },
+        items: {},
+      },
+    })
+    expect(collectEncounterNpcIds(state, 'n1').sort()).toEqual(['n1'])
   })
 
   it('uses Chebyshev distance when the primary cell is in no room', () => {
@@ -373,7 +416,7 @@ describe('npcTakeTurn quest shout', () => {
     }
   }
 
-  it('appends English quest line before swing when roll passes', () => {
+  it('appends gibberish quest line before swing when roll passes', () => {
     const seed = findShoutFloorSeed()
     const combat = {
       encounterId: encId,
@@ -409,9 +452,13 @@ describe('npcTakeTurn quest shout', () => {
         items: {},
       },
     })
+    const npc = mkQuestNpc('n1', 'Skeleton', { x: 1, y: 1 })
+    const expectedGib = npcQuestGibberishLine(npc, (id) => COMBAT_SPEECH_CONTENT.item(id).name, seed)
+    expect(expectedGib).toBeTruthy()
     const next = npcTakeTurn(state, 'n1')
     const texts = (next.ui.activityLog ?? []).map((e) => e.text)
-    expect(texts.some((t) => t.includes('n1: "…bring me Iron key."'))).toBe(true)
+    expect(texts.some((t) => t === `n1: "${expectedGib}"`)).toBe(true)
+    expect(texts.some((t) => t.includes('bring me'))).toBe(false)
     expect(texts.some((t) => t.includes('→'))).toBe(true)
   })
 

@@ -1,9 +1,8 @@
 import type { Tile } from '../game/types'
 import type { Rng } from './seededRng'
 import type { GenRoom } from './types'
+import { LEGACY_RUINS_TUNING, type RuinsLayoutTuning } from './floorTopologyTuning'
 import { carveRect, center, type Rect } from './layoutPasses'
-
-const CELL = 5
 
 function idx(x: number, y: number, w: number): number {
   return x + y * w
@@ -55,7 +54,7 @@ function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
   const sorted = [...rooms].sort((a, b) => a.id.localeCompare(b.id))
   const uf = unionFind(sorted.length)
 
-  // Adjacency: within a small rect gap. (Stamps are CELL-sized, so this approximates macro-cell neighbors.)
+  // Adjacency: within a small rect gap. (Stamps are macro-cell sized, so this approximates macro-cell neighbors.)
   for (let i = 0; i < sorted.length; i++) {
     for (let j = i + 1; j < sorted.length; j++) {
       if (rectDistanceChebyshev(sorted[i]!.rect, sorted[j]!.rect) <= 2) uf.union(i, j)
@@ -121,18 +120,24 @@ function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
 }
 
 /** Macro-cell stamp: grid of potential chambers with random doorways. */
-export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; genRooms: GenRoom[] } {
+export function runRuinsLayout(
+  w: number,
+  h: number,
+  rng: Rng,
+  tuning: RuinsLayoutTuning = LEGACY_RUINS_TUNING,
+): { tiles: Tile[]; genRooms: GenRoom[] } {
+  const cell = Math.max(3, Math.min(8, Math.floor(tuning.cellSize)))
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   const genRooms: GenRoom[] = []
   const stamped = new Set<string>()
 
-  for (let cy = 1; cy + CELL < h - 1; cy += CELL) {
-    for (let cx = 1; cx + CELL < w - 1; cx += CELL) {
-      if (rng.next() < 0.08) continue
-      const rw = CELL - (rng.next() < 0.35 ? 1 : 0)
-      const rh = CELL - (rng.next() < 0.35 ? 1 : 0)
-      const rx = cx + rng.int(0, Math.max(1, CELL - rw))
-      const ry = cy + rng.int(0, Math.max(1, CELL - rh))
+  for (let cy = 1; cy + cell < h - 1; cy += cell) {
+    for (let cx = 1; cx + cell < w - 1; cx += cell) {
+      if (rng.next() < tuning.stampSkipChance) continue
+      const rw = cell - (rng.next() < tuning.shrinkRoomChance ? 1 : 0)
+      const rh = cell - (rng.next() < tuning.shrinkRoomChance ? 1 : 0)
+      const rx = cx + rng.int(0, Math.max(1, cell - rw))
+      const ry = cy + rng.int(0, Math.max(1, cell - rh))
       const room: Rect = { x: rx, y: ry, w: rw, h: rh }
       if (room.x + room.w >= w - 1 || room.y + room.h >= h - 1) continue
       carveRect(tiles, w, room)
@@ -144,15 +149,15 @@ export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[];
   // Doorways between adjacent stamped macro-cells.
   // This is more legible than random “wall punches” because we only connect where
   // there is floor mass on both sides of the boundary.
-  for (let cy = 1; cy + CELL < h - 1; cy += CELL) {
-    for (let cx = 1; cx + CELL < w - 1; cx += CELL) {
+  for (let cy = 1; cy + cell < h - 1; cy += cell) {
+    for (let cx = 1; cx + cell < w - 1; cx += cell) {
       if (!stamped.has(`${cx},${cy}`)) continue
 
       // Right neighbor
-      if (stamped.has(`${cx + CELL},${cy}`) && rng.next() < 0.55) {
-        const by = cy + 1 + rng.int(0, CELL - 2)
-        const ax = cx + CELL - 1
-        const bx = cx + CELL
+      if (stamped.has(`${cx + cell},${cy}`) && rng.next() < tuning.doorwayChance) {
+        const by = cy + 1 + rng.int(0, Math.max(1, cell - 2))
+        const ax = cx + cell - 1
+        const bx = cx + cell
         const leftMass = floorMassNear(tiles, w, h, ax - 1, by)
         const rightMass = floorMassNear(tiles, w, h, bx + 1, by)
         if (leftMass >= 5 && rightMass >= 5) {
@@ -162,10 +167,10 @@ export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[];
       }
 
       // Down neighbor
-      if (stamped.has(`${cx},${cy + CELL}`) && rng.next() < 0.55) {
-        const bx = cx + 1 + rng.int(0, CELL - 2)
-        const ay = cy + CELL - 1
-        const by = cy + CELL
+      if (stamped.has(`${cx},${cy + cell}`) && rng.next() < tuning.doorwayChance) {
+        const bx = cx + 1 + rng.int(0, Math.max(1, cell - 2))
+        const ay = cy + cell - 1
+        const by = cy + cell
         const upMass = floorMassNear(tiles, w, h, bx, ay - 1)
         const downMass = floorMassNear(tiles, w, h, bx, by + 1)
         if (upMass >= 5 && downMass >= 5) {
@@ -182,6 +187,7 @@ export function runRuinsLayout(w: number, h: number, rng: Rng): { tiles: Tile[];
     genRooms.push({ id: 'r_0', rect: { ...room }, center: center(room), leafDepth: 0 })
   }
 
-  const macroRooms = clusterRoomsToMacro(genRooms, 10)
+  const maxMacro = Math.max(2, Math.min(24, Math.floor(tuning.maxMacroClusters)))
+  const macroRooms = clusterRoomsToMacro(genRooms, maxMacro)
   return { tiles, genRooms: macroRooms }
 }

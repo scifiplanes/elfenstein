@@ -1,4 +1,5 @@
 import { npcKindHpMax } from '../game/content/npcCombat'
+import { clampNpcSpawnCountRange } from '../game/npcSpawnTuning'
 import { cellKey } from '../game/state/playerFloorCell'
 import type { FloorPoi, ItemDefId, NpcLanguage, Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
@@ -33,6 +34,57 @@ function shortestPathCellSet(tiles: Tile[], w: number, h: number, entrance: Vec2
     s.add(`${idx % w},${((idx / w) | 0)}`)
   }
   return s
+}
+
+function collectFloorCellsInRect(
+  rect: { x: number; y: number; w: number; h: number },
+  tiles: Tile[],
+  w: number,
+  h: number,
+  occupied: Set<string>,
+  keyOf: (p: Vec2) => string,
+): Vec2[] {
+  const out: Vec2[] = []
+  for (let y = rect.y; y < rect.y + rect.h; y++) {
+    for (let x = rect.x; x < rect.x + rect.w; x++) {
+      if (x < 0 || y < 0 || x >= w || y >= h) continue
+      const p = { x, y }
+      if (tiles[x + y * w] !== 'floor') continue
+      if (occupied.has(keyOf(p))) continue
+      out.push(p)
+    }
+  }
+  return out
+}
+
+/** True if the rect contains at least one floor tile not in `occupied` (same rules as NPC slot collection). */
+function rectHasAnyFreeFloorCell(
+  rect: { x: number; y: number; w: number; h: number },
+  tiles: Tile[],
+  w: number,
+  h: number,
+  occupied: Set<string>,
+  keyOf: (p: Vec2) => string,
+): boolean {
+  for (let y = rect.y; y < rect.y + rect.h; y++) {
+    for (let x = rect.x; x < rect.x + rect.w; x++) {
+      if (x < 0 || y < 0 || x >= w || y >= h) continue
+      const p = { x, y }
+      if (tiles[x + y * w] !== 'floor') continue
+      if (occupied.has(keyOf(p))) continue
+      return true
+    }
+  }
+  return false
+}
+
+function shuffleSpawnSlots<T>(arr: T[], rng: Rng): void {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(rng.next() * (i + 1))
+    const t = arr[i]!
+    arr[i] = arr[j]!
+    arr[j] = t
+  }
 }
 
 export function placePois(args: {
@@ -303,6 +355,8 @@ export function spawnNpcsAndItems(args: {
   rng: Rng
   floorType: FloorType
   floorProperties?: readonly FloorProperty[]
+  npcSpawnCountMin?: number
+  npcSpawnCountMax?: number
 }): { npcs: GenNpc[]; floorItems: Array<{ defId: ItemDefId; pos: Vec2; qty?: number }> } {
   const { tiles, w, h, rooms, entrance, exit, occupied, rng, floorType } = args
   const floorProperties = args.floorProperties ?? []
@@ -322,7 +376,7 @@ export function spawnNpcsAndItems(args: {
     return i >= 0 && i < dist.length ? dist[i] : -1
   }
   const candidates = rooms
-    .filter((r) => isFreeFloor(r.center))
+    .filter((r) => rectHasAnyFreeFloorCell(r.rect, tiles, w, h, occupied, keyOf))
     .map((r) => ({ r, d: roomScore(r) }))
     .filter((x) => x.d >= 0)
     .sort((a, b) => b.d - a.d)
@@ -342,8 +396,26 @@ export function spawnNpcsAndItems(args: {
     return counts
   }
 
-  const npcRooms = candidates.slice(0, Math.min(4, candidates.length)).map((x) => x.r)
-  const nearRooms = candidates.slice(-Math.min(2, candidates.length)).map((x) => x.r)
+  const dsSorted = candidates.map((c) => c.d).sort((a, b) => a - b)
+  const nearMaxD =
+    dsSorted.length === 0 ? 0 : dsSorted[Math.max(0, Math.floor(0.25 * (dsSorted.length - 1)))]!
+
+  type NpcSpawnSlot = { room: GenRoom; pos: Vec2; roomDist: number }
+  const slots: NpcSpawnSlot[] = []
+  const slotCellSeen = new Set<string>()
+  for (const { r, d } of candidates) {
+    for (const pos of collectFloorCellsInRect(r.rect, tiles, w, h, occupied, keyOf)) {
+      const k = keyOf(pos)
+      if (slotCellSeen.has(k)) continue
+      slotCellSeen.add(k)
+      slots.push({ room: r, pos, roomDist: d })
+    }
+  }
+  shuffleSpawnSlots(slots, rng)
+
+  const { min: smin, max: smax } = clampNpcSpawnCountRange(args.npcSpawnCountMin, args.npcSpawnCountMax)
+  const targetNpcCount = rng.int(smin, smax + 1)
+  const npcCap = Math.min(targetNpcCount, slots.length)
 
   const langList: NpcLanguage[] = ['DeepGnome', 'Zalgo', 'Mojibake']
   const wants: ItemDefId[] = [...PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS]
@@ -357,9 +429,9 @@ export function spawnNpcsAndItems(args: {
     return { wants: wId, hated: hs.length ? hs : ['Stone'] }
   }
 
-  const npcFromRoom = (room: GenRoom, idx: number, isNear: boolean): GenNpc | null => {
-    const pos = room.center
+  const npcFromSpawn = (room: GenRoom, pos: Vec2, roomDist: number, idx: number): GenNpc | null => {
     if (!isFreeFloor(pos)) return null
+    const isNear = roomDist <= nearMaxD
     const onPath = pathCells.has(keyOf(pos))
     const kind = pickNpcKindFromTable(
       {
@@ -407,18 +479,10 @@ export function spawnNpcsAndItems(args: {
   }
 
   let idx = 0
-  for (const r of npcRooms) {
-    if (npcs.length >= 3) break
-    const npc = npcFromRoom(r, idx++, false)
+  for (let s = 0; s < npcCap; s++) {
+    const slot = slots[s]!
+    const npc = npcFromSpawn(slot.room, slot.pos, slot.roomDist, idx++)
     if (!npc) continue
-    npcs.push(npc)
-    occupied.add(keyOf(npc.pos))
-  }
-  for (const r of nearRooms) {
-    if (npcs.length >= 4) break
-    const npc = npcFromRoom(r, idx++, true)
-    if (!npc) continue
-    if (npcs.some((n) => n.status !== 'hostile')) break
     npcs.push(npc)
     occupied.add(keyOf(npc.pos))
   }

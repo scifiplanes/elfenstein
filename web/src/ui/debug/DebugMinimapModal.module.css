@@ -1,0 +1,167 @@
+/**
+ * Reserve the same horizontal strip as `DebugPanel.module.css` (.root: right 14px, width 360px)
+ * so the minimap dimmer and dialog do not cover or block the F2 menu.
+ */
+.backdrop {
+  --debug-panel-lane: calc(14px + 360px + 14px);
+  position: fixed;
+  inset: 0;
+  z-index: 4500;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--debug-panel-lane);
+  pointer-events: none;
+  cursor: default;
+}
+
+.dimmed {
+  grid-column: 1;
+  min-width: 0;
+  min-height: 0;
+  background: rgba(0, 0, 0, 0.55);
+  pointer-events: auto;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.panelLane {
+  grid-column: 2;
+  pointer-events: none;
+}
+
+.dialog {
+  max-width: min(calc(100vw - var(--debug-panel-lane) - 32px), 1200px);
+  max-height: min(92vh, 900px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: rgba(18, 20, 28, 0.97);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.75);
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dialogTitle {
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.82);
+  margin: 0;
+}
+
+.closeBtn {
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.35);
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.closeBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.scroll {
+  overflow: auto;
+  max-height: min(72vh, 720px);
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.map {
+  position: relative;
+  flex-shrink: 0;
+  image-rendering: pixelated;
+  image-rendering: crisp-edges;
+}
+
+/* Scale player wedge with cell size (HUD minimap uses fixed px). */
+.cellScaled[data-kind='player']::after {
+  border-left-width: calc(var(--minimap-cell) * 0.28) !important;
+  border-right-width: calc(var(--minimap-cell) * 0.28) !important;
+  border-bottom-width: calc(var(--minimap-cell) * 0.44) !important;
+}
+
+.mark {
+  position: absolute;
+  pointer-events: none;
+  box-sizing: border-box;
+  border-radius: 2px;
+  z-index: 2;
+}
+
+.markEntrance {
+  box-shadow: inset 0 0 0 2px rgba(96, 200, 120, 0.95);
+}
+
+.markExit {
+  box-shadow: inset 0 0 0 2px rgba(230, 120, 220, 0.95);
+}
+
+.npcLayer {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+
+.npcDot {
+  position: absolute;
+  width: var(--npc-dot, 8px);
+  height: var(--npc-dot, 8px);
+  margin-left: calc(var(--npc-dot, 8px) / -2);
+  margin-top: calc(var(--npc-dot, 8px) / -2);
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.45);
+  box-sizing: border-box;
+}
+
+.npcHostile {
+  background: rgb(220, 72, 72);
+}
+
+.npcNeutral {
+  background: rgb(200, 200, 90);
+}
+
+.npcFriendly {
+  background: rgb(100, 180, 240);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.72);
+  line-height: 1.35;
+}
+
+.legendSwatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  margin-right: 5px;
+  vertical-align: middle;
+  border-radius: 1px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+}

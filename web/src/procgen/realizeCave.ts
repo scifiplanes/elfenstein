@@ -1,6 +1,7 @@
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import type { GenRoom } from './types'
+import { LEGACY_CAVE_TUNING, type CaveLayoutTuning } from './floorTopologyTuning'
 import { center, carveRect, type Rect } from './layoutPasses'
 
 function inBounds(x: number, y: number, w: number, h: number): boolean {
@@ -99,10 +100,18 @@ function extractChambers(tiles: Tile[], w: number, h: number): Array<{ rect: Rec
 }
 
 /** Organic tunnel + chamber layout (branchy, multi-chamber). */
-export function runCaveLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; genRooms: GenRoom[] } {
+export function runCaveLayout(
+  w: number,
+  h: number,
+  rng: Rng,
+  tuning: CaveLayoutTuning = LEGACY_CAVE_TUNING,
+): { tiles: Tile[]; genRooms: GenRoom[] } {
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
-  const diggers = Math.max(2, Math.min(4, 2 + (rng.next() < 0.55 ? 1 : 0)))
-  const perDiggerSteps = Math.floor((w * h * 0.34) / diggers)
+  const diggers = Math.max(
+    tuning.diggerMin,
+    Math.min(tuning.diggerCap, tuning.diggerBase + (rng.next() < tuning.diggerExtraChance ? 1 : 0)),
+  )
+  const perDiggerSteps = Math.floor((w * h * tuning.stepsMassFraction) / diggers)
   const starts: Array<{ x: number; y: number }> = [{ x: Math.floor(w / 2), y: Math.floor(h / 2) }]
   while (starts.length < diggers) {
     starts.push({ x: rng.int(2, Math.max(3, w - 2)), y: rng.int(2, Math.max(3, h - 2)) })
@@ -117,7 +126,7 @@ export function runCaveLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; 
         tiles[idx(x, y, w)] = 'floor'
 
         // occasional widen (small cross)
-        if (rng.next() < 0.10) {
+        if (rng.next() < tuning.widenChance) {
           for (const [dx, dy] of [
             [1, 0],
             [-1, 0],
@@ -132,7 +141,7 @@ export function runCaveLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; 
 
         // periodic chamber blob (diamond radius)
         sinceBlob++
-        if (sinceBlob > 26 && rng.next() < 0.08) {
+        if (sinceBlob > tuning.blobMinStepsSince && rng.next() < tuning.blobChance) {
           sinceBlob = 0
           const r = 2 + (rng.next() < 0.35 ? 1 : 0) + (rng.next() < 0.15 ? 1 : 0)
           carveBlob(tiles, w, h, x, y, r)
@@ -175,7 +184,7 @@ export function runCaveLayout(w: number, h: number, rng: Rng): { tiles: Tile[]; 
   const bbox: Rect = { x: minX, y: minY, w: maxX - minX + 1, h: maxY - minY + 1 }
   const chambers = extractChambers(tiles, w, h)
     .sort((a, b) => b.area - a.area)
-    .slice(0, 10)
+    .slice(0, Math.max(1, Math.min(20, Math.floor(tuning.maxChambers))))
 
   if (chambers.length >= 2) {
     const genRooms: GenRoom[] = chambers.map((c, i) => ({

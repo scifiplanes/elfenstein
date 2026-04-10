@@ -30,8 +30,9 @@ import { runRuinsLayout } from './realizeRuins'
 import type { FloorPoi, PoiKind, Tile } from '../game/types'
 import { shortestPathLatticeStats } from './validate'
 import { layoutProfile } from './floorLayoutProfile'
+import { resolveTopologyTuning } from './floorTopologyTuning'
 import { applyRoomShapingGuarded } from './shapeRooms'
-import { applyDungeonDoorFramesGuarded } from './doorFrames'
+import { applyDecorativeDoorsOnDoorFrames, applyDungeonDoorFramesGuarded } from './doorFrames'
 import { deriveJunctionRooms } from './deriveRooms'
 
 const POI_CANONICAL_ID_ORDER: Partial<Record<string, number>> = {
@@ -119,11 +120,12 @@ export function generateDungeon(input: FloorGenInput): FloorGenOutput {
     }
   }
 
+  const topologyForScore = resolveTopologyTuning(input.floorType, input.floorProperties ?? [])
   if (valid.length) {
     let best = valid[0]
-    let bestS = scoreLayout(best, input.w, input.h, difficulty)
+    let bestS = scoreLayout(best, input.w, input.h, difficulty, topologyForScore.score)
     for (let i = 1; i < valid.length; i++) {
-      const s = scoreLayout(valid[i], input.w, input.h, difficulty)
+      const s = scoreLayout(valid[i], input.w, input.h, difficulty, topologyForScore.score)
       if (s > bestS) {
         bestS = s
         best = valid[i]
@@ -138,7 +140,10 @@ export function generateDungeon(input: FloorGenInput): FloorGenOutput {
   const fallback = last ?? generateDungeonFallback({ ...input, seed: mixedSeed }, inputSeed)
   return {
     ...fallback,
-    meta: { ...fallback.meta, layoutScore: scoreLayout(fallback, input.w, input.h, difficulty) },
+    meta: {
+      ...fallback.meta,
+      layoutScore: scoreLayout(fallback, input.w, input.h, difficulty, topologyForScore.score),
+    },
   }
 }
 
@@ -146,6 +151,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   const { seed, w, h, floorType, floorProperties } = input
   const difficulty = normalizeFloorGenDifficulty(input.difficulty)
   const floorProps = floorProperties ?? []
+  const topology = resolveTopologyTuning(floorType, floorProps)
   const attemptSeed = attempt === 0 ? seed : splitSeed(seed, 1000 + attempt)
   const streams = {
     layout: splitSeed(attemptSeed, 1),
@@ -156,11 +162,13 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     score: splitSeed(attemptSeed, 6),
     theme: splitSeed(attemptSeed, 7),
     mission: splitSeed(attemptSeed, 8),
+    decorDoors: splitSeed(attemptSeed, 9),
   }
   const layoutRng = mulberry32(streams.layout)
   const tagsRng = mulberry32(streams.tags)
   const popRng = mulberry32(streams.population)
   const locksRng = mulberry32(streams.locks)
+  const decorDoorsRng = mulberry32(streams.decorDoors)
   const districtRng = mulberry32(streams.districts)
   const themeRng = mulberry32(streams.theme)
   const missionRng = mulberry32(streams.mission)
@@ -171,24 +179,37 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   const profile = layoutProfile(floorType)
 
   if (profile === 'Cave') {
-    ;({ tiles, genRooms } = runCaveLayout(w, h, layoutRng))
+    ;({ tiles, genRooms } = runCaveLayout(w, h, layoutRng, topology.cave))
   } else if (profile === 'Ruins') {
-    ;({ tiles, genRooms } = runRuinsLayout(w, h, layoutRng))
+    ;({ tiles, genRooms } = runRuinsLayout(w, h, layoutRng, topology.ruins))
   } else {
-    ;({ tiles, genRooms } = runDungeonBspLayout(w, h, layoutRng))
+    ;({ tiles, genRooms } = runDungeonBspLayout(w, h, layoutRng, topology.bsp))
   }
 
   repairConnectivity(tiles, w, h, layoutRng)
-  smoothWallsCarveOnly(tiles, w, h, 1)
+  const smoothPasses = Math.max(0, Math.min(3, Math.floor(topology.smoothPasses)))
+  if (smoothPasses > 0) smoothWallsCarveOnly(tiles, w, h, smoothPasses)
 
-  applyRoomShapingGuarded({ tiles, w, h, rooms: genRooms, floorType, rng: layoutRng })
+  applyRoomShapingGuarded({ tiles, w, h, rooms: genRooms, shaping: topology.shaping, rng: layoutRng })
 
   const { entrance, exit } = pickEntranceExit({ tiles, w, h, rooms: genRooms, rng: layoutRng })
 
-  const loopsAdded = injectLoops({ tiles, w, h, rooms: genRooms, entrance, exit, rng: layoutRng }).added
+  const loopsAdded = injectLoops({
+    tiles,
+    w,
+    h,
+    rooms: genRooms,
+    entrance,
+    exit,
+    rng: layoutRng,
+    maxLoops: topology.injectLoopsMax,
+    loopInject: topology.loopInject,
+  }).added
 
   const doorFrames =
-    profile === 'Dungeon' ? applyDungeonDoorFramesGuarded({ tiles, w, h, rng: layoutRng, maxFrames: 10 }) : { applied: false, framesApplied: 0 }
+    profile === 'Dungeon'
+      ? applyDungeonDoorFramesGuarded({ tiles, w, h, rng: layoutRng, maxFrames: topology.doorFramesMax })
+      : { applied: false, framesApplied: 0 }
 
   const lattice = shortestPathLatticeStats(tiles, w, h, entrance, exit)
   const wideness = lattice.shortestLen >= 0 ? lattice.latticeCells - lattice.shortestLen : 0
@@ -197,7 +218,8 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
 
   // Derived connector/junction rooms provide additional semantic anchors for tags/spawns.
   // These are stable and bounded and should not affect geometry.
-  genRooms = genRooms.concat(deriveJunctionRooms({ tiles, w, h, maxRooms: profile === 'Dungeon' ? 6 : 4 }))
+  const jMax = Math.max(2, Math.min(12, Math.floor(topology.junctionMaxRooms)))
+  genRooms = genRooms.concat(deriveJunctionRooms({ tiles, w, h, maxRooms: jMax }))
 
   assignDistrictsToRooms(genRooms, w, h, districtRng)
   tagRoomsWithQuotas(genRooms, floorProperties, tagsRng)
@@ -234,6 +256,8 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     rng: popRng,
     floorType,
     floorProperties: floorProps,
+    npcSpawnCountMin: input.npcSpawnCountMin,
+    npcSpawnCountMax: input.npcSpawnCountMax,
   })
 
   const { doors, floorItems: lockItems } = placeLocksOnPath({
@@ -251,6 +275,19 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   for (const it of lockItems) occupied.add(`${it.pos.x},${it.pos.y}`)
   for (const it of popItems) occupied.add(`${it.pos.x},${it.pos.y}`)
   for (const n of npcs) occupied.add(`${n.pos.x},${n.pos.y}`)
+
+  const decorativeDoors =
+    profile === 'Dungeon'
+      ? applyDecorativeDoorsOnDoorFrames({
+          tiles,
+          w,
+          h,
+          rng: decorDoorsRng,
+          occupied,
+          floorProperties: floorProps,
+          chance: topology.decorativeDoorFrameChance,
+        })
+      : { decorApplied: 0 }
 
   const theme = pickFloorTheme({ floorType, floorProperties, rng: themeRng })
 
@@ -280,6 +317,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
         reachableFloors,
         loopsAdded,
         doorFramesApplied: doorFrames.framesApplied,
+        decorativeDoorsApplied: decorativeDoors.decorApplied,
       },
     },
     missionGraph: undefined,
@@ -300,6 +338,7 @@ function generateDungeonFallback(input: FloorGenInput, recordedInputSeed: number
     score: splitSeed(seed, 6),
     theme: splitSeed(seed, 7),
     mission: splitSeed(seed, 8),
+    decorDoors: splitSeed(seed, 9),
   }
   const themeRng = mulberry32(streams.theme)
   const theme = pickFloorTheme({ floorType, floorProperties, rng: themeRng })

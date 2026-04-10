@@ -16,11 +16,13 @@ import {
   saveDebugSettingsToProject,
 } from '../../app/debugSettingsPersistence'
 import { useCursor } from '../cursor/useCursor'
+import { resolveTopologyTuning } from '../../procgen/floorTopologyTuning'
 import type { FloorProperty } from '../../procgen/types'
 import { PROCgen_ALL_NPC_KINDS } from '../../procgen/spawnTables'
 import { getThemeLightIntent } from '../../world/themeTuning'
 import { BG_NOISE_LABELS, BG_NOISE_TRACKS, BG_SFX_TRACKS } from '../audio/musicTracks'
 import { selectBgTrack } from '../audio/musicRules'
+import { DebugMinimapModal } from './DebugMinimapModal'
 import styles from './DebugPanel.module.css'
 
 const TAU = Math.PI * 2
@@ -64,8 +66,15 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
     [],
   )
   const [perfOpen, setPerfOpen] = useState(false)
+  const [debugMinimapOpen, setDebugMinimapOpen] = useState(false)
 
   const floorPropertyOrder: FloorProperty[] = ['Infested', 'Cursed', 'Destroyed', 'Overgrown']
+
+  const topologyReadout = useMemo(() => {
+    const t = resolveTopologyTuning(state.floor.floorType, state.floor.floorProperties)
+    const fmt = (n: number) => (Number.isFinite(n) ? String(Math.round(n * 100) / 100) : '—')
+    return `loopsMax=${t.injectLoopsMax} juncRm=${t.junctionMaxRooms} doorFr=${t.doorFramesMax} smooth=${t.smoothPasses} · r.cell=${t.ruins.cellSize} bspD=${t.bsp.maxDepth} caveMass=${fmt(t.cave.stepsMassFraction)} · injSmp=${t.loopInject.randomFloorSamples} thick=${fmt(t.loopInject.thickCorridorChance)}`
+  }, [state.floor.floorType, state.floor.floorProperties.join('\0')])
 
   const dumpFloorGen = () => {
     const gen = state.floor.gen
@@ -194,6 +203,30 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'dropAheadCells', label: 'Drop length (cells ahead)', min: 0, max: 2.5, step: 0.05, format: (v) => v.toFixed(2) },
       { key: 'dropRangeCells', label: 'Drop range (Manhattan cells)', min: 0, max: 20, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'campEveryFloors', label: 'Camp every N dungeon floors', min: 1, max: 99, step: 1, format: (v) => String(Math.round(v)) },
+      {
+        key: 'npcSpawnCountMin',
+        label: 'Procgen NPC count min (inclusive)',
+        min: 1,
+        max: 48,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'npcSpawnCountMax',
+        label: 'Procgen NPC count max (inclusive)',
+        min: 1,
+        max: 48,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
+      {
+        key: 'combatEncounterJoinChebyshevMax',
+        label: 'Combat join range (Chebyshev cells)',
+        min: 1,
+        max: 32,
+        step: 1,
+        format: (v) => String(Math.round(v)),
+      },
       { key: 'dropJitterRadius', label: 'Drop jitter radius', min: 0, max: 0.45, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'bareLightIntensity', label: 'Camera — bare intensity', min: 0, max: 120, step: 0.01 },
       { key: 'bareLightDistance', label: 'Camera — bare distance', min: 0.5, max: 160, step: 0.5, format: (v) => v.toFixed(1) },
@@ -314,6 +347,10 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'poiGroundY_CrackedWall', label: 'POI CrackedWall groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiGroundY_Exit', label: 'POI Exit groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'doorSpriteHeight', label: 'Door sprite height (world)', min: 0.05, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'doorSpriteCenterY', label: 'Door sprite center Y', min: 0, max: 2, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'doorSpriteNudgeX', label: 'Door sprite nudge X', min: -0.5, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
+      { key: 'doorSpriteNudgeZ', label: 'Door sprite nudge Z', min: -0.5, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
     ],
     [],
   )
@@ -389,6 +426,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       onPointerUp={cursor.endPointerUp}
       onPointerCancel={cursor.cancelDrag}
     >
+      <DebugMinimapModal state={state} open={debugMinimapOpen} onClose={() => setDebugMinimapOpen(false)} />
       <div className={styles.header}>
         <div className={styles.headerTop}>
           <div className={styles.title}>Debug (F2)</div>
@@ -446,6 +484,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           >
             Dump floor.gen ({dumpTick ? 'ok' : 'json'})
           </button>
+          <button
+            type="button"
+            className={styles.headerBtn}
+            onClick={() => setDebugMinimapOpen(true)}
+            title="Full-floor map: tiles, POIs, doors, NPCs, entrance/exit (when floor.gen exists)"
+          >
+            Minimap
+          </button>
 
           {import.meta.env.DEV && (
             <button
@@ -464,7 +510,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                   ms: ok ? 1400 : 1600,
                 })
               }}
-              title="Writes web/public/debug-settings.json now (dev). Auto-save also runs ~2s after edits."
+              title="Writes web/public/debug-settings.json now (dev): render (incl. NPC spawn min/max), audio, hub hotspots, debug UI. Auto-save ~2s after edits."
             >
               Save to project
             </button>
@@ -690,9 +736,19 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
         </div>
       )}
 
-      {(!q || 'cell current player tile room district'.includes(q)) && (
+      {(!q || 'cell current player tile room district npc npcs level door doors'.includes(q)) && (
         <div className={styles.section}>
           <div className={styles.sectionTitle}>Cell</div>
+          <div className={styles.row}>
+            <div className={styles.label}>NPCs on floor</div>
+            <div className={styles.value}>{state.floor.npcs.length}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>Doors (procgen)</div>
+            <div className={styles.value}>{state.floor.gen?.doors?.length ?? 0}</div>
+            <div />
+          </div>
           <div className={styles.row}>
             <div className={styles.label}>source</div>
             <div className={styles.value}>{cellSource}</div>
@@ -887,6 +943,13 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
           <div className={styles.row}>
             <div className={styles.label}>floorProperties</div>
             <div className={styles.value}>{state.floor.floorProperties.length ? state.floor.floorProperties.join(', ') : '—'}</div>
+            <div />
+          </div>
+          <div className={styles.row}>
+            <div className={styles.label}>topologyTuning</div>
+            <div className={styles.value} style={{ fontSize: '11px', lineHeight: 1.35 }}>
+              {topologyReadout}
+            </div>
             <div />
           </div>
           {state.floor.gen && (

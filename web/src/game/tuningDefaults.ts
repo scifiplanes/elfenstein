@@ -1,5 +1,6 @@
 import type { AudioTuning, RenderTuning } from './types'
 import { DEFAULT_NPC_BILLBOARD } from './npcBillboardTuning'
+import { DEFAULT_NPC_SPAWN_COUNT_MAX, DEFAULT_NPC_SPAWN_COUNT_MIN } from './npcSpawnTuning'
 
 /** Baseline render/audio tuning when no `public/debug-settings.json` exists or keys are missing. */
 export const DEFAULT_RENDER: RenderTuning = {
@@ -103,17 +104,30 @@ export const DEFAULT_RENDER: RenderTuning = {
   poiSpriteBoost: 1.5,
   poiFootLift: 0.02,
   hubInnkeeperSpriteScale: 1,
+  doorSpriteHeight: 1,
+  doorSpriteCenterY: 0.55,
+  doorSpriteNudgeX: 0,
+  doorSpriteNudgeZ: 0,
   campEveryFloors: 10,
+  /** Inclusive; procgen rolls uniform integer in [min, max]. Mean default (4+8)/2 = 6 (~2× old ~3). */
+  npcSpawnCountMin: DEFAULT_NPC_SPAWN_COUNT_MIN,
+  npcSpawnCountMax: DEFAULT_NPC_SPAWN_COUNT_MAX,
+  combatEncounterJoinChebyshevMax: 5,
 
   gpuTier: 'high',
   pixelRatioCap: 1.5,
 }
 
-/** Copy only keys present in `DEFAULT_RENDER` so `debug-settings.json` always includes the full schema (e.g. per-mode camera lights) and drops stale fields. */
+/**
+ * Copy only keys present in `DEFAULT_RENDER` so `debug-settings.json` always includes the full schema
+ * (e.g. per-mode camera lights, **npcSpawnCountMin** / **npcSpawnCountMax**) and drops stale fields.
+ * Missing or nullish values on `render` fall back to `DEFAULT_RENDER` so the project file stays complete.
+ */
 export function pickRenderTuningForPersistence(render: RenderTuning): RenderTuning {
   const out = {} as Record<keyof RenderTuning, RenderTuning[keyof RenderTuning]>
   for (const key of Object.keys(DEFAULT_RENDER) as (keyof RenderTuning)[]) {
-    out[key] = render[key]
+    const v = render[key]
+    out[key] = (v ?? DEFAULT_RENDER[key]) as RenderTuning[typeof key]
   }
   return out as RenderTuning
 }

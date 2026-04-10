@@ -1,4 +1,4 @@
-import { isAnyDoorTile } from '../tiles'
+import { isAnyDoorTile, isPassableOpenDoorTile } from '../tiles'
 import type { FloorPoi, Tile, Vec2 } from '../types'
 
 /** Orthogonal deltas: N, E, S, W (grid y+ is south). */
@@ -63,7 +63,7 @@ export function nearestFloorCellWithoutPoi(
 }
 
 function isTraversableForSpawnSearch(t: Tile): boolean {
-  return t === 'floor' || isAnyDoorTile(t)
+  return t === 'floor' || isAnyDoorTile(t) || isPassableOpenDoorTile(t)
 }
 
 /**

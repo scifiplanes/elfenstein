@@ -1,0 +1,109 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Bunker 1`] = `
+{
+  "deadEnds": 0,
+  "decorativeDoorsApplied": 20,
+  "doorFramesApplied": 0,
+  "junctions": 269,
+  "loopsAdded": 1,
+  "reachableFloors": 319,
+  "wideness": 78,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Catacombs 1`] = `
+{
+  "deadEnds": 0,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 722,
+  "loopsAdded": 2,
+  "reachableFloors": 746,
+  "wideness": 539,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Cave 1`] = `
+{
+  "deadEnds": 8,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 181,
+  "loopsAdded": 2,
+  "reachableFloors": 250,
+  "wideness": 74,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Dungeon 1`] = `
+{
+  "deadEnds": 0,
+  "decorativeDoorsApplied": 17,
+  "doorFramesApplied": 0,
+  "junctions": 309,
+  "loopsAdded": 2,
+  "reachableFloors": 361,
+  "wideness": 19,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Golem 1`] = `
+{
+  "deadEnds": 0,
+  "decorativeDoorsApplied": 29,
+  "doorFramesApplied": 0,
+  "junctions": 310,
+  "loopsAdded": 3,
+  "reachableFloors": 376,
+  "wideness": 19,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Jungle 1`] = `
+{
+  "deadEnds": 9,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 232,
+  "loopsAdded": 3,
+  "reachableFloors": 294,
+  "wideness": 2,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics LivingBio 1`] = `
+{
+  "deadEnds": 4,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 169,
+  "loopsAdded": 2,
+  "reachableFloors": 231,
+  "wideness": 107,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Palace 1`] = `
+{
+  "deadEnds": 2,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 510,
+  "loopsAdded": 1,
+  "reachableFloors": 538,
+  "wideness": 322,
+}
+`;
+
+exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Ruins 1`] = `
+{
+  "deadEnds": 1,
+  "decorativeDoorsApplied": 0,
+  "doorFramesApplied": 0,
+  "junctions": 572,
+  "loopsAdded": 1,
+  "reachableFloors": 599,
+  "wideness": 413,
+}
+`;

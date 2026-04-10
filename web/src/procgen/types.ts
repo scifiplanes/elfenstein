@@ -32,6 +32,9 @@ export type FloorGenInput = {
   floorProperties?: FloorProperty[]
   /** Omitted or invalid values behave as `1` (normal). */
   difficulty?: number
+  /** From `GameState.render`; omitted uses shipped defaults in `clampNpcSpawnCountRange`. */
+  npcSpawnCountMin?: number
+  npcSpawnCountMax?: number
 }
 
 export type DistrictTag = 'NorthWing' | 'SouthWing' | 'EastWing' | 'WestWing' | 'Core' | 'Ruin'
@@ -135,6 +138,8 @@ export type FloorGenMeta = {
     theme: number
     /** Present from genVersion 4; reserved for `planMissionBeforeGeometry` / mission-first embed. */
     mission?: number
+    /** Decorative closed doors on door-frame throats (Dungeon); present from genVersion 5. */
+    decorDoors?: number
   }
   /** Soft layout score (higher = more loops / fewer dead-ends heuristic). */
   layoutScore?: number
@@ -149,6 +154,8 @@ export type FloorGenMeta = {
     loopsAdded: number
     /** Number of corridor door-frame throats applied (Dungeon floors only). */
     doorFramesApplied?: number
+    /** Closed `door` / `doorOctopus` placed on unused frame throats after locks (Dungeon only). */
+    decorativeDoorsApplied?: number
   }
 }
 

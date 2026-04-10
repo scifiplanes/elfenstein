@@ -74,6 +74,8 @@ export function makeInitialState(_content: ContentDB): GameState {
     floorType,
     floorProperties,
     difficulty,
+    npcSpawnCountMin: DEFAULT_RENDER.npcSpawnCountMin,
+    npcSpawnCountMax: DEFAULT_RENDER.npcSpawnCountMax,
   })
   const { spawnedItems, spawnedOnFloor } = hydrateGenFloorItems(DEFAULT_RENDER, gen.floorItems, floorSeed)
   const playerPos = pickPlayerSpawnCell(gen.tiles, w, h, gen.entrance, gen.pois)
@@ -135,7 +137,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       chars: [
         {
           id: 'c1',
-          name: 'Char1',
+          name: 'Ihor',
           species: 'Igor',
           endurance: 6,
           stats: {
@@ -160,7 +162,7 @@ export function makeInitialState(_content: ContentDB): GameState {
         },
         {
           id: 'c2',
-          name: 'Char2',
+          name: 'Miclops',
           species: 'Mycyclops',
           endurance: 7,
           stats: {
@@ -185,7 +187,7 @@ export function makeInitialState(_content: ContentDB): GameState {
         },
         {
           id: 'c3',
-          name: 'Char3',
+          name: 'Frosch',
           species: 'Frosch',
           endurance: 5,
           stats: {
@@ -210,7 +212,7 @@ export function makeInitialState(_content: ContentDB): GameState {
         },
         {
           id: 'c4',
-          name: 'Char4',
+          name: 'Afonso',
           species: 'Afonso',
           endurance: 6,
           stats: {

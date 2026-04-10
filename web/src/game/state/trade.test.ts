@@ -45,7 +45,8 @@ describe('trade', () => {
     if (state.ui.tradeSession?.kind !== 'hub_innkeeper') throw new Error('expected hub session')
     expect(state.ui.tradeSession.stock).toEqual(HUB_INNKEEPER_TRADE.stock)
     expect(state.ui.tradeSession.wants).toEqual(HUB_INNKEEPER_TRADE.wants)
-    expect(state.ui.hubInnkeeperSpeech).toMatch(/^Welcome\. I take .+\.$/)
+    expect(state.ui.hubInnkeeperSpeech).toMatch(/.+\.$/)
+    expect(state.ui.hubInnkeeperSpeech).not.toContain('Welcome')
     expect(state.ui.hubInnkeeperSpeechTtlMs).toBe(HUB_INNKEEPER_SPEECH_WELCOME_MS)
     const lastLog = state.ui.activityLog?.[state.ui.activityLog.length - 1]
     expect(lastLog?.text).toBe(INNKEEPER_OPEN_TRADE_ACTIVITY_LOG)

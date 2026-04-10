@@ -1,4 +1,4 @@
-import { isAnyDoorTile } from '../game/tiles'
+import { isAnyDoorTile, isPassableOpenDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
 import {
@@ -9,6 +9,7 @@ import {
   isWalkable,
   shortestPathLatticeStats,
 } from './validate'
+import { LEGACY_LOOP_INJECT_TUNING, type LoopInjectTuning } from './floorTopologyTuning'
 import type { GenRoom } from './types'
 
 export type Rect = { x: number; y: number; w: number; h: number }
@@ -268,7 +269,7 @@ function corridorSampleStats(args: {
   const count = (x: number, y: number) => {
     total++
     const t = tiles[x + y * w]
-    if (t === 'floor' || isAnyDoorTile(t)) alreadyFloor++
+    if (t === 'floor' || isAnyDoorTile(t) || isPassableOpenDoorTile(t)) alreadyFloor++
   }
   if (horizFirst) {
     const dx = Math.sign(bx - ax)
@@ -303,10 +304,13 @@ export function injectLoops(args: {
   exit: Vec2
   rng: Pick<Rng, 'int' | 'next'>
   maxLoops?: number
+  /** Merged over `LEGACY_LOOP_INJECT_TUNING`; from `LayoutTopologyTuning.loopInject`. */
+  loopInject?: Partial<LoopInjectTuning>
 }): { added: number } {
   const { tiles, w, h, rooms, entrance, exit, rng } = args
   if (w <= 0 || h <= 0 || tiles.length !== w * h) return { added: 0 }
 
+  const li: LoopInjectTuning = { ...LEGACY_LOOP_INJECT_TUNING, ...args.loopInject }
   const maxLoops = Math.max(0, Math.min(6, Math.floor(args.maxLoops ?? 2)))
   if (maxLoops === 0) return { added: 0 }
 
@@ -326,7 +330,8 @@ export function injectLoops(args: {
   for (const r of rooms) push(r.center)
 
   // Secondary candidates: a handful of random floor cells (bounded attempts)
-  for (let i = 0; i < 14; i++) {
+  const samples = Math.max(0, Math.min(40, Math.floor(li.randomFloorSamples)))
+  for (let i = 0; i < samples; i++) {
     const p = randomFloorCell({ tiles, w, h, rng })
     if (p) push(p)
   }
@@ -344,7 +349,7 @@ export function injectLoops(args: {
   const minD = Math.max(5, Math.min(12, Math.floor((w + h) / 6)))
   const maxD = Math.max(minD + 4, Math.min(w + h, Math.floor((w + h) * 0.75)))
 
-  const maxTries = 48 + maxLoops * 28
+  const maxTries = Math.max(12, Math.floor(li.maxTriesBase + maxLoops * li.maxTriesPerLoop))
   for (let attempt = 0; attempt < maxTries && added < maxLoops; attempt++) {
     const a = candidates[rng.int(0, candidates.length)]
     const b = candidates[rng.int(0, candidates.length)]
@@ -357,17 +362,20 @@ export function injectLoops(args: {
     if (rooms.length >= 2) {
       const ra = roomIndexForPoint(rooms, a)
       const rb = roomIndexForPoint(rooms, b)
-      if (ra === rb && rng.next() < 0.8) continue
+      const skipSame = Math.max(0, Math.min(1, li.sameRoomSkipChance))
+      if (ra === rb && rng.next() < skipSame) continue
     }
 
     const horizFirst = rng.next() < 0.5
     const sample = corridorSampleStats({ tiles, w, ax: a.x, ay: a.y, bx: b.x, by: b.y, horizFirst })
     const alreadyRatio = sample.total > 0 ? sample.alreadyFloor / sample.total : 1
-    if (alreadyRatio > 0.6) continue
+    const alreadyCap = Math.max(0.2, Math.min(0.95, li.corridorAlreadyFloorMaxRatio))
+    if (alreadyRatio > alreadyCap) continue
 
     const beforeTiles = tiles.slice()
     // Occasionally carve 2-wide connectors for spatial variety (kept rare and deterministic).
-    const thick = rng.next() < 0.15
+    const thickChance = Math.max(0, Math.min(0.5, li.thickCorridorChance))
+    const thick = rng.next() < thickChance
     if (thick) {
       // Pick a deterministic thickening direction (avoid diagonals).
       const dir = rng.int(0, 4)
@@ -435,7 +443,7 @@ export function smoothWallsCarveOnly(tiles: Tile[], w: number, h: number, passes
           for (let dx = -1; dx <= 1; dx++) {
             if (dx === 0 && dy === 0) continue
             const t = tiles[(x + dx) + (y + dy) * w]
-            if (t === 'floor' || isAnyDoorTile(t)) floors++
+            if (t === 'floor' || isAnyDoorTile(t) || isPassableOpenDoorTile(t)) floors++
           }
         }
         if (floors >= 6) next[i] = 'floor'

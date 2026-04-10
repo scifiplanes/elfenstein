@@ -1,4 +1,4 @@
-import { CHEST_LOOT_DEF_IDS, CONTAINER_LOOT_DEF_IDS } from '../game/content/poiLootTables'
+import { PROCgen_ALL_STORAGE_POI_LOOT_DEF_IDS } from '../game/content/poiLootTables'
 import { DEFAULT_ITEMS } from '../game/content/items'
 import { DEFAULT_STATUSES } from '../game/content/statuses'
 import type { ItemDefId, NpcKind, StatusEffectId } from '../game/types'
@@ -44,8 +44,7 @@ export function runProcgenContentAudit(): ProcgenContentAuditResult {
   const usedItems = uniq([
     ...PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS,
     ...PROCgen_LOCK_KEY_ITEM_DEF_IDS,
-    ...CHEST_LOOT_DEF_IDS,
-    ...CONTAINER_LOOT_DEF_IDS,
+    ...PROCgen_ALL_STORAGE_POI_LOOT_DEF_IDS,
     ...PROCgen_NPC_QUEST_WANT_ITEM_DEF_IDS,
     ...PROCgen_NPC_QUEST_HATED_ITEM_DEF_IDS,
   ])
@@ -56,7 +55,7 @@ export function runProcgenContentAudit(): ProcgenContentAuditResult {
 
   const seedSet = new Set(seedItems)
   const orphanSpawnIds = PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS.filter((id) => !seedSet.has(id))
-  const lootAll = uniq([...CHEST_LOOT_DEF_IDS, ...CONTAINER_LOOT_DEF_IDS])
+  const lootAll = uniq([...PROCgen_ALL_STORAGE_POI_LOOT_DEF_IDS])
   const orphanLootIds = lootAll.filter((id) => !seedSet.has(id))
 
   /** Keep in sync with `NpcKind` in `game/types.ts` (every kind should appear in procgen tables). */

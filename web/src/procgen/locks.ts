@@ -7,7 +7,7 @@ import {
   bfsDistancesWithLocks,
   exitNeighborReachableWithPoiBlocking,
   isWalkable,
-  shortestPathLatticeStatsWithLocks,
+  shortestPathLatticeStats,
 } from './validate'
 
 const lockedDoorsBlock: { lockedDoorsAreWalkable: boolean } = { lockedDoorsAreWalkable: false }
@@ -104,7 +104,7 @@ function idxToPos(i: number, w: number): Vec2 {
   return { x: i % w, y: (i / w) | 0 }
 }
 
-function isDoorFrameCandidate(tiles: Tile[], w: number, h: number, x: number, y: number): boolean {
+export function isDoorFrameCandidate(tiles: Tile[], w: number, h: number, x: number, y: number): boolean {
   if (x <= 1 || y <= 1 || x >= w - 2 || y >= h - 2) return false
   const i = x + y * w
   if (tiles[i] !== 'floor') return false
@@ -144,16 +144,27 @@ function lockThresholds(difficulty: FloorGenDifficulty): {
   return { minPathAnyLock: 4, minPathTwoLock: 11, allowTwoLock: true }
 }
 
+/** Shared with `pickDecorativeDoorTile` so locked vs decorative doors use the same octopus weighting. */
+function octopusClosedDoorProbability(floorProperties: FloorProperty[] | undefined): number {
+  const infested = floorProperties?.includes('Infested') ?? false
+  return Math.min(0.82, 0.12 + (infested ? 0.38 : 0))
+}
+
 /** Deterministic roll: some procgen locks render as octopus doors (see `lockedDoorOctopus`). */
 function pickLockedDoorTile(rng: { next(): number }, floorProperties: FloorProperty[] | undefined): Tile {
-  const infested = floorProperties?.includes('Infested') ?? false
-  const p = Math.min(0.82, 0.12 + (infested ? 0.38 : 0))
-  return rng.next() < p ? 'lockedDoorOctopus' : 'lockedDoor'
+  return rng.next() < octopusClosedDoorProbability(floorProperties) ? 'lockedDoorOctopus' : 'lockedDoor'
+}
+
+/** Closed `door` / `doorOctopus` (no key); same octopus odds as `pickLockedDoorTile`. */
+export function pickDecorativeDoorTile(rng: { next(): number }, floorProperties: FloorProperty[] | undefined): 'door' | 'doorOctopus' {
+  return rng.next() < octopusClosedDoorProbability(floorProperties) ? 'doorOctopus' : 'door'
 }
 
 /**
  * Place up to two ordered locks on the entrance→exit shortest path with matching keys.
- * Returns doors + key floor items; mutates `tiles` in place (lockedDoor cells).
+ * If that finds no valid slot, falls back to scanning the full grid for a floor cell that
+ * still separates exit from entrance (`separatesExit`), preferring door-frame throats in
+ * stable near-entrance order. Returns doors + key floor items; mutates `tiles` in place.
  */
 export function placeLocksOnPath(args: {
   tiles: Tile[]
@@ -270,6 +281,106 @@ export function placeLocksOnPath(args: {
     }
   }
 
+  return tryArticulationSingleLockFallback({
+    tiles,
+    w,
+    h,
+    entrance,
+    exit,
+    rng,
+    occupied,
+    floorProperties,
+    minPathAnyLock,
+    path,
+  })
+}
+
+/**
+ * When no shortest-path choke exists (common after `injectLoops`), scan the full grid for a
+ * floor cell that still separates entrance from exit (`separatesExit`). Prefer door-frame throats;
+ * stable order: door frames by ascending index (near-entrance necks first), then other floors ascending.
+ */
+function collectArticulationSingleLockCandidates(
+  tiles: Tile[],
+  w: number,
+  h: number,
+  entrance: Vec2,
+  exit: Vec2,
+  occupied: Set<string>,
+): { doorFrameIdxs: number[]; otherIdxs: number[] } {
+  const entI = entrance.x + entrance.y * w
+  const exI = exit.x + exit.y * w
+  const doorFrameIdxs: number[] = []
+  const otherIdxs: number[] = []
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      const i = x + y * w
+      if (i === entI || i === exI) continue
+      if (occupied.has(`${x},${y}`)) continue
+      if (tiles[i] !== 'floor') continue
+      if (isDoorFrameCandidate(tiles, w, h, x, y)) doorFrameIdxs.push(i)
+      else otherIdxs.push(i)
+    }
+  }
+  doorFrameIdxs.sort((a, b) => a - b)
+  otherIdxs.sort((a, b) => a - b)
+  return { doorFrameIdxs, otherIdxs }
+}
+
+function tryArticulationSingleLockFallback(args: {
+  tiles: Tile[]
+  w: number
+  h: number
+  entrance: Vec2
+  exit: Vec2
+  rng: { next(): number }
+  occupied: Set<string>
+  floorProperties: FloorProperty[] | undefined
+  minPathAnyLock: number
+  path: number[]
+}): { doors: GenDoor[]; floorItems: GenFloorItem[] } {
+  const { tiles, w, h, entrance, exit, rng, occupied, floorProperties, minPathAnyLock, path } = args
+
+  if (!path || path.length < minPathAnyLock) return { doors: [], floorItems: [] }
+
+  const { doorFrameIdxs, otherIdxs } = collectArticulationSingleLockCandidates(tiles, w, h, entrance, exit, occupied)
+  const tryOrder = doorFrameIdxs.concat(otherIdxs)
+
+  for (const lockCell of tryOrder) {
+    const lx = lockCell % w
+    const ly = (lockCell / w) | 0
+    if (!separatesExit(tiles, w, h, entrance, exit, lockCell)) continue
+
+    const lockPos = { x: lx, y: ly }
+    const pathToLock = shortestPathIndices(tiles, w, h, entrance, lockPos, rng)
+    if (!pathToLock || pathToLock.length < 2) continue
+
+    const lockAt = pathToLock[pathToLock.length - 1]!
+    if (lockAt !== lockCell) continue
+
+    let placeKeyPos: Vec2
+    if (pathToLock.length === 2) {
+      // Lock is the first step from entrance; key must stay on the entrance side (same cell as spawn).
+      placeKeyPos = { ...entrance }
+    } else {
+      const maxKeyStep = pathToLock.length - 2
+      if (maxKeyStep < 1) continue
+      const keyStep = clampInt(Math.floor(maxKeyStep * 0.45 + (rng.next() - 0.5) * 2), 1, maxKeyStep)
+      const keyCell = pathToLock[keyStep]!
+      placeKeyPos = tiles[keyCell] === 'floor' ? idxToPos(keyCell, w) : entrance
+    }
+    if (occupied.has(`${placeKeyPos.x},${placeKeyPos.y}`)) {
+      const alt = findNearestUnusedFloor(tiles, w, h, placeKeyPos, occupied)
+      if (alt) placeKeyPos = alt
+    }
+
+    tiles[lockCell] = pickLockedDoorTile(rng, floorProperties)
+    return {
+      doors: [{ pos: lockPos, locked: true, lockId: 'A', keyDefId: 'IronKey', orderOnPath: 0 }],
+      floorItems: [{ defId: 'IronKey', pos: placeKeyPos, qty: 1, forLockId: 'A' }],
+    }
+  }
+
   return { doors: [], floorItems: [] }
 }
 
@@ -306,14 +417,9 @@ export function validateGen(gen: FloorGenOutput, w: number, h: number): boolean 
   if (locked.length === 0) return true
 
   {
-    const { shortestLen: L, latticeCells } = shortestPathLatticeStatsWithLocks(
-      gen.tiles,
-      w,
-      h,
-      gen.entrance,
-      gen.exit,
-      lockedDoorsBlock,
-    )
+    // Geometric shortest-path band width: use normal walkability (door tiles count as passable; see `isWalkable` in validate).
+    // Do not use closed-lock reachability here — it contradicts the requirement below that exit is unreachable when all locks are closed.
+    const { shortestLen: L, latticeCells } = shortestPathLatticeStats(gen.tiles, w, h, gen.entrance, gen.exit)
     // Slightly looser than “strict spine” so lock floors validate more often (still needs a 2+ cell-wide shortest-path band).
     if (L < 3 || latticeCells <= L + 1) return false
   }

@@ -1,8 +1,8 @@
 import { isAnyDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
-import { layoutProfile } from './floorLayoutProfile'
-import type { FloorType, GenRoom } from './types'
+import type { RoomShapingTuning } from './floorTopologyTuning'
+import type { GenRoom } from './types'
 import { floodFillReachable, isWalkable } from './validate'
 
 function idx(x: number, y: number, w: number): number {
@@ -259,30 +259,17 @@ export function applyRoomShaping(args: {
   w: number
   h: number
   rooms: GenRoom[]
-  floorType: FloorType
+  shaping: RoomShapingTuning
   rng: Pick<Rng, 'next' | 'int'>
 }): { pillarsAdded: number; alcovesCarved: number; notchesCarved: number } {
-  const { tiles, w, h, rooms, floorType, rng } = args
-  const profile = layoutProfile(floorType)
+  const { tiles, w, h, rooms, shaping, rng } = args
+  const cap = Math.max(0, Math.min(6, Math.floor(shaping.pillarsMaxPerRoom)))
+  const alc = Math.max(0, Math.min(1, shaping.alcovePerRoomChance))
+  const jit = Math.max(0, Math.min(0.55, shaping.jitterStrength))
 
-  if (profile === 'Dungeon') {
-    const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: 3 })
-    const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: 0.18 })
-    const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: 0.12 })
-    return { pillarsAdded: p.pillarsAdded, alcovesCarved: a.alcovesCarved, notchesCarved: j.notchesCarved }
-  }
-
-  if (profile === 'Ruins') {
-    const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: 0 })
-    const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: 0.5 })
-    const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: 0.42 })
-    return { pillarsAdded: p.pillarsAdded, alcovesCarved: a.alcovesCarved, notchesCarved: j.notchesCarved }
-  }
-
-  // Cave
-  const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: 0 })
-  const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: 0.35 })
-  const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: 0.35 })
+  const p = addPillarsInRooms({ tiles, w, h, rooms, rng, maxPerRoom: cap })
+  const a = carveAlcovesOnRoomEdges({ tiles, w, h, rooms, rng, perRoomChance: alc })
+  const j = jitterRoomPerimeters({ tiles, w, h, rooms, rng, strength: jit })
   return { pillarsAdded: p.pillarsAdded, alcovesCarved: a.alcovesCarved, notchesCarved: j.notchesCarved }
 }
 
@@ -309,7 +296,7 @@ export function applyRoomShapingGuarded(args: {
   w: number
   h: number
   rooms: GenRoom[]
-  floorType: FloorType
+  shaping: RoomShapingTuning
   rng: Pick<Rng, 'next' | 'int'>
 }): { applied: boolean; pillarsAdded: number; alcovesCarved: number; notchesCarved: number } {
   const { tiles, w, h } = args

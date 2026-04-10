@@ -1,5 +1,7 @@
 import type { Tile, Vec2 } from '../game/types'
 import type { Rng } from './seededRng'
+import type { FloorProperty } from './types'
+import { isDoorFrameCandidate, pickDecorativeDoorTile } from './locks'
 import { floodFillReachable, isWalkable } from './validate'
 
 function idx(x: number, y: number, w: number): number {
@@ -151,5 +153,37 @@ export function applyDungeonDoorFramesGuarded(args: {
   }
 
   return { applied: true, framesApplied }
+}
+
+/**
+ * After locks, turn many remaining door-frame throat floors into closed `door` / `doorOctopus`
+ * (openable without a key). Skips `occupied` cells. Mutates `tiles` in place.
+ */
+export function applyDecorativeDoorsOnDoorFrames(args: {
+  tiles: Tile[]
+  w: number
+  h: number
+  rng: Pick<Rng, 'next'>
+  occupied: Set<string>
+  floorProperties?: FloorProperty[]
+  /** Per-candidate probability in [0, 1]. */
+  chance: number
+}): { decorApplied: number } {
+  const { tiles, w, h, rng, occupied, floorProperties } = args
+  const chance = Math.max(0, Math.min(1, args.chance))
+  if (chance <= 0 || w <= 0 || h <= 0 || tiles.length !== w * h) return { decorApplied: 0 }
+
+  let decorApplied = 0
+  for (let y = 1; y < h - 1; y++) {
+    for (let x = 1; x < w - 1; x++) {
+      if (occupied.has(`${x},${y}`)) continue
+      if (!isDoorFrameCandidate(tiles, w, h, x, y)) continue
+      if (rng.next() >= chance) continue
+      const i = x + y * w
+      tiles[i] = pickDecorativeDoorTile(rng, floorProperties)
+      decorApplied++
+    }
+  }
+  return { decorApplied }
 }
 

@@ -4,7 +4,7 @@ import type { ContentDB } from '../game/content/contentDb'
 import type { GameState, ItemId, NpcKind, PoiKind } from '../game/types'
 import type { DistrictTag, GenRoom } from '../procgen/types'
 import type { FloorType } from '../procgen/types'
-import { isAnyDoorTile, isOctopusDoorTile } from '../game/tiles'
+import { isAnyDoorTile, isOctopusDoorTile, isPassableOpenDoorTile } from '../game/tiles'
 import { getDungeonEnvTextureSrcs } from './dungeonEnvTextures'
 import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import {
@@ -144,12 +144,17 @@ export class WorldRenderer {
   private doorClosedMat: THREE.SpriteMaterial | null = null
   private doorOctopusClosedMat: THREE.SpriteMaterial | null = null
   private doorOpenMat: THREE.SpriteMaterial | null = null
+  /** Last frame of octopus opening strip; static open billboard on `doorOpenOctopus` tiles. */
+  private doorOctopusOpenStaticMat: THREE.SpriteMaterial | null = null
   private doorOpenOctopusTextures: THREE.Texture[] = []
   private doorFxTracked: Array<{
     id: string
     sprite: THREE.Sprite
     visual: 'wooden' | 'octopus'
     startedAtMs: number
+    /** Grid cell (same as `DoorOpenFx.pos`) for world XZ each frame. */
+    cellX: number
+    cellY: number
   }> = []
 
   private readonly hazardDecalMats: Partial<Record<RoomHazardProperty, THREE.SpriteMaterial>> = {}
@@ -232,6 +237,11 @@ export class WorldRenderer {
       this.doorOctopusClosedMat.map?.dispose()
       this.doorOctopusClosedMat.dispose()
       this.doorOctopusClosedMat = null
+    }
+    if (this.doorOctopusOpenStaticMat) {
+      this.doorOctopusOpenStaticMat.map?.dispose()
+      this.doorOctopusOpenStaticMat.dispose()
+      this.doorOctopusOpenStaticMat = null
     }
     if (this.doorOpenMat) {
       this.doorOpenMat.map?.dispose()
@@ -569,7 +579,14 @@ export class WorldRenderer {
           const s = new THREE.Sprite(mat)
           s.position.set(x, 0.55, z)
           g.add(s)
-          this.doorFxTracked.push({ id: fx.id, sprite: s, visual, startedAtMs: fx.startedAtMs })
+          this.doorFxTracked.push({
+            id: fx.id,
+            sprite: s,
+            visual,
+            startedAtMs: fx.startedAtMs,
+            cellX: fx.pos.x,
+            cellY: fx.pos.y,
+          })
         }
         this.doorFxGroup = g
         this.scene.add(g)
@@ -729,7 +746,7 @@ export class WorldRenderer {
             if (x < 0 || y < 0 || x >= w || y >= h) continue
             const i = x + y * w
             const t = tiles[i]
-            if (t === 'floor' || isAnyDoorTile(t)) overgrownWalkable.add(i)
+            if (t === 'floor' || isAnyDoorTile(t) || isPassableOpenDoorTile(t)) overgrownWalkable.add(i)
           }
         }
       }
@@ -757,7 +774,7 @@ export class WorldRenderer {
         const t = tiles[idx]
         const wx = x - w / 2
         const wz = y - h / 2
-        if (t === 'floor') {
+        if (t === 'floor' || isPassableOpenDoorTile(t)) {
           const isOvergrown = overgrownWalkable.has(idx)
           const m = new THREE.Mesh(floorGeo, isOvergrown ? this.overgrownFloorMat : this.floorMat)
           m.position.set(wx, -0.05, wz)
@@ -768,6 +785,17 @@ export class WorldRenderer {
           c.position.set(wx, 1.25, wz)
           c.receiveShadow = true
           g.add(c)
+
+          if (isPassableOpenDoorTile(t)) {
+            const openMat = t === 'doorOpenOctopus' ? this.getDoorOctopusOpenStaticMat() : this.getDoorOpenMat()
+            const d = new THREE.Sprite(openMat)
+            d.position.set(wx, 0.55, wz)
+            d.userData = { kind: 'door', id: `${x},${y}`, baseX: wx, baseZ: wz }
+            // Visible billboard only: do not raycast (avoids stealing picks from POIs/NPCs/items along the same ray).
+            ;(d as THREE.Object3D).raycast = () => {}
+            g.add(d)
+            this.pickables.push(d)
+          }
         } else if (isAnyDoorTile(t)) {
           const isOvergrown = overgrownWalkable.has(idx)
           // Door occupies a floor tile position.
@@ -784,7 +812,7 @@ export class WorldRenderer {
           const doorMat = isOctopusDoorTile(t) ? this.getDoorOctopusClosedMat() : this.getDoorClosedMat()
           const d = new THREE.Sprite(doorMat)
           d.position.set(wx, 0.55, wz)
-          d.userData = { kind: 'door', id: `${x},${y}` }
+          d.userData = { kind: 'door', id: `${x},${y}`, baseX: wx, baseZ: wz }
           g.add(d)
           this.pickables.push(d)
         } else {
@@ -1053,6 +1081,7 @@ export class WorldRenderer {
     }
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
+    this.syncDoorSprites(state)
     this.syncHazardDecalScales()
     this.syncNpcIdleFrames(state)
     this.syncWellSparkleFrame(state)
@@ -1074,6 +1103,7 @@ export class WorldRenderer {
     if (this.doorClosedMat) this.doorClosedMat.color.copy(this.themeSpriteColor)
     if (this.doorOctopusClosedMat) this.doorOctopusClosedMat.color.copy(this.themeSpriteColor)
     if (this.doorOpenMat) this.doorOpenMat.color.copy(this.themeSpriteColor)
+    if (this.doorOctopusOpenStaticMat) this.doorOctopusOpenStaticMat.color.copy(this.themeSpriteColor)
   }
 
   private syncNpcSpriteThemeTint() {
@@ -1258,6 +1288,43 @@ export class WorldRenderer {
     }
   }
 
+  private textureAspectFromSpriteMaterial(spr: THREE.Sprite): number {
+    const mat = spr.material as THREE.SpriteMaterial | undefined
+    const img = mat?.map?.image as { width?: unknown; height?: unknown } | undefined
+    const iw = img && typeof img.width === 'number' ? img.width : 0
+    const ih = img && typeof img.height === 'number' ? img.height : 0
+    if (iw > 0 && ih > 0) return iw / ih
+    return 1
+  }
+
+  private syncDoorSprites(state: GameState) {
+    const h = Number(state.render.doorSpriteHeight ?? 1)
+    const cy = Number(state.render.doorSpriteCenterY ?? 0.55)
+    const nx = Number(state.render.doorSpriteNudgeX ?? 0)
+    const nz = Number(state.render.doorSpriteNudgeZ ?? 0)
+
+    for (const p of this.pickables) {
+      const ud = (p.userData ?? {}) as { kind?: unknown; baseX?: unknown; baseZ?: unknown }
+      if (String(ud.kind ?? '') !== 'door') continue
+      const spr = p as THREE.Sprite
+      const baseX = typeof ud.baseX === 'number' ? ud.baseX : spr.position.x
+      const baseZ = typeof ud.baseZ === 'number' ? ud.baseZ : spr.position.z
+      const aspect = this.textureAspectFromSpriteMaterial(spr)
+      spr.scale.set(h * aspect, h, 1)
+      spr.position.set(baseX + nx, cy, baseZ + nz)
+    }
+
+    const fw = state.floor.w
+    const fh = state.floor.h
+    for (const entry of this.doorFxTracked) {
+      const wx = entry.cellX - fw / 2
+      const wz = entry.cellY - fh / 2
+      const aspect = this.textureAspectFromSpriteMaterial(entry.sprite)
+      entry.sprite.scale.set(h * aspect, h, 1)
+      entry.sprite.position.set(wx + nx, cy, wz + nz)
+    }
+  }
+
   private getHazardDecalMat(prop: RoomHazardProperty): THREE.SpriteMaterial {
     const cached = this.hazardDecalMats[prop]
     if (cached) return cached
@@ -1314,6 +1381,18 @@ export class WorldRenderer {
     this.doorOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
     this.doorOpenMat.color.copy(this.themeSpriteColor)
     return this.doorOpenMat
+  }
+
+  private getDoorOctopusOpenStaticMat(): THREE.SpriteMaterial {
+    if (this.doorOctopusOpenStaticMat) return this.doorOctopusOpenStaticMat
+    const tex = this.textureLoader.load(DOOR_OCTOPUS_OPEN_FRAMES[2]!)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+    this.doorOctopusOpenStaticMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+    this.doorOctopusOpenStaticMat.color.copy(this.themeSpriteColor)
+    return this.doorOctopusOpenStaticMat
   }
 
   private syncWellSparkleFrame(state: GameState) {
@@ -1506,7 +1585,7 @@ export class WorldRenderer {
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const t = tiles[x + y * w]
-          if (t !== 'floor' && !isAnyDoorTile(t)) continue
+          if (t !== 'floor' && !isAnyDoorTile(t) && !isPassableOpenDoorTile(t)) continue
           const room = findRoomAt(x, y)
           const tag = room?.district ?? 'Core'
           const hex = colors[tag] ?? '#6688aa'
@@ -1534,7 +1613,7 @@ export class WorldRenderer {
       for (let y = 0; y < h; y++) {
         for (let x = 0; x < w; x++) {
           const t = tiles[x + y * w]
-          if (t !== 'floor' && !isAnyDoorTile(t)) continue
+          if (t !== 'floor' && !isAnyDoorTile(t) && !isPassableOpenDoorTile(t)) continue
           const room = findRoomAt(x, y)
           const rf = room?.tags?.roomFunction
           const hex = (rf && funcColors[rf]) || '#445566'

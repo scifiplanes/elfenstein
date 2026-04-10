@@ -437,7 +437,7 @@ export function PortraitPanel(props: {
         data-portrait-character-id={characterId}
         role="button"
         tabIndex={0}
-        aria-label={`${c.name}, ${c.species}`}
+        aria-label={c.name === c.species ? c.species : `${c.name}, ${c.species}`}
         onKeyDown={(e) => {
           if (e.key === 'Enter' || e.key === ' ') {
             e.preventDefault()

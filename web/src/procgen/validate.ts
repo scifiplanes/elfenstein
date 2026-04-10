@@ -1,5 +1,5 @@
 import { cellKey, nearestFloorCellAvoidingBlocked } from '../game/state/playerFloorCell'
-import { isAnyDoorTile, isLockedDoorTile, isOpenDoorTile } from '../game/tiles'
+import { isAnyDoorTile, isLockedDoorTile, isOpenDoorTile, isPassableOpenDoorTile } from '../game/tiles'
 import type { Tile, Vec2 } from '../game/types'
 
 export function inBounds(pos: Vec2, w: number, h: number): boolean {
@@ -12,11 +12,11 @@ export function idxOf(pos: Vec2, w: number): number {
 
 export function isWalkable(t: Tile): boolean {
   // Doors are treated as walkable space for reachability checks (locked logic is handled separately).
-  return t === 'floor' || isAnyDoorTile(t)
+  return t === 'floor' || isAnyDoorTile(t) || isPassableOpenDoorTile(t)
 }
 
 export function isWalkableWithLocks(t: Tile, opts: { lockedDoorsAreWalkable: boolean }): boolean {
-  if (t === 'floor' || isOpenDoorTile(t)) return true
+  if (t === 'floor' || isOpenDoorTile(t) || isPassableOpenDoorTile(t)) return true
   if (isLockedDoorTile(t)) return opts.lockedDoorsAreWalkable
   return false
 }
