@@ -6,6 +6,7 @@ import type {
   DragTarget,
   EquipmentSlot,
   GameState,
+  GpuTier,
   ItemDefId,
   ItemId,
   NpcKind,
@@ -17,6 +18,7 @@ import type {
   Tile,
 } from './types'
 import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefaults'
+import { applyGpuTierToRender, isTierOwnedRenderKey } from './gpuTierPresets'
 import { DEFAULT_RENDER } from './tuningDefaults'
 import {
   LEGACY_NPC_FLAT_KEYS,
@@ -186,7 +188,12 @@ export type Action =
   | { type: 'ui/setProcgenDebugOverlay'; mode: ProcgenDebugOverlayMode | undefined }
   | { type: 'ui/setDebugBgTrack'; track: string | undefined }
   | { type: 'ui/triggerDebugBgSfx'; index: number }
-  | { type: 'render/set'; key: Exclude<keyof GameState['render'], 'npcBillboard'>; value: number }
+  | {
+      type: 'render/set'
+      key: Exclude<keyof GameState['render'], 'npcBillboard' | 'gpuTier'>
+      value: number
+    }
+  | { type: 'render/setGpuTier'; tier: Exclude<GpuTier, 'custom'> }
   | { type: 'render/npcBillboard'; kind: NpcKind; field: 'groundY' | 'size' | 'sizeRand'; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
@@ -248,6 +255,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/setGpuTier':
       case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -279,6 +287,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/setGpuTier':
       case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -310,6 +319,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/setGpuTier':
       case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -356,6 +366,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'ui/setDebugBgTrack':
       case 'ui/triggerDebugBgSfx':
       case 'render/set':
+      case 'render/setGpuTier':
       case 'render/npcBillboard':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
@@ -809,13 +820,18 @@ export function reduce(state: GameState, action: Action): GameState {
       return withAnim
     }
     case 'render/set': {
-      const raw = { ...state.render, [action.key]: action.value }
+      const tierPatch: Partial<RenderTuning> = isTierOwnedRenderKey(action.key) ? { gpuTier: 'custom' } : {}
+      const raw = { ...state.render, [action.key]: action.value, ...tierPatch }
       const render = clampRenderTuning(raw)
       let next: GameState = { ...state, render }
       if (action.key === 'camEyeHeight') {
         return applyCamEyeHeight(next, render.camEyeHeight)
       }
       return next
+    }
+    case 'render/setGpuTier': {
+      const render = clampRenderTuning(applyGpuTierToRender(state.render, action.tier))
+      return { ...state, render }
     }
     case 'render/npcBillboard': {
       const cur = state.render.npcBillboard[action.kind]
@@ -1664,14 +1680,26 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const portraitMouthFlickerAmount = Math.max(0, Math.min(64, Math.round(Number(src.portraitMouthFlickerAmount ?? 8))))
   const dropRangeCells = Math.max(0, Math.min(20, Math.round(Number(src.dropRangeCells ?? 5))))
   const shadowLanternPoint = Number(src.shadowLanternPoint ?? 0) > 0 ? 1 : 0
+  const shadowLanternBeam = Number(src.shadowLanternBeam ?? 0) > 0 ? 1 : 0
   const shadowMapSize = clampShadowMapSize(Number(src.shadowMapSize ?? 256))
   const shadowFilter = Math.max(0, Math.min(2, Math.round(Number(src.shadowFilter ?? 2)))) as RenderTuning['shadowFilter']
   const torchPoiLightMax = Math.max(0, Math.min(6, Math.round(Number(src.torchPoiLightMax ?? 3))))
+  const pixelRatioCap = Math.max(1, Math.min(1.5, Number(src.pixelRatioCap ?? 1.5)))
+  const rawGpuTier = String(src.gpuTier ?? 'high')
+  const gpuTier: GpuTier = (['low', 'balanced', 'high', 'custom'] as const).includes(rawGpuTier as GpuTier)
+    ? (rawGpuTier as GpuTier)
+    : 'custom'
 
   const npcFootLift = Math.max(-0.2, Math.min(0.5, Number(src.npcFootLift ?? 0.02)))
   const clampNpcGroundY = (v: number) => Math.max(-0.75, Math.min(1.25, Number(v)))
   const poiGroundY_Well = clampNpcGroundY(src.poiGroundY_Well ?? 0)
   const poiGroundY_Chest = clampNpcGroundY(src.poiGroundY_Chest ?? 0)
+  const poiGroundY_Barrel = clampNpcGroundY(src.poiGroundY_Barrel ?? 0)
+  const poiGroundY_Crate = clampNpcGroundY(src.poiGroundY_Crate ?? 0)
+  const poiGroundY_Bed = clampNpcGroundY(src.poiGroundY_Bed ?? 0)
+  const poiGroundY_Shrine = clampNpcGroundY(src.poiGroundY_Shrine ?? 0)
+  const poiGroundY_CrackedWall = clampNpcGroundY(src.poiGroundY_CrackedWall ?? 0)
+  const poiGroundY_Exit = clampNpcGroundY(src.poiGroundY_Exit ?? 0)
   const poiSpriteBoost = Math.max(0, Math.min(3, Number(src.poiSpriteBoost ?? 1.0)))
   const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(src.poiFootLift ?? 0.02)))
   const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(src.hubInnkeeperSpriteScale ?? 1)))
@@ -1722,14 +1750,23 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     portraitMouthFlickerAmount,
     dropRangeCells,
     shadowLanternPoint,
+    shadowLanternBeam,
     shadowMapSize,
     shadowFilter,
     torchPoiLightMax,
+    pixelRatioCap,
+    gpuTier,
 
     npcFootLift,
     npcBillboard,
     poiGroundY_Well,
     poiGroundY_Chest,
+    poiGroundY_Barrel,
+    poiGroundY_Crate,
+    poiGroundY_Bed,
+    poiGroundY_Shrine,
+    poiGroundY_CrackedWall,
+    poiGroundY_Exit,
     poiSpriteBoost,
     poiFootLift,
     hubInnkeeperSpriteScale,

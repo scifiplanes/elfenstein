@@ -1,6 +1,6 @@
 import type { Dispatch, PointerEvent } from 'react'
 import type { Action } from '../../game/reducer'
-import type { GameState } from '../../game/types'
+import type { GameState, GpuTier } from '../../game/types'
 import { CURSOR_HAND_ACTIVE_ATTR } from '../cursor/cursorHandActiveAttr'
 import popup from '../shared/GamePopup.module.css'
 import styles from './SettingsMenu.module.css'
@@ -64,6 +64,31 @@ export function SettingsMenu(props: {
               dispatch({ type: 'audio/set', key: 'masterSfx', value: Number(e.target.value) })
             }
           />
+        </div>
+
+        <div className={styles.sliderRow}>
+          <span className={styles.sliderLabel}>Graphics quality</span>
+          <span className={styles.sliderValue}>
+            {state.render.gpuTier === 'custom' ? 'Custom' : state.render.gpuTier}
+          </span>
+          <select
+            className={styles.select}
+            aria-label="Graphics quality"
+            value={state.render.gpuTier}
+            onChange={(e) => {
+              const v = e.target.value as GpuTier
+              if (v === 'low' || v === 'balanced' || v === 'high') {
+                dispatch({ type: 'render/setGpuTier', tier: v })
+              }
+            }}
+          >
+            <option value="low">Low</option>
+            <option value="balanced">Balanced</option>
+            <option value="high">High</option>
+            <option value="custom" disabled={state.render.gpuTier !== 'custom'}>
+              Custom (F2 debug)
+            </option>
+          </select>
         </div>
 
         <div className={styles.divider} />

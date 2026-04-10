@@ -55,6 +55,8 @@ type HotspotBoxProps = {
   dataDropKind?: string
   /** If set, `top` is this many px instead of `rect.y` as a percent (tavern trade). */
   fixedTopPx?: number
+  /** Playwright / future a11y; set on interactive hotspots only. */
+  dataTestId?: string
   onActivate?: () => void
   onPointerEnter?: () => void
   onPointerLeave?: () => void
@@ -64,8 +66,17 @@ const HotspotBox = forwardRef<HTMLButtonElement | HTMLDivElement, HotspotBoxProp
   props,
   ref,
 ) {
-  const { rect, variant, className: extraClass, dataDropKind, fixedTopPx, onActivate, onPointerEnter, onPointerLeave } =
-    props
+  const {
+    rect,
+    variant,
+    className: extraClass,
+    dataDropKind,
+    fixedTopPx,
+    dataTestId,
+    onActivate,
+    onPointerEnter,
+    onPointerLeave,
+  } = props
   const x = clamp01(rect.x) * 100
   const y = clamp01(rect.y) * 100
   const w = clamp01(rect.w) * 100
@@ -93,6 +104,7 @@ const HotspotBox = forwardRef<HTMLButtonElement | HTMLDivElement, HotspotBoxProp
       type="button"
       className={className}
       style={{ left: `${x}%`, top: topStyle, width: `${w}%`, height: `${h}%` }}
+      {...(dataTestId ? { 'data-testid': dataTestId } : {})}
       onClick={() => onActivate()}
       onPointerEnter={onPointerEnter}
       onPointerLeave={onPointerLeave}
@@ -177,6 +189,7 @@ export function HubViewport(props: {
           <HotspotBox
             rect={hs.village.tavern}
             variant={variant}
+            dataTestId="hub-hotspot-tavern"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/goTavern' }) : undefined}
             onPointerEnter={variant === 'interactive' ? () => setVillageHover('tavern') : undefined}
             onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
@@ -184,6 +197,7 @@ export function HubViewport(props: {
           <HotspotBox
             rect={hs.village.cave}
             variant={variant}
+            dataTestId="hub-hotspot-cave"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/enterDungeon' }) : undefined}
             onPointerEnter={variant === 'interactive' ? () => setVillageHover('dungeon') : undefined}
             onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
@@ -219,6 +233,7 @@ export function HubViewport(props: {
             className={styles.hotspotTrade}
             dataDropKind="hubInnkeeperTrade"
             fixedTopPx={TAVERN_TRADE_TOP_PX}
+            dataTestId="hub-hotspot-innkeeper-trade"
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/openTavernTrade' }) : undefined}
           />
           <button

@@ -47,12 +47,13 @@ export class FramePresenter {
     return this.renderer
   }
 
-  syncSize(w: number, h: number) {
+  syncSize(w: number, h: number, pixelRatioCap: number) {
     // Browser zoom changes `devicePixelRatio`; compensate using `visualViewport.scale` so
     // compositor pixel math stays stable across zoom levels.
     const vvScale = window.visualViewport?.scale || 1
     const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
-    const capped = Math.min(effectiveDpr, 1.5)
+    const cap = Math.max(1, Math.min(1.5, pixelRatioCap))
+    const capped = Math.min(effectiveDpr, cap)
     if (w === this.lastSize.w && h === this.lastSize.h && capped === this.lastDpr) return
     this.lastSize = { w, h }
     this.lastDpr = capped

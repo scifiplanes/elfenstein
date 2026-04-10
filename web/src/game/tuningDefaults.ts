@@ -94,10 +94,19 @@ export const DEFAULT_RENDER: RenderTuning = {
   poiGroundY_Well: 0.0,
   /** ~opaque bottom of `chest_closed.png` / `chest_open.png` (~3% from texture bottom). */
   poiGroundY_Chest: 0.04,
+  poiGroundY_Barrel: 0,
+  poiGroundY_Crate: 0,
+  poiGroundY_Bed: 0,
+  poiGroundY_Shrine: 0,
+  poiGroundY_CrackedWall: 0,
+  poiGroundY_Exit: 0,
   poiSpriteBoost: 1.5,
   poiFootLift: 0.02,
   hubInnkeeperSpriteScale: 1,
   campEveryFloors: 10,
+
+  gpuTier: 'high',
+  pixelRatioCap: 1.5,
 }
 
 /** Copy only keys present in `DEFAULT_RENDER` so `debug-settings.json` always includes the full schema (e.g. per-mode camera lights) and drops stale fields. */

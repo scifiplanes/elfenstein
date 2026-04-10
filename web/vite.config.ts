@@ -49,6 +49,16 @@ function copyDirSync(srcDir: string, dstDir: string) {
 
 // https://vite.dev/config/
 export default defineConfig({
+  build: {
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes('node_modules/three/examples/')) return 'three-examples'
+          if (id.includes('node_modules/three/')) return 'three'
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: 5173,

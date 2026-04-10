@@ -118,6 +118,8 @@ export class WorldRenderer {
   private overgrownEnvTex: { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } | null = null
 
   private readonly textureLoader = new THREE.TextureLoader()
+  /** Shared by floor-item billboards; disposed in `dispose()`. Do not dispose maps in `disposeGeoGroupResources`. */
+  private readonly floorItemIconTextures = new Map<string, THREE.Texture>()
   private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
   private readonly npcSpriteAspects: Partial<Record<NpcKind, number>> = {}
   private readonly npcSpriteBaseTex: Partial<Record<NpcKind, THREE.Texture>> = {}
@@ -254,12 +256,27 @@ export class WorldRenderer {
       bundle.ceiling.dispose()
     }
     this.geoGroup?.traverse((obj) => {
-      const mesh = obj as THREE.Mesh<THREE.BufferGeometry, THREE.Material | THREE.Material[]>
-      if (mesh.geometry) mesh.geometry.dispose?.()
-      const mat = mesh.material as unknown as { dispose?: () => void } | { dispose?: () => void }[]
-      if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.())
-      else mat?.dispose?.()
+      const mesh = obj as THREE.Mesh
+      if (mesh.isMesh) {
+        mesh.geometry?.dispose()
+        const mat = mesh.material
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
+        else mat?.dispose()
+        return
+      }
+      const sprite = obj as THREE.Sprite
+      if (!sprite.isSprite) return
+      const ud = sprite.userData as { disposableItemIcon?: boolean }
+      if (!ud.disposableItemIcon) return
+      const sm = sprite.material as THREE.SpriteMaterial
+      const map = sm.map
+      if (map instanceof THREE.CanvasTexture) map.dispose()
+      sm.dispose()
     })
+    for (const t of this.floorItemIconTextures.values()) {
+      t.dispose()
+    }
+    this.floorItemIconTextures.clear()
     this.rt?.dispose()
     this.rt = null
     this.lastSize = { w: 0, h: 0 }
@@ -282,12 +299,13 @@ export class WorldRenderer {
   }
 
   /** Ensure the offscreen buffer matches the game viewport in layout CSS px (ignores ancestor `transform: scale`). */
-  syncViewportRect(cssLayoutWidth: number, cssLayoutHeight: number) {
+  syncViewportRect(cssLayoutWidth: number, cssLayoutHeight: number, pixelRatioCap: number) {
     // Browser zoom changes `devicePixelRatio`; compensate using `visualViewport.scale` so
     // the render target stays consistent with compositor pixel math across zoom levels.
     const vvScale = window.visualViewport?.scale || 1
     const effectiveDpr = (window.devicePixelRatio || 1) / Math.max(1e-6, vvScale)
-    const capped = Math.min(effectiveDpr, 1.5)
+    const cap = Math.max(1, Math.min(1.5, pixelRatioCap))
+    const capped = Math.min(effectiveDpr, cap)
     const w = Math.max(1, Math.floor(cssLayoutWidth * capped))
     const h = Math.max(1, Math.floor(cssLayoutHeight * capped))
     this.syncSize(w, h)
@@ -585,6 +603,18 @@ export class WorldRenderer {
     return this.doorOpenOctopusTextures
   }
 
+  private getFloorItemIconTexture(path: string): THREE.Texture {
+    const hit = this.floorItemIconTextures.get(path)
+    if (hit) return hit
+    const tex = this.textureLoader.load(path)
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.minFilter = THREE.LinearFilter
+    tex.magFilter = THREE.LinearFilter
+    tex.generateMipmaps = false
+    this.floorItemIconTextures.set(path, tex)
+    return tex
+  }
+
   private getEnvTexturesForFloorType(floorType: FloorType): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
     const cached = this.envTex[floorType]
     if (cached) return cached
@@ -853,11 +883,7 @@ export class WorldRenderer {
         icon.kind === 'emoji'
           ? makeItemIconBillboardMaterial(icon.glyph)
           : (() => {
-              const tex = this.textureLoader.load(icon.path)
-              tex.colorSpace = THREE.SRGBColorSpace
-              tex.minFilter = THREE.LinearFilter
-              tex.magFilter = THREE.LinearFilter
-              tex.generateMipmaps = false
+              const tex = this.getFloorItemIconTexture(icon.path)
               const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
               m.color.setRGB(1, 1, 1)
               return m
@@ -1302,9 +1328,25 @@ export class WorldRenderer {
 
   /** Normalized ground contact from bottom of texture (same 0–1 convention as `npcBillboard.*.groundY`). */
   private getPoiGroundYForKind(state: GameState, kind: PoiKind) {
-    if (kind === 'Well') return state.render.poiGroundY_Well
-    if (kind === 'Chest') return state.render.poiGroundY_Chest
-    return state.render.npcBillboard.Wurglepup.groundY
+    const r = state.render
+    switch (kind) {
+      case 'Well':
+        return r.poiGroundY_Well
+      case 'Chest':
+        return r.poiGroundY_Chest
+      case 'Barrel':
+        return r.poiGroundY_Barrel
+      case 'Crate':
+        return r.poiGroundY_Crate
+      case 'Bed':
+        return r.poiGroundY_Bed
+      case 'Shrine':
+        return r.poiGroundY_Shrine
+      case 'CrackedWall':
+        return r.poiGroundY_CrackedWall
+      case 'Exit':
+        return r.poiGroundY_Exit
+    }
   }
 
   private getNpcSpriteMat(kind: NpcKind): THREE.SpriteMaterial {
@@ -1560,6 +1602,7 @@ function disposeGeoGroupResources(group: THREE.Object3D) {
     const spr = obj as THREE.Sprite
     const mat = spr.material as THREE.SpriteMaterial
     const map = mat.map
+    // Emoji icons use CanvasTexture; loader icons share textures cached on WorldRenderer — never dispose those maps here.
     if (map instanceof THREE.CanvasTexture) map.dispose()
     mat.dispose()
   })

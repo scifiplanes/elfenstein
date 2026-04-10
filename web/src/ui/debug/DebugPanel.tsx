@@ -3,6 +3,7 @@ import type { Action } from '../../game/reducer'
 import { DEFAULT_ITEMS } from '../../game/content/items'
 import type {
   GameState,
+  GpuTier,
   HubNormRect,
   ItemDefId,
   NpcKind,
@@ -46,8 +47,8 @@ type Slider = {
   format?: (v: number) => string
 }
 
-/** Keys adjustable via `render/set` (excludes nested `npcBillboard`; use `render/npcBillboard` for that). */
-type NumericRenderTuningKey = Exclude<keyof GameState['render'], 'npcBillboard'>
+/** Keys adjustable via `render/set` (excludes nested `npcBillboard` and `gpuTier`; use `render/setGpuTier` for presets). */
+type NumericRenderTuningKey = Exclude<keyof GameState['render'], 'npcBillboard' | 'gpuTier'>
 
 export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action> }) {
   const { state, dispatch } = props
@@ -168,6 +169,14 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
   const renderSliders: Array<Omit<Slider, 'key'> & { key: NumericRenderTuningKey }> = useMemo(
     () => [
+      {
+        key: 'pixelRatioCap',
+        label: 'Pixel ratio cap (WebGL + HUD capture)',
+        min: 1,
+        max: 1.5,
+        step: 0.25,
+        format: (v) => v.toFixed(2),
+      },
       { key: 'globalIntensity', label: 'Global intensity (3D)', min: 0, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'themeHueShiftDeg_dungeon_warm', label: 'Theme hue shift (dungeon_warm, deg)', min: -180, max: 180, step: 1, format: (v) => `${Math.round(v)}°` },
       { key: 'themeSaturation_dungeon_warm', label: 'Theme saturation (dungeon_warm)', min: 0, max: 3, step: 0.01, format: (v) => v.toFixed(2) },
@@ -298,6 +307,12 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'poiFootLift', label: 'POI above ground', min: -0.2, max: 0.5, step: 0.005, format: (v) => v.toFixed(3) },
       { key: 'poiGroundY_Well', label: 'POI Well groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiGroundY_Chest', label: 'POI Chest groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Barrel', label: 'POI Barrel groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Crate', label: 'POI Crate groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Bed', label: 'POI Bed groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Shrine', label: 'POI Shrine groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_CrackedWall', label: 'POI CrackedWall groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
+      { key: 'poiGroundY_Exit', label: 'POI Exit groundY', min: -0.6, max: 0.6, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'poiSpriteBoost', label: 'POI sprite boost', min: 0.5, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
     ],
     [],
@@ -1171,6 +1186,30 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
 
       <div className={styles.section}>
         <div className={styles.sectionTitle}>Rendering</div>
+        {(!q || 'gpu tier graphics quality pixel'.includes(q)) && (
+          <div className={styles.row}>
+            <div className={styles.label}>GPU quality tier</div>
+            <div className={styles.value}>{state.render.gpuTier}</div>
+            <select
+              className={styles.select}
+              aria-label="GPU quality tier"
+              value={state.render.gpuTier}
+              onChange={(e) => {
+                const v = e.target.value as GpuTier
+                if (v === 'low' || v === 'balanced' || v === 'high') {
+                  dispatch({ type: 'render/setGpuTier', tier: v })
+                }
+              }}
+            >
+              <option value="low">Low</option>
+              <option value="balanced">Balanced</option>
+              <option value="high">High</option>
+              <option value="custom" disabled={state.render.gpuTier !== 'custom'}>
+                Custom (tier-owned sliders)
+              </option>
+            </select>
+          </div>
+        )}
         {(!q || 'fog enabled fogenabled fog'.includes(q)) && (
           <div className={styles.row}>
             <div className={styles.label}>Fog enabled</div>

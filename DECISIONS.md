@@ -5277,3 +5277,71 @@ Prevents farming infinite rests from one bed while keeping the POI clickable for
 
 ### Consequences
 - **`web/src/game/state/poi.ts`**, **`web/src/procgen/population.ts`** (seed **`opened: false`**), **`web/src/game/types.ts`** (comment), **`DESIGN.md`** §9.
+
+---
+
+## ADR-0318 — GPU quality tiers + shared pixel ratio cap
+Date: 2026-04-10
+
+### Decision
+- Add **`RenderTuning.gpuTier`**: **`low` | `balanced` | `high` | `custom`** (default **`high`**) and **`pixelRatioCap`** in **[1, 1.5]** (default **1.5**), persisted like other render keys.
+- **`render/setGpuTier`** merges **`web/src/game/gpuTierPresets.ts`** (shadows, POI torch count, dither matrix/strength, cap). **`render/set`** on any **tier-owned** key sets **`gpuTier`** to **`custom`**.
+- Thread **`pixelRatioCap`** into **`FramePresenter.syncSize`**, **`WorldRenderer.syncViewportRect`**, and **`html2canvas`** **`scale`** in **`DitheredFrameRoot`** (replacing the hardcoded **1.5** cap).
+- **Settings** and **F2 Rendering** expose tier selection; F2 also includes a **`pixelRatioCap`** slider.
+
+### Rationale
+Gives players a single control for performance without losing fine-grained F2 tuning; keeps presenter, world RT, and HUD capture resolution aligned.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`gpuTierPresets.ts`**, **`reducer.ts`**, **`FramePresenter.ts`**, **`WorldRenderer.ts`**, **`DitheredFrameRoot.tsx`**, **`SettingsMenu`**, **`DebugPanel`**; **`DESIGN.md`** §3 / §6.4.
+
+---
+
+## ADR-0319 — Playwright end-to-end smoke tests + CI
+Date: 2026-04-10
+
+### Decision
+- Add **`@playwright/test`** under **`web/`** with **`playwright.config.ts`**: **`testDir`** **`e2e/`**, **`webServer`** runs **`npm run build && npm run preview`** on **`127.0.0.1:4173`** with **`strictPort`**, **`reuseExistingServer`** off in CI.
+- Set **`PLAYWRIGHT_BROWSERS_PATH`** to **`web/node_modules/.cache/ms-playwright`** in config (and **`scripts/playwright-install.mjs`**) so installs are project-local and predictable when a parent sets a broken global cache.
+- **`npm run playwright:install`**: install Chromium; append **`--with-deps`** when **`CI`** is set (Linux agents).
+- Specs in **`web/e2e/smoke.spec.ts`**: boot / title (**`[data-hud-root][data-capture="false"]`** avoids duplicate capture HUD), Escape settings (**`.first()`** on **`Settings`** dialog vs capture duplicate), graphics tier select, **Start** → click Bobr → no title dialogs.
+- GitHub Actions **`.github/workflows/web.yml`**: **`npm ci`**, **`npm test`** (Vitest), **`npm run playwright:install`**, **`npm run test:e2e`**.
+
+### Rationale
+Vitest already covers reducers and rules; browser smoke catches integration regressions (dual HUD/capture trees, modals, intro). **`vite preview`** avoids dev-only **`/__debug_settings/save`** behavior during E2E.
+
+### Consequences
+**`web/package.json`**, **`web/playwright.config.ts`**, **`web/e2e/`**, **`web/scripts/playwright-install.mjs`**, **`web/tsconfig.node.json`**, **`web/.gitignore`**; **`.github/workflows/web.yml`**; **`DESIGN.md`** §3.
+
+---
+
+## ADR-0320 — Hub hotspot `data-testid` + Playwright hub/game/tavern E2E
+Date: 2026-04-10
+
+### Decision
+- **`HubViewport`** **`HotspotBox`**: optional **`dataTestId`** (alongside **`dataDropKind`** / **`fixedTopPx`** for tavern trade); interactive buttons set **`data-testid`** **`hub-hotspot-tavern`**, **`hub-hotspot-cave`**, **`hub-hotspot-innkeeper-trade`** (capture **`div`** hotspots unchanged).
+- **`web/e2e/helpers.ts`**: **`interactiveHud`**, **`interactiveSettingsDialog`**, **`goToVillageHub`** (title → **Start** → skip Bobr → assert **`/content/village.png`** in interactive HUD).
+- **`web/e2e/hub.spec.ts`**: cave → **Step forward** enabled; tavern → **Leave tavern** → village; tavern → trade → **Close** (assert **Trade · Innkeeper**).
+- Refactor **`web/e2e/smoke.spec.ts`** to import shared helpers from **`helpers.ts`**.
+
+### Rationale
+Village **`HotspotBox`** controls had no accessible names, so Playwright could not target **Cave** / **Tavern** / trade reliably. Stable **`data-testid`** keeps geometry F2-driven while unlocking E2E; nav pad **`aria-label`** already distinguishes hub vs game.
+
+### Consequences
+**`HubViewport.tsx`**, **`web/e2e/helpers.ts`**, **`web/e2e/hub.spec.ts`**, **`web/e2e/smoke.spec.ts`**; **`DESIGN.md`** §3 (automated testing).
+
+---
+
+## ADR-0321 — Per-PoiKind `poiGroundY_*` render keys + F2 sliders
+Date: 2026-04-10
+
+### Decision
+Add **`render.poiGroundY_Barrel`**, **`poiGroundY_Crate`**, **`poiGroundY_Bed`**, **`poiGroundY_Shrine`**, **`poiGroundY_CrackedWall`**, **`poiGroundY_Exit`** (alongside existing **Well** / **Chest** keys), clamp them in **`clampRenderTuning`**, wire **`WorldRenderer.getPoiGroundYForKind`** to **`PoiKind`** only (no fallback to **`npcBillboard.Wurglepup.groundY`**), and expose matching F2 sliders in **`DebugPanel`**.
+
+### Rationale
+Those POIs previously shared the **Wurglepup** NPC ground pivot, which was easy to miss and coupled unrelated art tuning.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**; **`DESIGN.md`** §8 / §9. Defaults **`0`** match the prior **Wurglepup** default; players who had tuned **Wurglepup** only for POIs must set the new POI sliders.
+
+---
