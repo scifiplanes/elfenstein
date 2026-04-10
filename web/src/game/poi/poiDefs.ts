@@ -19,9 +19,9 @@ export const POI_SPRITE_SRC: Record<PoiKind, string> = {
   Chest: POI_CHEST_CLOSED_SRC,
   Barrel: POI_BARREL_CLOSED_SRC,
   Crate: POI_CRATE_CLOSED_SRC,
-  Bed: '/content/poi_placeholder.png',
+  Bed: '/content/poi_bed.png',
   Shrine: '/content/shrine_gnome.png',
-  CrackedWall: '/content/poi_placeholder.png',
+  CrackedWall: '/content/poi_cracked_wall.png',
   Exit: '/content/stairs_down.png',
 }
 

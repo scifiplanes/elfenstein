@@ -20,6 +20,7 @@ import { PaperdollModal } from '../paperdoll/PaperdollModal'
 import { useCursor } from '../cursor/useCursor'
 import { tradeWants } from '../../game/state/trade'
 import type { WorldRenderer } from '../../world/WorldRenderer'
+import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
 
 /**
  * `CharacterEquipStrip` horizontal nudge (px): **left** rails (**CHAR1/CHAR2**) shift **+n** toward the **right** / game;
@@ -98,54 +99,6 @@ export function HudLayout(props: {
 
   const isInsideRect = (x: number, y: number, r: DOMRectReadOnly) => x >= r.left && x <= r.right && y >= r.top && y <= r.bottom
 
-  const worldPointToCell = (state: GameState, p: { x: number; z: number }) => {
-    // Floor tiles are centered at (gridX - w/2, gridY - h/2) in world space.
-    const gx = Math.floor(p.x + state.floor.w / 2 + 0.5)
-    const gy = Math.floor(p.z + state.floor.h / 2 + 0.5)
-    return { x: gx, y: gy }
-  }
-
-  const clampByManhattanRange = (player: { x: number; y: number }, target: { x: number; y: number }, range: number) => {
-    const dx = target.x - player.x
-    const dy = target.y - player.y
-    const adx = Math.abs(dx)
-    const ady = Math.abs(dy)
-    const dist = adx + ady
-    if (dist <= range) return target
-    const sx = dx < 0 ? -1 : 1
-    const sy = dy < 0 ? -1 : 1
-    const useX = Math.min(adx, range)
-    const rem = Math.max(0, range - useX)
-    const useY = Math.min(ady, rem)
-    return { x: player.x + sx * useX, y: player.y + sy * useY }
-  }
-
-  const findNearestFloorCell = (state: GameState, start: { x: number; y: number }, maxRange: number) => {
-    const { w, h, tiles, playerPos } = state.floor
-    const inBounds = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h
-    const isFloor = (x: number, y: number) => tiles[x + y * w] === 'floor'
-    const withinPlayerRange = (x: number, y: number) => Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y) <= maxRange
-
-    if (inBounds(start.x, start.y) && isFloor(start.x, start.y) && withinPlayerRange(start.x, start.y)) return start
-
-    for (let r = 1; r <= maxRange; r++) {
-      for (let dx = -r; dx <= r; dx++) {
-        const dy = r - Math.abs(dx)
-        const candidates = [
-          { x: start.x + dx, y: start.y + dy },
-          { x: start.x + dx, y: start.y - dy },
-        ]
-        for (const c of candidates) {
-          if (!inBounds(c.x, c.y)) continue
-          if (!withinPlayerRange(c.x, c.y)) continue
-          if (!isFloor(c.x, c.y)) continue
-          return c
-        }
-      }
-    }
-    return null
-  }
-
   const cancelPortraitTap = (args: { pointerId?: number; reason: 'cancel' | 'slop' | 'drag' }) => {
     const g = portraitTapRef.current
     if (!g) return
@@ -159,6 +112,7 @@ export function HudLayout(props: {
       className={styles.root}
       data-hud-root=""
       data-capture={captureForPostprocess ? 'true' : 'false'}
+      data-title-screen={state.ui.screen === 'title' ? 'true' : undefined}
       ref={rootRef}
       onPointerMove={
         interactive
@@ -238,31 +192,19 @@ export function HudLayout(props: {
               const { drop } = cursor.endPointerUp(e)
               if (!drop) return
 
-              // Cursor-aimed 3D floor drop: if the drop resolves to `floorDrop` and the pointer is
-              // over the 3D viewport, compute a snapped grid cell near the ray hit.
-              if (drop.target.kind === 'floorDrop' && state.ui.screen !== 'hub' && world && gameViewportRef?.current) {
-                const rect = gameViewportRef.current.getBoundingClientRect()
-                if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
-                  const p = world.pickFloorPoint(rect, e.clientX, e.clientY)
-                  if (p) {
-                    const rawCell = worldPointToCell(state, { x: p.x, z: p.z })
-                    const range = Math.max(0, Math.round(Number(state.render.dropRangeCells ?? 0)))
-                    const clamped = clampByManhattanRange(state.floor.playerPos, rawCell, range)
-                    const snapped = findNearestFloorCell(state, clamped, range)
-                    if (snapped) {
-                      dispatch({
-                        type: 'drag/drop',
-                        payload: drop.payload,
-                        target: { kind: 'floorDrop', dropPos: snapped },
-                        nowMs: performance.now(),
-                      })
-                      return
-                    }
-                  }
-                }
-              }
-
-              dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
+              const nowMs = performance.now()
+              const target =
+                drop.target.kind === 'floorDrop'
+                  ? resolveGameViewportDragDropTarget(
+                      state,
+                      world,
+                      gameViewportRef?.current ?? null,
+                      drop.target,
+                      e.clientX,
+                      e.clientY,
+                    )
+                  : drop.target
+              dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs })
             }
           : undefined
       }
@@ -287,6 +229,8 @@ export function HudLayout(props: {
             className={styles.charRailPushEnd}
             equipTranslateXPx={EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
             equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+            world={world}
+            gameViewportRef={gameViewportRef}
           />
         </div>
       </section>
@@ -343,6 +287,8 @@ export function HudLayout(props: {
             characterId={state.party.chars[3].id}
             equipTranslateXPx={-EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
             equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+            world={world}
+            gameViewportRef={gameViewportRef}
           />
           <div className={`${styles.charRailPortraitGrow} ${styles.charRailPushEnd}`}>
             <PortraitPanel
@@ -377,6 +323,8 @@ export function HudLayout(props: {
             className={styles.charRailPushEnd}
             equipTranslateXPx={EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
             equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+            world={world}
+            gameViewportRef={gameViewportRef}
           />
         </div>
       </section>
@@ -390,6 +338,8 @@ export function HudLayout(props: {
             characterId={state.party.chars[2].id}
             equipTranslateXPx={-EQUIP_STRIP_NUDGE_TOWARD_GAME_PX}
             equipNudgeUpPx={EQUIP_STRIP_NUDGE_UP_PX}
+            world={world}
+            gameViewportRef={gameViewportRef}
           />
           <div className={`${styles.charRailPortraitGrow} ${styles.charRailPushEnd}`}>
             <PortraitPanel
@@ -410,7 +360,14 @@ export function HudLayout(props: {
         </section>
 
         <section className={`${styles.panel} ${styles.inventory}`}>
-          <InventoryPanel state={state} dispatch={dispatch} content={content} tradeWantDefIds={tradeWantDefIds} />
+          <InventoryPanel
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            tradeWantDefIds={tradeWantDefIds}
+            world={world}
+            gameViewportRef={gameViewportRef}
+          />
         </section>
 
         <section className={`${styles.panel} ${styles.navigation}`}>

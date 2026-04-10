@@ -1,5 +1,8 @@
-import type { Dispatch, RefObject } from 'react'
+import { useEffect, useState, type Dispatch, type RefObject } from 'react'
 import type { Action } from '../../game/reducer'
+import { clampCampEveryFloors, floorTypeForFloorIndex } from '../../game/state/runFloorSchedule'
+import { layoutProfile } from '../../procgen/floorLayoutProfile'
+import type { FloorType } from '../../procgen/types'
 import type { GameState, HubNormRect } from '../../game/types'
 import popup from '../shared/GamePopup.module.css'
 import styles from './HubViewport.module.css'
@@ -11,9 +14,19 @@ const START_HUB_ART: Record<'village' | 'tavern', string> = {
   tavern: '/content/tavern_background.png',
 }
 
-const CAMP_HUB_ART: Record<'village' | 'tavern', string> = {
-  village: '/content/camp_village.png',
-  tavern: '/content/camp_tavern_background.png',
+const CAMP_TAVERN_BG = '/content/camp_tavern_background.png'
+
+/** Camp village art triples follow `layoutProfile` so reskins match their geometry realizer. */
+function campVillageSkinId(floorType: FloorType): 'village' | 'cave' | 'dungeon' {
+  const p = layoutProfile(floorType)
+  if (p === 'Cave') return 'cave'
+  if (p === 'Dungeon') return 'dungeon'
+  return 'village'
+}
+
+const START_VILLAGE_HOVER: Record<'tavern' | 'dungeon', string> = {
+  tavern: '/content/village_tavern_hover.png',
+  dungeon: '/content/village_dungeon_hover.png',
 }
 
 const TAVERN_FG_START = '/content/tavern_foreground.png'
@@ -35,8 +48,10 @@ function HotspotBox(props: {
   variant: HubViewportVariant
   className?: string
   onActivate?: () => void
+  onPointerEnter?: () => void
+  onPointerLeave?: () => void
 }) {
-  const { rect, variant, className: extraClass, onActivate } = props
+  const { rect, variant, className: extraClass, onActivate, onPointerEnter, onPointerLeave } = props
   const x = clamp01(rect.x) * 100
   const y = clamp01(rect.y) * 100
   const w = clamp01(rect.w) * 100
@@ -59,6 +74,8 @@ function HotspotBox(props: {
       className={className}
       style={{ left: `${x}%`, top: `${y}%`, width: `${w}%`, height: `${h}%` }}
       onClick={() => onActivate()}
+      onPointerEnter={onPointerEnter}
+      onPointerLeave={onPointerLeave}
     />
   )
 }
@@ -72,25 +89,54 @@ export function HubViewport(props: {
   const { state, dispatch, viewportRef, variant = 'interactive' } = props
   const scene = state.ui.hubScene ?? 'village'
   const camp = state.ui.hubKind === 'camp'
-  const artMap = camp ? CAMP_HUB_ART : START_HUB_ART
-  const src = artMap[scene]
+  const campEvery = clampCampEveryFloors(state.render.campEveryFloors)
+  const campSkin = camp
+    ? campVillageSkinId(floorTypeForFloorIndex(Math.max(0, state.floor.floorIndex - 1), campEvery))
+    : 'village'
+  const mainArtSrc =
+    scene === 'village'
+      ? camp
+        ? `/content/camp_${campSkin}.png`
+        : START_HUB_ART.village
+      : camp
+        ? CAMP_TAVERN_BG
+        : START_HUB_ART.tavern
   const hs = state.hubHotspots
   const tavernFg = camp ? TAVERN_FG_CAMP : TAVERN_FG_START
 
+  const [villageHover, setVillageHover] = useState<'tavern' | 'dungeon' | null>(null)
+  useEffect(() => {
+    if (scene !== 'village') setVillageHover(null)
+  }, [scene])
+
+  const villageHoverSrc =
+    scene === 'village' && variant === 'interactive' && villageHover
+      ? camp
+        ? `/content/camp_${campSkin}_${villageHover === 'tavern' ? 'tavern' : 'dungeon'}_hover.png`
+        : START_VILLAGE_HOVER[villageHover]
+      : null
+
   return (
     <div className={styles.root} ref={viewportRef}>
-      <img className={styles.art} src={src} alt="" draggable={false} />
+      <img className={styles.art} src={mainArtSrc} alt="" draggable={false} />
+      {villageHoverSrc ? (
+        <img className={styles.villageHoverOverlay} src={villageHoverSrc} alt="" draggable={false} />
+      ) : null}
       {scene === 'village' ? (
         <>
           <HotspotBox
             rect={hs.village.tavern}
             variant={variant}
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/goTavern' }) : undefined}
+            onPointerEnter={variant === 'interactive' ? () => setVillageHover('tavern') : undefined}
+            onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
           />
           <HotspotBox
             rect={hs.village.cave}
             variant={variant}
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/enterDungeon' }) : undefined}
+            onPointerEnter={variant === 'interactive' ? () => setVillageHover('dungeon') : undefined}
+            onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
           />
         </>
       ) : (

@@ -97,6 +97,9 @@ export type CharacterStats = {
   luck: number
 }
 
+/** Optional additive weapon scaling: `floor(stat × 0.25)` in `computePcAttackDamage`. */
+export type WeaponDamageStat = 'strength' | 'agility' | 'intelligence'
+
 /** 0..1 multiplier reduction by damage type (e.g. 0.2 = 20% reduced). */
 export type Resistances = Partial<Record<DamageType, number>>
 
@@ -272,9 +275,22 @@ export type RenderTuning = {
   themeSaturation_ruins_umber: number
   /** Base emissive lift applied to dungeon materials (multiplied by per-surface factors). */
   baseEmissive: number
-  lanternIntensity: number
-  lanternDistance: number
-  /** Offsets the lantern forward/down to avoid “headlamp flattening”. */
+  /** Camera light when `party.chars[0]` has no equipped `playerLight` item. */
+  bareLightIntensity: number
+  bareLightDistance: number
+  /** Camera light when equipped Torch wins (not POI torches; those use `torchIntensity`). */
+  heldTorchIntensity: number
+  heldTorchDistance: number
+  /** Camera light when equipped Lantern wins. */
+  equippedLanternIntensity: number
+  equippedLanternDistance: number
+  /** Camera light when equipped Headlamp wins. */
+  headlampIntensity: number
+  headlampDistance: number
+  /** Camera light when equipped Glowbug wins. */
+  glowbugIntensity: number
+  glowbugDistance: number
+  /** Offsets the camera PointLight forward/down to avoid “headlamp flattening”. */
   lanternForwardOffset: number
   lanternVerticalOffset: number
   /** Small time-based modulation to make lantern read like fire. */

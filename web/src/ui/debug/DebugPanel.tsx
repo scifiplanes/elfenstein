@@ -183,8 +183,16 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'dropRangeCells', label: 'Drop range (Manhattan cells)', min: 0, max: 20, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'campEveryFloors', label: 'Camp every N dungeon floors', min: 1, max: 99, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'dropJitterRadius', label: 'Drop jitter radius', min: 0, max: 0.45, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'lanternIntensity', label: 'Lantern intensity', min: 0, max: 40, step: 0.01 },
-      { key: 'lanternDistance', label: 'Lantern distance', min: 2, max: 80, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'bareLightIntensity', label: 'Camera — bare intensity', min: 0, max: 120, step: 0.01 },
+      { key: 'bareLightDistance', label: 'Camera — bare distance', min: 0.5, max: 160, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'heldTorchIntensity', label: 'Camera — held torch intensity', min: 0, max: 120, step: 0.01 },
+      { key: 'heldTorchDistance', label: 'Camera — held torch distance', min: 0.5, max: 120, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'equippedLanternIntensity', label: 'Camera — equipped lantern intensity', min: 0, max: 120, step: 0.01 },
+      { key: 'equippedLanternDistance', label: 'Camera — equipped lantern distance', min: 0.5, max: 160, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'headlampIntensity', label: 'Camera — headlamp intensity', min: 0, max: 120, step: 0.01 },
+      { key: 'headlampDistance', label: 'Camera — headlamp distance', min: 0.5, max: 160, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'glowbugIntensity', label: 'Camera — glowbug intensity', min: 0, max: 80, step: 0.01 },
+      { key: 'glowbugDistance', label: 'Camera — glowbug distance', min: 0.5, max: 100, step: 0.5, format: (v) => v.toFixed(1) },
       { key: 'lanternForwardOffset', label: 'Lantern forward offset', min: 0, max: 0.8, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'lanternVerticalOffset', label: 'Lantern vertical offset', min: -0.3, max: 0.3, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'lanternFlickerAmp', label: 'Lantern flicker amp', min: 0, max: 0.35, step: 0.005, format: (v) => v.toFixed(3) },
@@ -193,8 +201,8 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
       { key: 'lanternBeamDistanceScale', label: 'Lantern beam distance scale', min: 0.5, max: 3.0, step: 0.01, format: (v) => v.toFixed(2) },
       { key: 'lanternBeamAngleDeg', label: 'Lantern beam angle (deg)', min: 5, max: 60, step: 1, format: (v) => String(Math.round(v)) },
       { key: 'lanternBeamPenumbra', label: 'Lantern beam penumbra', min: 0, max: 1, step: 0.01, format: (v) => v.toFixed(2) },
-      { key: 'torchIntensity', label: 'Torch intensity', min: 0, max: 30, step: 0.01 },
-      { key: 'torchDistance', label: 'Torch distance', min: 1, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
+      { key: 'torchIntensity', label: 'POI torch intensity', min: 0, max: 30, step: 0.01 },
+      { key: 'torchDistance', label: 'POI torch distance', min: 1, max: 60, step: 0.5, format: (v) => v.toFixed(1) },
       {
         key: 'torchPoiLightMax',
         label: 'Torch POI lights max (nearest to player)',
@@ -439,7 +447,7 @@ export function DebugPanel(props: { state: GameState; dispatch: Dispatch<Action>
                     ms: ok ? 1400 : 1600,
                   })
                 }}
-                title="Writes web/public/debug-settings.json (dev server only)"
+                title="Writes web/public/debug-settings.json now (dev). Auto-save also runs ~2s after edits."
               >
                 Save to project
               </button>

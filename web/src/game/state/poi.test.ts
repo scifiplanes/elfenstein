@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { ContentDB } from '../content/contentDb'
-import { applyPoiUse } from './poi'
+import type { ItemId } from '../types'
+import { applyItemOnPoi, applyPoiUse } from './poi'
 import { makeInitialState } from './initialState'
 
 const content = ContentDB.createDefault()
@@ -42,5 +43,35 @@ describe('applyPoiUse', () => {
     expect(next.floor.floorGeomRevision).toBe(rev0 + 1)
     const last = next.ui.activityLog?.[next.ui.activityLog.length - 1]
     expect(last?.text).toBe('The crate breaks to splinters.')
+  })
+})
+
+describe('applyItemOnPoi', () => {
+  it('Shrine + Sweetroot consumes offering and grants Blessed to living party', () => {
+    const base = makeInitialState(content)
+    const itemId = 'i_sweet_offer' as ItemId
+    const state = {
+      ...base,
+      floor: {
+        ...base.floor,
+        pois: [{ id: 'shrine1', kind: 'Shrine' as const, pos: { x: 1, y: 1 } }],
+      },
+      party: {
+        ...base.party,
+        items: {
+          ...base.party.items,
+          [itemId]: { id: itemId, defId: 'Sweetroot', qty: 1 },
+        },
+      },
+    }
+    const next = applyItemOnPoi(state, content, itemId, 'shrine1')
+    expect(next.party.items[itemId]).toBeUndefined()
+    for (const c of next.party.chars) {
+      if (c.hp > 0) {
+        expect(c.statuses.some((s) => s.id === 'Blessed')).toBe(true)
+      }
+    }
+    const last = next.ui.activityLog?.[next.ui.activityLog.length - 1]
+    expect(last?.text).toContain('shrine')
   })
 })

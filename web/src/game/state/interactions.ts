@@ -69,6 +69,8 @@ function remedyHint(defId: ItemDefId, c: Character, state: GameState): string | 
     return 'This might calm the irritation.'
   if (defId === 'Moss' && hasActiveStatus(c, state, 'NanoTagged')) return 'This might draw the haze out of you.'
   if (defId === 'AntitoxinVial' && hasActiveStatus(c, state, 'Parasitized')) return 'This could help with parasites.'
+  if (defId === 'CoolingPoultice' && hasActiveStatus(c, state, 'Burning')) return 'This could help with the burning.'
+  if (defId === 'DryWrap' && hasActiveStatus(c, state, 'Drenched')) return 'This could help you dry off.'
   return null
 }
 
@@ -137,7 +139,11 @@ function buildInspectGreatLines(content: ContentDB, def: ItemDef): string[] {
   if (def.equipSlots?.length) mechBits.push(`equips to ${def.equipSlots.join(', ')}`)
   if (def.useOnPoi && Object.keys(def.useOnPoi).length) {
     const parts = Object.entries(def.useOnPoi).map(([k, v]) => {
-      const t = v.transformTo ? ` → ${v.transformTo}` : ''
+      const bits: string[] = []
+      if (v.transformTo) bits.push(`→ ${v.transformTo}`)
+      if (v.consumeOffering) bits.push('consumes offering')
+      if (v.blessPartyMs != null && v.blessPartyMs > 0) bits.push(`party Blessed ~${Math.round(v.blessPartyMs / 1000)}s`)
+      const t = bits.length ? `: ${bits.join('; ')}` : ''
       return `${k}${t}`
     })
     mechBits.push(`POI: ${parts.join('; ')}`)
@@ -241,6 +247,8 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
   }
   if (item.defId === 'Moss') nextState = removeStatus(nextState, characterId, 'NanoTagged')
   if (item.defId === 'AntitoxinVial') nextState = removeStatus(nextState, characterId, 'Parasitized')
+  if (item.defId === 'CoolingPoultice') nextState = removeStatus(nextState, characterId, 'Burning')
+  if (item.defId === 'DryWrap') nextState = removeStatus(nextState, characterId, 'Drenched')
 
   nextState = consumeItem(nextState, itemId)
   const q = nextState.ui.sfxQueue ?? []

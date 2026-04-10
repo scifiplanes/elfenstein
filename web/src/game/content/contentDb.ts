@@ -1,6 +1,19 @@
-import type { DamageType, EquipmentSlot, ItemDefId, PoiKind, Species, StatusEffectId } from '../types'
+import type { DamageType, EquipmentSlot, ItemDefId, PoiKind, Species, StatusEffectId, WeaponDamageStat } from '../types'
 import { DEFAULT_ITEMS } from './items'
 import { DEFAULT_STATUSES } from './statuses'
+
+/** Equipped on party slot 0: drives camera PointLight tuning (see `resolvePlayerCameraLightKind`). */
+export type PlayerLightTag = 'torch' | 'lantern' | 'headlamp' | 'glowbug'
+
+/** Per-POI hook for dragging an item onto that POI (see `applyItemOnPoi`). */
+export type ItemPoiUseHook = {
+  transformTo?: ItemDefId
+  toast?: string
+  /** Shrine: destroy the offered item after use. */
+  consumeOffering?: boolean
+  /** Shrine: grant **Blessed** to every living party member for this many ms. */
+  blessPartyMs?: number
+}
 
 export type ItemDef = {
   id: ItemDefId
@@ -13,14 +26,14 @@ export type ItemDef = {
     baseDamage: number
     damageType: DamageType
     /** Optional additive scaling: `floor(stat * 0.25)` merged before % run bonus. */
-    damageStat?: 'strength' | 'agility'
+    damageStat?: WeaponDamageStat
     consumesOnUse?: boolean
     staminaCost?: number
     statusOnHit?: Array<{ status: StatusEffectId; pct: number; durationMs?: number }>
   }
   equipSlots?: EquipmentSlot[]
   feed?: { hunger: number; thirst?: number; stamina?: number; hp?: number; statusChances?: Array<{ status: StatusEffectId; pct: number; onlySpecies?: Species }> }
-  useOnPoi?: Partial<Record<PoiKind, { transformTo?: ItemDefId; toast?: string }>>
+  useOnPoi?: Partial<Record<PoiKind, ItemPoiUseHook>>
   /** Combat-only: drag onto acting PC portrait hands during encounter to apply Fire resist for `shieldTurns` of that PC’s turns. */
   combatShield?: {
     fireResistBonusPct: number
@@ -28,6 +41,7 @@ export type ItemDef = {
     shieldTurns: number
     consumesOnUse: true
   }
+  playerLight?: PlayerLightTag
 }
 
 export type StatusEffectDef = {

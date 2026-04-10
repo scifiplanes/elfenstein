@@ -1,10 +1,12 @@
-import type { Dispatch } from 'react'
+import type { Dispatch, RefObject } from 'react'
 import { useLayoutEffect, useRef } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import type { GameState, ItemDefId } from '../../game/types'
+import type { WorldRenderer } from '../../world/WorldRenderer'
 import styles from './InventoryPanel.module.css'
 import { useCursor } from '../cursor/useCursor'
+import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
 
 export function InventoryPanel(props: {
   state: GameState
@@ -12,8 +14,11 @@ export function InventoryPanel(props: {
   content: ContentDB
   /** While trading: highlight inventory slots whose `defId` the merchant will buy. */
   tradeWantDefIds?: readonly ItemDefId[]
+  /** For 3D POI/NPC/floor-item drops: inventory `pointerup` uses capture on the slot button, so `HudLayout` never runs. */
+  world?: WorldRenderer | null
+  gameViewportRef?: RefObject<HTMLDivElement | null>
 }) {
-  const { state, dispatch, content, tradeWantDefIds } = props
+  const { state, dispatch, content, tradeWantDefIds, world = null, gameViewportRef } = props
   const cursor = useCursor()
   const wantSet = tradeWantDefIds?.length ? new Set(tradeWantDefIds) : null
   const firstSlotRef = useRef<HTMLDivElement | null>(null)
@@ -45,7 +50,16 @@ export function InventoryPanel(props: {
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
         const { drop } = cursor.endPointerUp(e)
-        if (drop) dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
+        if (!drop) return
+        const target = resolveGameViewportDragDropTarget(
+          state,
+          world,
+          gameViewportRef?.current ?? null,
+          drop.target,
+          e.clientX,
+          e.clientY,
+        )
+        dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs: performance.now() })
       }}
     >
       {slots.map((itemId, idx) => {
@@ -75,7 +89,15 @@ export function InventoryPanel(props: {
                     const { drop, promotedToDrag } = cursor.endPointerUp(e)
                     e.stopPropagation()
                     if (drop) {
-                      dispatch({ type: 'drag/drop', payload: drop.payload, target: drop.target, nowMs: performance.now() })
+                      const target = resolveGameViewportDragDropTarget(
+                        state,
+                        world,
+                        gameViewportRef?.current ?? null,
+                        drop.target,
+                        e.clientX,
+                        e.clientY,
+                      )
+                      dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs: performance.now() })
                       return
                     }
                     if (!tradeEligible || !item || !state.ui.tradeSession) return

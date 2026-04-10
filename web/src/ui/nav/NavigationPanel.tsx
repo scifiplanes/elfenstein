@@ -73,7 +73,7 @@ export function NavigationPanel(props: {
   onNavPadVisualPress: (id: NavPadButtonId) => void
 }) {
   const { state, dispatch, pressedButtonId, onNavPadVisualPress } = props
-  const busy = Boolean(state.view.anim) || state.ui.screen === 'hub'
+  const busy = Boolean(state.view.anim) || state.ui.screen === 'hub' || state.ui.screen === 'title'
 
   useEffect(() => {
     for (const src of preloadUrls) {

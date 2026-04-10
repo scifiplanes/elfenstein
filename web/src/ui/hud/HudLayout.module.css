@@ -15,6 +15,14 @@
   padding: 12px;
 }
 
+/*
+ * Title (`TitleScreen` in `fullHudInteractiveLayer`) must own pointer hits: the live HUD is
+ * `opacity: 0` for compositing, and without this the game cell / nav can still receive events.
+ */
+.root[data-title-screen='true'] section.panel {
+  pointer-events: none;
+}
+
 /* Safety: strip any leftover debug borders/outlines on HUD layout containers. */
 .root section {
   border: none !important;

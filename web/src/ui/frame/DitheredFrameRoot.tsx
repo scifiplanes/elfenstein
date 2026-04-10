@@ -13,6 +13,7 @@ import { DeathModal } from '../death/DeathModal'
 import { TradeModal } from '../trade/TradeModal'
 import { SettingsMenu } from '../settings/SettingsMenu'
 import { TitleScreen } from '../title/TitleScreen'
+import { TitleCutscenePortalContext } from '../title/TitleCutscenePortalContext'
 import type { NavPadButtonId } from '../nav/NavigationPanel'
 import styles from './DitheredFrameRoot.module.css'
 import { useFixedStageOuterScale } from '../../app/FixedStageContext'
@@ -21,10 +22,53 @@ import { FramePresenter } from '../../world/FramePresenter'
 import { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
+import { getPortraitCaptureHudRev } from '../portraits/portraitCaptureHudRev'
 import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
 
 type SpeciesId = GameState['party']['chars'][number]['species']
 const NAV_PUSHED_SRC = '/content/ui/navigation/ui_navigationbutton_pushed.png'
+/** Same asset as `TitleScreen` / hub village; full-stage `object-fit: cover` for compositor boot. */
+const TITLE_BOOT_VILLAGE_SRC = '/content/village.png'
+
+function buildTitleBootPlaceholderTexture(): Promise<THREE.CanvasTexture> {
+  return new Promise((resolve, reject) => {
+    const img = new Image()
+    img.crossOrigin = 'anonymous'
+    img.onload = () => {
+      const canvas = document.createElement('canvas')
+      canvas.width = STAGE_CSS_WIDTH
+      canvas.height = STAGE_CSS_HEIGHT
+      const ctx = canvas.getContext('2d')
+      if (!ctx) {
+        reject(new Error('2D context unavailable'))
+        return
+      }
+      ctx.fillStyle = '#050508'
+      ctx.fillRect(0, 0, canvas.width, canvas.height)
+      const iw = img.naturalWidth || img.width
+      const ih = img.naturalHeight || img.height
+      if (iw < 1 || ih < 1) {
+        reject(new Error('Invalid image size'))
+        return
+      }
+      const scale = Math.max(canvas.width / iw, canvas.height / ih)
+      const dw = iw * scale
+      const dh = ih * scale
+      const ox = (canvas.width - dw) / 2
+      const oy = (canvas.height - dh) / 2
+      ctx.drawImage(img, 0, 0, iw, ih, ox, oy, dw, dh)
+      const tex = new THREE.CanvasTexture(canvas)
+      tex.colorSpace = THREE.SRGBColorSpace
+      tex.minFilter = THREE.LinearFilter
+      tex.magFilter = THREE.LinearFilter
+      tex.generateMipmaps = false
+      tex.needsUpdate = true
+      resolve(tex)
+    }
+    img.onerror = () => reject(new Error('Failed to load title boot art'))
+    img.src = TITLE_BOOT_VILLAGE_SRC
+  })
+}
 
 function portraitOverlayUrlsForSpecies(
   species: SpeciesId,
@@ -127,8 +171,14 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const pendingHudKeyRef = useRef<string>('')
 
   const [navPadPressedId, setNavPadPressedId] = useState<NavPadButtonId | null>(null)
+  const [titleCutsceneMountEl, setTitleCutsceneMountEl] = useState<HTMLDivElement | null>(null)
+  /** Bumps when `titleBootPlaceholderTexRef` is ready so `renderOnce` recomposites with the boot UI texture. */
+  const [, setTitleBootPlaceholderReady] = useState(0)
+  const titleBootPlaceholderTexRef = useRef<THREE.CanvasTexture | null>(null)
   const navPadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const cursor = useCursor()
+  const cursorLatestRef = useRef(cursor.state)
+  cursorLatestRef.current = cursor.state
   const pointerDownStartedAtMsRef = useRef<number | null>(null)
   const prevPointerDownRef = useRef(false)
 
@@ -270,6 +320,27 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    void buildTitleBootPlaceholderTexture()
+      .then((tex) => {
+        if (cancelled) {
+          tex.dispose()
+          return
+        }
+        titleBootPlaceholderTexRef.current = tex
+        setTitleBootPlaceholderReady((n) => n + 1)
+      })
+      .catch(() => {
+        /* Boot still works once html2canvas supplies `uiTexRef`. */
+      })
+    return () => {
+      cancelled = true
+      titleBootPlaceholderTexRef.current?.dispose()
+      titleBootPlaceholderTexRef.current = null
+    }
+  }, [])
+
   const renderOnce = () => {
     const presenter = presenterRef.current
     if (!presenter) return false
@@ -280,6 +351,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const gameCssW = gameEl.clientWidth
     const gameCssH = gameEl.clientHeight
     if (gameCssW < 1 || gameCssH < 1) return false
+
+    // rAF loop (deps `[world]`) holds a stale `renderOnce` closure; always read cursor from ref.
+    const cs = cursorLatestRef.current
 
     const outerS = Math.max(1e-6, fixedStageOuterScaleRef.current)
 
@@ -340,7 +414,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
     const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
     const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
-    const pressedPortraitCharacterId = getPressedPortraitCharacterId(cursor.state)
+    const pressedPortraitCharacterId = getPressedPortraitCharacterId(cs)
     const portraitPressActive = pressedPortraitCharacterId != null
     // Portrait mouth is a compositor overlay, but it still benefits from a higher cadence so flicker reads.
     const highFpsUi = anyShakeActive || mouthActive || idlePulseActive || portraitPressActive
@@ -389,15 +463,15 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const pressKey = pressedPortraitCharacterId ?? ''
       // Portrait hover affordances (eyes inspect / mouth preview) are rendered inside the captured HUD
       // and depend on cursor hover state during drags.
-      const ht = cursor.state.hoverTarget
+      const ht = cs.hoverTarget
       const hoverPortraitKey =
-        cursor.state.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
+        cs.dragging?.started && ht?.kind === 'portrait' ? `${ht.characterId}:${ht.target}` : ''
       const screenKey = sForKey.ui.screen
       const paperdollKey = sForKey.ui.paperdollFor ?? ''
       const dbgDeathKey = sForKey.ui.debugShowDeathPopup ? '1' : '0'
       const dbgNpcDlgKey = sForKey.ui.debugShowNpcDialogPopup ? '1' : '0'
       const checkpointKey = sForKey.run.checkpoint ? '1' : '0'
-      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}`
+      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}|pCapIdle=${getPortraitCaptureHudRev()}`
     })()
     const hudDirty = hudKey !== lastHudKeyRef.current
     // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
@@ -408,7 +482,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     // Schedule it in idle time and back off when captures are slow.
     const lastCapDur = lastUiCaptureDurMsRef.current ?? 0
     // Backoff is great for smooth frame pacing, but during interaction bursts we prefer immediacy.
-    const immediateCapture = highFpsUi || poseDirty
+    // When `hudDirty` is true but this was false, capture waited for the stale/interval gate (~720ms),
+    // so local-only HUD pixels (e.g. portrait idle flash) stayed out of sync with the compositor texture.
+    const immediateCapture = highFpsUi || poseDirty || hudDirty
     const backoffMs = immediateCapture ? 0 : lastCapDur > 120 ? 600 : lastCapDur > 60 ? 350 : lastCapDur > 30 ? 180 : 0
     const effectiveIntervalMs = immediateCapture ? 0 : captureIntervalMs + backoffMs
     const stale = now - lastCaptureMsRef.current > maxStaleMs
@@ -605,12 +681,12 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       : pressedPortraitCharacterId === c.id ? 1
       : 0,
     )
-    const hover = cursor.state.hoverTarget
+    const hover = cs.hoverTarget
     const portraitHoverEyesOn = party.map((c) =>
-      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
+      cs.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'eyes' ? 1 : 0,
     )
     const portraitHoverMouthOn = party.map((c) =>
-      cursor.state.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
+      cs.dragging?.started && hover?.kind === 'portrait' && hover.characterId === c.id && hover.target === 'mouth' ? 1 : 0,
     )
     // Hover mouth should show steadily (original affordance); cue mouth flicker wins when active.
     const portraitMouthIsOpen = portraitMouthOn.map((v, i) => (v > 0 ? v : portraitHoverMouthOn[i] ?? 0))
@@ -763,9 +839,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const hazardTintPulse = activeRoomProp && hazardPulseProps.has(activeRoomProp)
       ? 0.55 + 0.4 * Math.sin((performance.now() * 2 * Math.PI) / hazardPulseMs)
       : 1
+    const uiTexForPresenter =
+      uiTexRef.current ??
+      (onTitleScreen ? titleBootPlaceholderTexRef.current : null)
+
     presenter.setInputs({
       sceneTex: world?.getRenderTargetTexture() ?? null,
-      uiTex: uiTexRef.current,
+      uiTex: uiTexForPresenter,
       // `getBoundingClientRect` includes `FixedStageViewport` scale; compositor uniforms expect **layout** CSS px (1920×1080 stage).
       gameRectPx: {
         left: (gr.left - (hr?.left ?? 0)) / outerS,
@@ -835,7 +915,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       emaPresentMs: ema.presentMs,
       uiCaptureMs: lastUiCaptureDurMsRef.current,
       pointer: {
-        isDown: cursor.state.isPointerDown,
+        isDown: cs.isPointerDown,
         downStartedAtMs: pointerDownStartedAtMsRef.current,
         pressedPortraitCharacterId,
       },
@@ -874,8 +954,16 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const anyShakeActive = (!!ui.shake && ui.shake.untilMs > s.nowMs) || (!!ui.portraitShake && ui.portraitShake.untilMs > s.nowMs)
       const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > s.nowMs
       const hazardTelegraphActive = roomPropertyUnderPlayer(s) != null
+      const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
+      const cs = cursorLatestRef.current
+      const portraitPressActive = cs.isPointerDown && getPressedPortraitCharacterId(cs) != null
       const active =
-        now < renderBurstUntilMsRef.current || anyShakeActive || mouthActive || hazardTelegraphActive
+        now < renderBurstUntilMsRef.current ||
+        anyShakeActive ||
+        mouthActive ||
+        hazardTelegraphActive ||
+        idlePulseActive ||
+        portraitPressActive
       if (active) renderOnce()
       raf = window.requestAnimationFrame(loop)
     }
@@ -906,26 +994,29 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   /* `tradeModalOpen` only for capture HUD overlay; interactive trade mounts in `HudLayout`. */
 
   return (
-    <div className={styles.root}>
-      <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
+    <TitleCutscenePortalContext.Provider value={titleCutsceneMountEl}>
+      <div className={styles.root}>
+        <canvas className={styles.presentCanvas} ref={presentCanvasRef} />
 
-      {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
+        <div ref={setTitleCutsceneMountEl} className={styles.titleCutsceneMount} aria-hidden />
 
-      <div className={styles.interactiveHud}>
-        <HudLayout
-          state={state}
-          dispatch={dispatch}
-          content={content}
-          interactive={true}
-          captureForPostprocess={false}
-          world={world}
-          rootRef={interactiveHudRef}
-          gameViewportRef={gameViewportRef}
-          webglError={webglError}
-          navPadPressedId={navPadPressedId}
-          onNavPadVisualPress={onNavPadVisualPress}
-        />
-      </div>
+        {webglError ? <div style={{ position: 'fixed', left: 12, top: 12, padding: '10px 12px', borderRadius: 12, background: 'rgba(120,20,20,0.75)', border: '1px solid rgba(255,255,255,0.16)', color: 'rgba(255,255,255,0.92)', fontFamily: 'var(--mono)', fontSize: 12, pointerEvents: 'none', zIndex: 10 }}>3D renderer error: {webglError}</div> : null}
+
+        <div className={styles.interactiveHud}>
+          <HudLayout
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            interactive={true}
+            captureForPostprocess={false}
+            world={world}
+            rootRef={interactiveHudRef}
+            gameViewportRef={gameViewportRef}
+            webglError={webglError}
+            navPadPressedId={navPadPressedId}
+            onNavPadVisualPress={onNavPadVisualPress}
+          />
+        </div>
 
       {state.ui.npcDialogFor || (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
         <div className={styles.stageModalLayer}>
@@ -987,7 +1078,8 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
             captureMountEl,
           )
         : null}
-    </div>
+      </div>
+    </TitleCutscenePortalContext.Provider>
   )
 }
 

@@ -1,9 +1,11 @@
-import { useMemo, type Dispatch, type PointerEvent } from 'react'
+import { useMemo, type Dispatch, type PointerEvent, type RefObject } from 'react'
 import type { ContentDB } from '../../game/content/contentDb'
 import type { Action } from '../../game/reducer'
 import { getCharacterEquipmentHudModel, itemFitsCharacterEquipmentSlot } from '../../game/state/equipment'
 import type { EquipmentSlot, GameState } from '../../game/types'
+import type { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
+import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
 import { EquipIcon } from './EquipIcon'
 import styles from './CharacterEquipStrip.module.css'
 
@@ -18,8 +20,12 @@ export function CharacterEquipStrip(props: {
   equipTranslateXPx?: number
   /** Nudge **up** by this many px (`translateY(-n)`); `HudLayout` passes the same value on **all** four strips. */
   equipNudgeUpPx?: number
+  /** Same as `InventoryPanel`: equip drags use `pointerCapture` on the button, so resolve 3D drops here. */
+  world?: WorldRenderer | null
+  gameViewportRef?: RefObject<HTMLDivElement | null>
 }) {
-  const { state, dispatch, content, characterId, className, equipTranslateXPx, equipNudgeUpPx } = props
+  const { state, dispatch, content, characterId, className, equipTranslateXPx, equipNudgeUpPx, world = null, gameViewportRef } =
+    props
   const cursor = useCursor()
   const m = getCharacterEquipmentHudModel(state, content, characterId)
   if (!m) return null
@@ -48,14 +54,21 @@ export function CharacterEquipStrip(props: {
 
   const onPointerUpStrip = (e: PointerEvent) => {
     const result = cursor.endPointerUp(e)
-    if (result?.drop) {
-      dispatch({
-        type: 'drag/drop',
-        payload: result.drop.payload,
-        target: result.drop.target,
-        nowMs: performance.now(),
-      })
-    }
+    if (!result?.drop) return
+    const target = resolveGameViewportDragDropTarget(
+      state,
+      world,
+      gameViewportRef?.current ?? null,
+      result.drop.target,
+      e.clientX,
+      e.clientY,
+    )
+    dispatch({
+      type: 'drag/drop',
+      payload: result.drop.payload,
+      target,
+      nowMs: performance.now(),
+    })
   }
 
   const draggingItemId = cursor.state.dragging?.started ? cursor.state.dragging.payload.itemId : null
