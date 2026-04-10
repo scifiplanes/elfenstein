@@ -84,7 +84,7 @@
       "Wurglepup": {
         "groundY": 0.15,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.3
       },
       "Bobr": {
         "groundY": -0.15,
@@ -94,12 +94,12 @@
       "Skeleton": {
         "groundY": -0.07,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.13
       },
       "Catoctopus": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.3
       },
       "Swarm": {
         "groundY": 0,
@@ -109,7 +109,7 @@
       "Chumbo": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.54
       },
       "Grub": {
         "groundY": 0,
@@ -119,12 +119,12 @@
       "Kuratko": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.2
       },
       "Grechka": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.12
       },
       "Snailord": {
         "groundY": 0,
@@ -144,7 +144,7 @@
       "Kerekere": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.19
       },
       "Bok": {
         "groundY": 0,
@@ -159,7 +159,7 @@
       "BigHands": {
         "groundY": 0,
         "size": 0.65,
-        "sizeRand": 0
+        "sizeRand": 0.7
       },
       "Gargantula": {
         "groundY": 0,
@@ -167,13 +167,13 @@
         "sizeRand": 0
       }
     },
-    "poiGroundY_Well": 0,
+    "poiGroundY_Well": 0.21,
     "poiGroundY_Chest": 0.16,
-    "poiGroundY_Barrel": 0,
-    "poiGroundY_Crate": 0,
-    "poiGroundY_Bed": 0,
-    "poiGroundY_Shrine": 0,
-    "poiGroundY_CrackedWall": 0,
+    "poiGroundY_Barrel": 0.18,
+    "poiGroundY_Crate": 0.22,
+    "poiGroundY_Bed": 0.22,
+    "poiGroundY_Shrine": 0.17,
+    "poiGroundY_CrackedWall": 0.32,
     "poiGroundY_Exit": 0,
     "poiSpriteBoost": 3,
     "poiFootLift": 0.085,
