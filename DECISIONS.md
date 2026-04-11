@@ -5757,3 +5757,17 @@ Vite serves **`/content/*`** from **`Content/`** in dev and copies that tree int
 **`npcDefs.ts`**, **`Content/npc_well_glow.png`**, **`DESIGN.md`** §7.5 NPC rendering bullet.
 
 ---
+
+## ADR-0356 — F2 debug disk save: flush on hide + visible failures
+Date: 2026-04-11
+
+### Decision
+In **`vite dev`**, after F2 / settings tuning hydrates from **`web/public/debug-settings.json`** and **`localStorage`**, the client keeps debounced **`POST /__debug_settings/save`** (~2 s) to rewrite **`web/public/debug-settings.json`**. It also **flushes** an immediate **`POST`** when **`document.visibilityState === 'hidden'`** or **`pagehide`** fires, clearing any pending debounce timer first. If the **`POST`** fails, dispatch a **debounced `ui/toast`** in addition to existing **`console.warn`**. The Vite **`persist-debug-settings`** middleware matches the save path using **pathname only** (strip **`?` / `#`**) so a query suffix cannot break saves.
+
+### Rationale
+Users often closed the tab or switched away before the **2 s** debounce fired; **`localStorage`** had already updated, so tuning looked “saved” while the repo file stayed stale. Failures were easy to miss when only logged to the console.
+
+### Consequences
+**`web/src/app/GameApp.tsx`**, **`web/vite.config.ts`**, **`DESIGN.md`** §3 (**Debug F2** persistence bullets).
+
+---

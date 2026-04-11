@@ -121,7 +121,8 @@ export default defineConfig({
       name: 'persist-debug-settings',
       configureServer(server) {
         server.middlewares.use((req, res, next) => {
-          if (req.method !== 'POST' || req.url !== '/__debug_settings/save') {
+          const pathOnly = (req.url ?? '').split('?')[0]?.split('#')[0] ?? ''
+          if (req.method !== 'POST' || pathOnly !== '/__debug_settings/save') {
             next()
             return
           }

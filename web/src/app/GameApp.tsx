@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
 import { CursorLayer } from '../ui/cursor/CursorLayer'
 import { CursorProvider } from '../ui/cursor/CursorProvider'
 import { DebugPanel } from '../ui/debug/DebugPanel'
@@ -23,6 +23,27 @@ export function GameApp() {
   const [debugTuningHydrated, setDebugTuningHydrated] = useState(false)
   const stateRef = useRef(state)
   stateRef.current = state
+  const debugTuningHydratedRef = useRef(false)
+  debugTuningHydratedRef.current = debugTuningHydrated
+  const projectSaveTimerRef = useRef(0)
+  const projectSaveFailToastTimerRef = useRef(0)
+
+  const persistProjectDebugNow = useCallback(() => {
+    const s = stateRef.current
+    return saveDebugSettingsToProject(s.render, s.audio, s.hubHotspots, buildDebugUiPersist(s.ui))
+  }, [])
+
+  const scheduleProjectSaveFailToast = useCallback(() => {
+    window.clearTimeout(projectSaveFailToastTimerRef.current)
+    projectSaveFailToastTimerRef.current = window.setTimeout(() => {
+      projectSaveFailToastTimerRef.current = 0
+      dispatch({
+        type: 'ui/toast',
+        text: 'Could not save debug settings to project (check dev server / disk permissions).',
+        ms: 3200,
+      })
+    }, 400)
+  }, [dispatch])
 
   useEffect(() => {
     let cancelled = false
@@ -84,17 +105,21 @@ export function GameApp() {
   useEffect(() => {
     if (!debugTuningHydrated) return
     if (!import.meta.env.DEV) return
-    const t = window.setTimeout(() => {
-      void saveDebugSettingsToProject(
-        state.render,
-        state.audio,
-        state.hubHotspots,
-        buildDebugUiPersist(state.ui),
-      )
+    window.clearTimeout(projectSaveTimerRef.current)
+    projectSaveTimerRef.current = window.setTimeout(() => {
+      projectSaveTimerRef.current = 0
+      void persistProjectDebugNow().then((ok) => {
+        if (!ok) scheduleProjectSaveFailToast()
+      })
     }, 2000)
-    return () => window.clearTimeout(t)
+    return () => {
+      window.clearTimeout(projectSaveTimerRef.current)
+      projectSaveTimerRef.current = 0
+    }
   }, [
     debugTuningHydrated,
+    persistProjectDebugNow,
+    scheduleProjectSaveFailToast,
     state.render,
     state.render.npcSpawnCountMin,
     state.render.npcSpawnCountMax,
@@ -107,6 +132,28 @@ export function GameApp() {
     state.ui.debugShowNpcDialogPopup,
     state.ui.debugShowDeathPopup,
   ])
+
+  /** Flush pending disk save when the tab is hidden or unloaded (dev only); avoids losing edits if the 2s debounce never fires. */
+  useEffect(() => {
+    if (!import.meta.env.DEV) return
+    const flush = () => {
+      if (!debugTuningHydratedRef.current) return
+      window.clearTimeout(projectSaveTimerRef.current)
+      projectSaveTimerRef.current = 0
+      void persistProjectDebugNow().then((ok) => {
+        if (!ok) scheduleProjectSaveFailToast()
+      })
+    }
+    const onVisibility = () => {
+      if (document.visibilityState === 'hidden') flush()
+    }
+    window.addEventListener('pagehide', flush)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => {
+      window.removeEventListener('pagehide', flush)
+      document.removeEventListener('visibilitychange', onVisibility)
+    }
+  }, [persistProjectDebugNow, scheduleProjectSaveFailToast])
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
