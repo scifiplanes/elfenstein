@@ -3,9 +3,6 @@ import type { Character, CharacterId, GameState, StatusEffectId } from '../types
 import { addStatus, removeStatus } from './status'
 import { pushPortraitToast } from './portraitToasts'
 
-/** Ignore multi-second tab background gaps so one tick does not dump whole vitals. */
-const VITALS_DRAIN_DT_MS_CAP = 2000
-
 export function characterHasActiveStatus(c: Character, state: GameState, id: StatusEffectId): boolean {
   return c.statuses.some((s) => s.id === id && (s.untilMs == null || s.untilMs > state.nowMs))
 }
@@ -15,38 +12,38 @@ function statusLabel(id: StatusEffectId): string {
 }
 
 /**
- * Passive hunger/thirst drain while `ui.screen === 'game'`.
- * `prev.nowMs` is the previous tick time; `nextNowMs` is the new wall time.
+ * Apply hunger/thirst drain from one **grid step** or one in-place **turn** (exploration only).
+ * Uses fractional carry in `run.vitalsDrainAccByChar` so rates like 0.2/step work.
  */
-export function applyVitalsTimeDrain(prev: GameState, nextNowMs: number): GameState {
-  if (prev.ui.screen !== 'game') return prev
-  const hunR = Math.max(0, Number(prev.render.vitalsHungerDrainPerGameMin ?? 0))
-  const thrR = Math.max(0, Number(prev.render.vitalsThirstDrainPerGameMin ?? 0))
-  if (hunR <= 0 && thrR <= 0) return prev
-
-  const dtRaw = Math.max(0, nextNowMs - prev.nowMs)
-  const dtMs = Math.min(VITALS_DRAIN_DT_MS_CAP, dtRaw)
-  if (dtMs <= 0) return prev
-
-  const dhAcc = (hunR / 60_000) * dtMs
-  const dtAcc = (thrR / 60_000) * dtMs
+export function applyVitalsExplorationDrain(state: GameState, kind: 'step' | 'turn'): GameState {
+  if (state.ui.screen !== 'game') return state
+  const r = state.render
+  const dh =
+    kind === 'step'
+      ? Math.max(0, Number(r.vitalsHungerDrainPerStep ?? 0))
+      : Math.max(0, Number(r.vitalsHungerDrainPerTurn ?? 0))
+  const dt =
+    kind === 'step'
+      ? Math.max(0, Number(r.vitalsThirstDrainPerStep ?? 0))
+      : Math.max(0, Number(r.vitalsThirstDrainPerTurn ?? 0))
+  if (dh <= 0 && dt <= 0) return state
 
   const accMap: Partial<Record<CharacterId, { hunger: number; thirst: number }>> = {
-    ...(prev.run.vitalsDrainAccByChar ?? {}),
+    ...(state.run.vitalsDrainAccByChar ?? {}),
   }
 
-  const chars = prev.party.chars.map((c) => {
+  const chars = state.party.chars.map((c) => {
     if (c.hp <= 0) return c
     const cur = accMap[c.id] ?? { hunger: 0, thirst: 0 }
-    let ha = cur.hunger + (hunR > 0 ? dhAcc : 0)
-    let ta = cur.thirst + (thrR > 0 ? dtAcc : 0)
+    let ha = cur.hunger + (dh > 0 ? dh : 0)
+    let ta = cur.thirst + (dt > 0 ? dt : 0)
     let hunger = c.hunger
     let thirst = c.thirst
-    while (hunR > 0 && hunger > 0 && ha >= 1) {
+    while (dh > 0 && hunger > 0 && ha >= 1) {
       ha -= 1
       hunger -= 1
     }
-    while (thrR > 0 && thirst > 0 && ta >= 1) {
+    while (dt > 0 && thirst > 0 && ta >= 1) {
       ta -= 1
       thirst -= 1
     }
@@ -56,9 +53,9 @@ export function applyVitalsTimeDrain(prev: GameState, nextNowMs: number): GameSt
   })
 
   return {
-    ...prev,
-    party: { ...prev.party, chars },
-    run: { ...prev.run, vitalsDrainAccByChar: accMap },
+    ...state,
+    party: { ...state.party, chars },
+    run: { ...state.run, vitalsDrainAccByChar: accMap },
   }
 }
 

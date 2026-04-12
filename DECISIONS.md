@@ -7685,3 +7685,17 @@ Vitals were previously static except portrait rest; **`Starving`** / **`Dehydrat
 Players must **eat/drink** on longer dungeon segments or raise F2 drain to **0** for legacy feel. Checkpoints persist **`vitalsDrainAccByChar`** when present. Supersedes the prior “no passive vitals decay” implicit behavior documented in Q&A only.
 
 ---
+
+## ADR-0489 — Vitals drain: step/turn based (not wall-clock time)
+Date: 2026-04-12
+
+### Decision
+Remove **`applyVitalsTimeDrain`** from **`time/tick`**. Drive hunger/thirst loss from **`applyVitalsExplorationDrain`** on successful **forward steps** (**`attemptMoveTo`** with **`moveKind === 'step'`**) and **`player/turn`** (in-place rotation). Replace **`render.vitalsHungerDrainPerGameMin` / `vitalsThirstDrainPerGameMin`** with **`vitalsHungerDrainPerStep`**, **`vitalsThirstDrainPerStep`**, **`vitalsHungerDrainPerTurn`**, **`vitalsThirstDrainPerTurn`** (clamped **0..3**, fractional allowed; carry in **`run.vitalsDrainAccByChar`**). **Strafe** does not consume these vitals rates.
+
+### Rationale
+Wall-clock drain punishes tabbing away and is decoupled from how much the player actually explores. Step/turn linkage matches grid roguelike pacing and stays deterministic per action.
+
+### Consequences
+**`DESIGN.md`** and F2 / **`debug-settings.json`** schema change; **ADR-0488** time-based description is superseded for the drain clock only (statuses and penalties unchanged).
+
+---

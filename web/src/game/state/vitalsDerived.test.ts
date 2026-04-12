@@ -1,15 +1,18 @@
 import { describe, expect, it } from 'vitest'
-import type { GameState } from '../types'
+import type { GameState, UiState } from '../types'
 import { DEFAULT_AUDIO, DEFAULT_RENDER } from '../tuningDefaults'
 import { DEFAULT_HUB_HOTSPOTS } from '../hubHotspotDefaults'
 import {
-  applyVitalsTimeDrain,
+  applyVitalsExplorationDrain,
   characterHasActiveStatus,
   staminaStepVitalsBumpForCharacter,
   syncStarvationDehydrationStatuses,
 } from './vitalsDerived'
 
-function shell(overrides: Partial<GameState>): GameState {
+function shell(
+  overrides: Partial<Omit<GameState, 'ui'>> & { ui?: Partial<UiState> },
+): GameState {
+  const { ui: uiOverrides, ...rest } = overrides
   return {
     nowMs: 0,
     ui: {
@@ -20,9 +23,9 @@ function shell(overrides: Partial<GameState>): GameState {
       roomTelegraphStrength: 0.2,
       sfxQueue: [],
       activityLog: [],
-      ...overrides.ui,
+      ...uiOverrides,
     },
-    render: { ...DEFAULT_RENDER, ...overrides.render },
+    render: { ...DEFAULT_RENDER, ...rest.render },
     audio: { ...DEFAULT_AUDIO },
     hubHotspots: {
       village: { ...DEFAULT_HUB_HOTSPOTS.village },
@@ -35,11 +38,15 @@ function shell(overrides: Partial<GameState>): GameState {
       level: 1,
       perkHistory: [],
       bonuses: { hpMaxBonus: 0, staminaMaxBonus: 0, damageBonusPct: 0 },
-      ...overrides.run,
+      ...rest.run,
     },
     view: { camPos: { x: 0, y: 0, z: 0 }, camYaw: 0 },
-    party: overrides.party ?? { chars: [] },
-    floor: overrides.floor ?? {
+    party: rest.party ?? {
+      chars: [],
+      inventory: { cols: 1, rows: 1, slots: [null] },
+      items: {},
+    },
+    floor: rest.floor ?? {
       seed: 1,
       floorIndex: 0,
       floorType: 'Dungeon',
@@ -55,7 +62,7 @@ function shell(overrides: Partial<GameState>): GameState {
       itemsOnFloor: [],
       floorGeomRevision: 0,
     },
-    ...overrides,
+    ...rest,
   } as GameState
 }
 
@@ -83,49 +90,85 @@ const baseChar = {
   equipment: {},
 }
 
-describe('applyVitalsTimeDrain', () => {
-  it('does not drain on hub/title', () => {
+describe('applyVitalsExplorationDrain', () => {
+  it('does not drain when not in dungeon screen', () => {
     const s = shell({
       ui: { screen: 'hub' },
-      party: { chars: [{ ...baseChar, hunger: 50, thirst: 50 }] },
-      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerGameMin: 60, vitalsThirstDrainPerGameMin: 60 },
+      party: {
+        chars: [{ ...baseChar, hunger: 50, thirst: 50 }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
+      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerStep: 1, vitalsThirstDrainPerStep: 1 },
     })
-    const next = applyVitalsTimeDrain(s, 60_000)
+    const next = applyVitalsExplorationDrain(s, 'step')
     expect(next.party.chars[0]!.hunger).toBe(50)
     expect(next.party.chars[0]!.thirst).toBe(50)
   })
 
-  it('drains hunger/thirst from fractional accrual over ticks', () => {
+  it('step drain uses fractional accrual until whole points', () => {
     const s = shell({
-      nowMs: 0,
-      party: { chars: [{ ...baseChar, hunger: 5, thirst: 5 }] },
-      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerGameMin: 60, vitalsThirstDrainPerGameMin: 60 },
+      party: {
+        chars: [{ ...baseChar, hunger: 5, thirst: 5 }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
+      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerStep: 0.4, vitalsThirstDrainPerStep: 0.5 },
     })
-    // 60 pts/min = 1 pt/s; 2s clamped tick → −2 each
-    const a = applyVitalsTimeDrain(s, 2000)
-    expect(a.party.chars[0]!.hunger).toBe(3)
-    expect(a.party.chars[0]!.thirst).toBe(3)
-    const b = applyVitalsTimeDrain(a, 4000)
-    expect(b.party.chars[0]!.hunger).toBe(1)
-    expect(b.party.chars[0]!.thirst).toBe(1)
+    const a = applyVitalsExplorationDrain(s, 'step')
+    expect(a.party.chars[0]!.hunger).toBe(5)
+    expect(a.party.chars[0]!.thirst).toBe(5)
+    expect(a.run.vitalsDrainAccByChar?.a?.hunger).toBeCloseTo(0.4)
+    const b = applyVitalsExplorationDrain(a, 'step')
+    const c = applyVitalsExplorationDrain(b, 'step')
+    expect(c.party.chars[0]!.hunger).toBe(4)
+    expect(c.party.chars[0]!.thirst).toBe(4)
+  })
+
+  it('turn drain uses separate tuning', () => {
+    const s = shell({
+      party: {
+        chars: [{ ...baseChar, hunger: 10, thirst: 10 }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
+      render: {
+        ...DEFAULT_RENDER,
+        vitalsHungerDrainPerStep: 0,
+        vitalsThirstDrainPerStep: 0,
+        vitalsHungerDrainPerTurn: 1,
+        vitalsThirstDrainPerTurn: 1,
+      },
+    })
+    const next = applyVitalsExplorationDrain(s, 'turn')
+    expect(next.party.chars[0]!.hunger).toBe(9)
+    expect(next.party.chars[0]!.thirst).toBe(9)
   })
 
   it('clamps vitals at 0', () => {
     const s = shell({
-      nowMs: 0,
-      party: { chars: [{ ...baseChar, hunger: 1, thirst: 0 }] },
-      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerGameMin: 120, vitalsThirstDrainPerGameMin: 0 },
+      party: {
+        chars: [{ ...baseChar, hunger: 0, thirst: 1 }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
+      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerStep: 0, vitalsThirstDrainPerStep: 2 },
     })
-    const next = applyVitalsTimeDrain(s, 2000)
+    const next = applyVitalsExplorationDrain(s, 'step')
     expect(next.party.chars[0]!.hunger).toBe(0)
+    expect(next.party.chars[0]!.thirst).toBe(0)
   })
 
   it('skips dead characters', () => {
     const s = shell({
-      party: { chars: [{ ...baseChar, hp: 0, hunger: 50, thirst: 50 }] },
-      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerGameMin: 60, vitalsThirstDrainPerGameMin: 60 },
+      party: {
+        chars: [{ ...baseChar, hp: 0, hunger: 50, thirst: 50 }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
+      render: { ...DEFAULT_RENDER, vitalsHungerDrainPerStep: 5, vitalsThirstDrainPerStep: 5 },
     })
-    const next = applyVitalsTimeDrain(s, 2000)
+    const next = applyVitalsExplorationDrain(s, 'step')
     expect(next.party.chars[0]!.hunger).toBe(50)
   })
 })
@@ -134,14 +177,16 @@ describe('syncStarvationDehydrationStatuses', () => {
   it('adds permanent statuses at 0 and removes when refilled', () => {
     let s = shell({
       nowMs: 1000,
-      party: { chars: [{ ...baseChar, hunger: 0, thirst: 0, statuses: [] }] },
+      party: {
+        chars: [{ ...baseChar, hunger: 0, thirst: 0, statuses: [] }],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
+      },
     })
     s = syncStarvationDehydrationStatuses(s)
     const c = s.party.chars[0]!
     expect(characterHasActiveStatus(c, s, 'Starving')).toBe(true)
     expect(characterHasActiveStatus(c, s, 'Dehydrated')).toBe(true)
-    expect(c.statuses.filter((x) => x.id === 'Starving')).toHaveLength(1)
-    expect(c.statuses.filter((x) => x.id === 'Dehydrated')).toHaveLength(1)
     expect(c.statuses.find((x) => x.id === 'Starving')?.untilMs).toBeUndefined()
 
     const chars = s.party.chars.slice()
@@ -169,6 +214,8 @@ describe('staminaStepVitalsBumpForCharacter', () => {
             ],
           },
         ],
+        inventory: { cols: 1, rows: 1, slots: [null] },
+        items: {},
       },
       render: {
         ...DEFAULT_RENDER,

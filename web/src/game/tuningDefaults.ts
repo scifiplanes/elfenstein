@@ -172,8 +172,10 @@ export const DEFAULT_RENDER: RenderTuning = {
   lowThirstWarnFrac: 0.25,
   lowVitalWarnCooldownMs: 7000,
 
-  vitalsHungerDrainPerGameMin: 2,
-  vitalsThirstDrainPerGameMin: 3,
+  vitalsHungerDrainPerStep: 0.12,
+  vitalsThirstDrainPerStep: 0.16,
+  vitalsHungerDrainPerTurn: 0.04,
+  vitalsThirstDrainPerTurn: 0.05,
   vitalsDrainStaminaStepPenaltyStarving: 1,
   vitalsDrainStaminaStepPenaltyDehydrated: 1,
   vitalsDefensePenaltyStarving: 1,

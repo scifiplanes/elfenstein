@@ -745,10 +745,14 @@ export type RenderTuning = {
   /** Min ms between low-vital portrait toasts per character. */
   lowVitalWarnCooldownMs: number
 
-  /** Passive hunger drain in dungeon (`ui.screen === 'game'`): points lost per real-time minute (0 = off). */
-  vitalsHungerDrainPerGameMin: number
-  /** Passive thirst drain under the same rules as hunger (0 = off). */
-  vitalsThirstDrainPerGameMin: number
+  /** Hunger lost per successful forward **step** while `ui.screen === 'game'` (fractional OK; carry in `run.vitalsDrainAccByChar`). 0 = off. */
+  vitalsHungerDrainPerStep: number
+  /** Thirst lost per successful **step** (same rules). 0 = off. */
+  vitalsThirstDrainPerStep: number
+  /** Hunger lost per in-place **turn** (`player/turn`). 0 = off. */
+  vitalsHungerDrainPerTurn: number
+  /** Thirst lost per in-place **turn**. 0 = off. */
+  vitalsThirstDrainPerTurn: number
   /** Extra integer STA on each step pacing tick while `Starving` (0 = off). */
   vitalsDrainStaminaStepPenaltyStarving: number
   /** Extra integer STA on each step pacing tick while `Dehydrated` (0 = off). */
@@ -856,7 +860,7 @@ export type GameState = {
     /** F2 debug: bumped by `debug/replaceAllPartyWithTentTemplates` so hashes re-roll each click. */
     debugReplaceAllPartyRevision?: number
     /**
-     * Fractional accumulators for passive hunger/thirst drain (see `vitalsDerived.ts`).
+     * Fractional carry for **step/turn** vitals drain (see `vitalsDerived.ts`).
      * Persisted with checkpoints when present.
      */
     vitalsDrainAccByChar?: Partial<Record<CharacterId, { hunger: number; thirst: number }>>

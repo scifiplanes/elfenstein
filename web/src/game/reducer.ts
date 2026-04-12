@@ -48,7 +48,7 @@ import { effectiveStaminaMoveEveryN, nextStaminaMovePace } from './state/stamina
 import { prunePortraitToasts, pushPortraitToast } from './state/portraitToasts'
 import { applyLowVitalPortraitWarnings } from './state/vitalPortraitWarnings'
 import {
-  applyVitalsTimeDrain,
+  applyVitalsExplorationDrain,
   staminaStepVitalsBumpForCharacter,
   syncStarvationDehydrationStatuses,
 } from './state/vitalsDerived'
@@ -925,9 +925,7 @@ export function reduce(state: GameState, action: Action): GameState {
       if (state.ui.bobrIntroUntilMs != null && tickNow >= state.ui.bobrIntroUntilMs) {
         tickState = { ...state, ui: { ...state.ui, bobrIntroUntilMs: undefined } }
       }
-      const vitalsDrained = applyVitalsTimeDrain(tickState, tickNow)
-      const vitalsSynced = syncStarvationDehydrationStatuses({ ...vitalsDrained, nowMs: tickNow })
-      let next: GameState = pruneExpiredActivityLog({ ...vitalsSynced, nowMs: tickNow })
+      let next: GameState = pruneExpiredActivityLog({ ...tickState, nowMs: tickNow })
       next = prunePortraitToasts(next, tickNow)
       next = prunePortraitBandageDecals(next, tickNow)
       const withDecay = applyStatusDecay(next)
@@ -1274,7 +1272,8 @@ export function reduce(state: GameState, action: Action): GameState {
         },
       }
       if (turnCost > 0) turned = applyPartyStaminaCost(turned, turnCost)
-      return turned
+      const vitalsTurned = applyVitalsExplorationDrain(turned, 'turn')
+      return syncStarvationDehydrationStatuses(vitalsTurned)
     }
     case 'player/step': {
       const s0 = dismissNpcDialogOnMovement(state)
@@ -2362,8 +2361,19 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const lowHungerWarnFrac = Math.max(0, Math.min(1, Number(src.lowHungerWarnFrac ?? DEFAULT_RENDER.lowHungerWarnFrac)))
   const lowThirstWarnFrac = Math.max(0, Math.min(1, Number(src.lowThirstWarnFrac ?? DEFAULT_RENDER.lowThirstWarnFrac)))
   const lowVitalWarnCooldownMs = Math.max(0, Math.min(120_000, Math.round(Number(src.lowVitalWarnCooldownMs ?? DEFAULT_RENDER.lowVitalWarnCooldownMs))))
-  const vitalsHungerDrainPerGameMin = Math.max(0, Math.min(120, Number(src.vitalsHungerDrainPerGameMin ?? DEFAULT_RENDER.vitalsHungerDrainPerGameMin)))
-  const vitalsThirstDrainPerGameMin = Math.max(0, Math.min(120, Number(src.vitalsThirstDrainPerGameMin ?? DEFAULT_RENDER.vitalsThirstDrainPerGameMin)))
+  const clampVitalsStepDrain = (v: number) => Math.max(0, Math.min(3, Number(v)))
+  const vitalsHungerDrainPerStep = clampVitalsStepDrain(
+    Number(src.vitalsHungerDrainPerStep ?? DEFAULT_RENDER.vitalsHungerDrainPerStep),
+  )
+  const vitalsThirstDrainPerStep = clampVitalsStepDrain(
+    Number(src.vitalsThirstDrainPerStep ?? DEFAULT_RENDER.vitalsThirstDrainPerStep),
+  )
+  const vitalsHungerDrainPerTurn = clampVitalsStepDrain(
+    Number(src.vitalsHungerDrainPerTurn ?? DEFAULT_RENDER.vitalsHungerDrainPerTurn),
+  )
+  const vitalsThirstDrainPerTurn = clampVitalsStepDrain(
+    Number(src.vitalsThirstDrainPerTurn ?? DEFAULT_RENDER.vitalsThirstDrainPerTurn),
+  )
   const vitalsDrainStaminaStepPenaltyStarving = Math.max(
     0,
     Math.min(10, Math.round(Number(src.vitalsDrainStaminaStepPenaltyStarving ?? DEFAULT_RENDER.vitalsDrainStaminaStepPenaltyStarving))),
@@ -2505,8 +2515,10 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     lowHungerWarnFrac,
     lowThirstWarnFrac,
     lowVitalWarnCooldownMs,
-    vitalsHungerDrainPerGameMin,
-    vitalsThirstDrainPerGameMin,
+    vitalsHungerDrainPerStep,
+    vitalsThirstDrainPerStep,
+    vitalsHungerDrainPerTurn,
+    vitalsThirstDrainPerTurn,
     vitalsDrainStaminaStepPenaltyStarving,
     vitalsDrainStaminaStepPenaltyDehydrated,
     vitalsDefensePenaltyStarving,
@@ -2846,7 +2858,11 @@ function attemptMoveTo(state: GameState, nx: number, ny: number, moveKind: 'step
     moved = applyCharacterStaminaCost(moved, id, cost)
   }
   const withHazard = applyRoomHazardAfterStep(moved, nx, ny)
-  return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
+  const afterVitals =
+    moveKind === 'step'
+      ? syncStarvationDehydrationStatuses(applyVitalsExplorationDrain(withHazard, 'step'))
+      : syncStarvationDehydrationStatuses(withHazard)
+  return reduce(afterVitals, { type: 'ui/sfx', kind: 'step' })
 }
 
 function bump(state: GameState, message = 'Solid stone.'): GameState {
