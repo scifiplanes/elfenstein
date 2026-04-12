@@ -358,7 +358,7 @@
     "debugBgTrack": null,
     "procgenDebugOverlay": null,
     "roomTelegraphMode": "auto",
-    "roomTelegraphStrength": 0.22,
+    "roomTelegraphStrength": 0.7,
     "debugShowNpcDialogPopup": false,
     "debugShowDeathPopup": false
   }

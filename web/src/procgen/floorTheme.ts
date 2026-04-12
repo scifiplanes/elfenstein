@@ -20,7 +20,8 @@ function indexOfThemeId(pool: readonly FloorGenTheme[], id: string): number {
 }
 
 /**
- * Shared pool: every `FloorType` picks from these twelve palettes (theme RNG stream).
+ * Shared pool: every `FloorType` picks from these twenty-four palettes (theme RNG stream).
+ * First twelve are moderate reads; last twelve are high-contrast “extreme” variants.
  * Order is stable for save/debug; ids are the stable public keys for tuning.
  */
 export const FLOOR_THEME_POOL: FloorGenTheme[] = [
@@ -95,6 +96,78 @@ export const FLOOR_THEME_POOL: FloorGenTheme[] = [
     floorColor: '#f0ebe4',
     wallColor: '#e0d8d0',
     ceilColor: '#d8d0c8',
+  },
+  {
+    id: 'void_ultra',
+    floorColor: '#1a0a24',
+    wallColor: '#12061a',
+    ceilColor: '#0d0410',
+  },
+  {
+    id: 'acid_bright',
+    floorColor: '#5cff2a',
+    wallColor: '#3ad018',
+    ceilColor: '#208010',
+  },
+  {
+    id: 'frost_glare',
+    floorColor: '#eef8ff',
+    wallColor: '#d4ecff',
+    ceilColor: '#b8dcfc',
+  },
+  {
+    id: 'toxic_lime',
+    floorColor: '#c8e818',
+    wallColor: '#98b010',
+    ceilColor: '#688008',
+  },
+  {
+    id: 'midnight_ink',
+    floorColor: '#081830',
+    wallColor: '#051020',
+    ceilColor: '#030818',
+  },
+  {
+    id: 'ember_coal',
+    floorColor: '#2c2220',
+    wallColor: '#201818',
+    ceilColor: '#181010',
+  },
+  {
+    id: 'magenta_rift',
+    floorColor: '#c848c0',
+    wallColor: '#903090',
+    ceilColor: '#602068',
+  },
+  {
+    id: 'sulfur_yellow',
+    floorColor: '#f0e010',
+    wallColor: '#c8b808',
+    ceilColor: '#989008',
+  },
+  {
+    id: 'copper_patina',
+    floorColor: '#3a9888',
+    wallColor: '#2a7868',
+    ceilColor: '#1a5848',
+  },
+  {
+    id: 'ash_inferno',
+    floorColor: '#3a1824',
+    wallColor: '#281018',
+    ceilColor: '#180810',
+  },
+  {
+    id: 'glitch_triad',
+    floorColor: '#18d0d0',
+    wallColor: '#c028a0',
+    ceilColor: '#e0c818',
+  },
+  {
+    id: 'monolith_stark',
+    floorColor: '#d8d8d8',
+    wallColor: '#404040',
+    ceilColor: '#101010',
   },
 ]
 

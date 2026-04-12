@@ -26,6 +26,19 @@ const PRESETS: Record<string, ThemeLightIntent> = {
   catacomb_deep: { intentHex: '#78716c', mix: 0.94, torchIntensityMult: 0.92, lanternIntensityMult: 1.08 },
   nano_violet: { intentHex: '#a78bfa', mix: 0.96, torchIntensityMult: 0.95, lanternIntensityMult: 1.08 },
   palace_marble: { intentHex: '#fef3c7', mix: 0.88, torchIntensityMult: 1.2, lanternIntensityMult: 1.1 },
+  // Extreme pool: strong light cast; avoid hot orange-red intent (room **Burning** telegraph).
+  void_ultra: { intentHex: '#b366ff', mix: 0.98, torchIntensityMult: 0.88, lanternIntensityMult: 1.14 },
+  acid_bright: { intentHex: '#39ff14', mix: 0.99, torchIntensityMult: 1.05, lanternIntensityMult: 1.02 },
+  frost_glare: { intentHex: '#a0d8ff', mix: 0.94, torchIntensityMult: 1.18, lanternIntensityMult: 1.12 },
+  toxic_lime: { intentHex: '#bef264', mix: 0.97, torchIntensityMult: 1.02, lanternIntensityMult: 1.06 },
+  midnight_ink: { intentHex: '#2060ff', mix: 0.985, torchIntensityMult: 0.85, lanternIntensityMult: 1.15 },
+  ember_coal: { intentHex: '#6b2d56', mix: 0.96, torchIntensityMult: 0.92, lanternIntensityMult: 1.1 },
+  magenta_rift: { intentHex: '#e040f0', mix: 0.98, torchIntensityMult: 0.96, lanternIntensityMult: 1.08 },
+  sulfur_yellow: { intentHex: '#f5e000', mix: 0.96, torchIntensityMult: 1.12, lanternIntensityMult: 1.04 },
+  copper_patina: { intentHex: '#2dd4bf', mix: 0.96, torchIntensityMult: 1.0, lanternIntensityMult: 1.06 },
+  ash_inferno: { intentHex: '#7d1f4a', mix: 0.97, torchIntensityMult: 0.9, lanternIntensityMult: 1.1 },
+  glitch_triad: { intentHex: '#00e8e8', mix: 0.98, torchIntensityMult: 1.04, lanternIntensityMult: 1.06 },
+  monolith_stark: { intentHex: '#c8c8d8', mix: 0.92, torchIntensityMult: 1.1, lanternIntensityMult: 1.08 },
 }
 
 export function getThemeLightIntent(themeId: string | undefined): ThemeLightIntent {

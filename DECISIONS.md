@@ -7727,3 +7727,17 @@ Theme ids are procgen/debug vocabulary; the exploration feed stays clearer with 
 Descend and camp-return **activity log** lines no longer mention the rolled theme; **`floor.gen.theme`** is unchanged for rendering and dumps.
 
 ---
+
+## ADR-0492 — Twenty-four floor themes including extreme palettes
+Date: 2026-04-13
+
+### Decision
+Expand **`FLOOR_THEME_POOL`** in **`web/src/procgen/floorTheme.ts`** from **12** to **24** by appending **twelve** high-contrast **extreme** material triplets (e.g. **`void_ultra`**, **`acid_bright`**, **`glitch_triad`**). Add matching **`getThemeLightIntent`** presets in **`web/src/world/themeTuning.ts`** with **high `mix`**; keep lantern **intent** off **Burning**-like orange-red (**ADR-0167**), using burgundy/magenta/plum/cyan/chartreuse-class hues for “hot” or dark-danger reads.
+
+### Rationale
+More rolls per floor type without per-biome pools; occasional dramatic floors; property overrides (**Cursed** / **Destroyed**) unchanged.
+
+### Consequences
+Each theme id is **less frequent** on a uniform roll (**1/24**). Tint × albedo pairings can read harsher on extremes. F2 **hue/sat** keys still cover only the six legacy moderate ids; no new **`debug-settings.json`** keys.
+
+---
