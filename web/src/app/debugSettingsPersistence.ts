@@ -44,6 +44,13 @@ export type DebugSettingsFile = {
 
 const LOCAL_KEY = 'elfenstein.debugSettings'
 
+/** Resolves against `import.meta.env.BASE_URL` so `vite build --base /repo/` still loads `public/debug-settings.json`. */
+export function debugSettingsJsonFetchUrl(): string {
+  const base = import.meta.env.BASE_URL
+  const prefix = base.endsWith('/') ? base : `${base}/`
+  return `${prefix}debug-settings.json?${Date.now()}`
+}
+
 function parseNormRect(v: unknown): Partial<HubNormRect> | undefined {
   if (!v || typeof v !== 'object') return undefined
   const o = v as Record<string, unknown>
@@ -115,7 +122,7 @@ export function parseDebugUiPersist(raw: unknown): DebugUiPersist | undefined {
 
 export async function loadDebugSettingsFromProject(): Promise<DebugSettingsFile | null> {
   try {
-    const res = await fetch(`/debug-settings.json?${Date.now()}`, { cache: 'no-store' })
+    const res = await fetch(debugSettingsJsonFetchUrl(), { cache: 'no-store' })
     if (!res.ok) return null
     const j: unknown = await res.json()
     if (!j || typeof j !== 'object') return null

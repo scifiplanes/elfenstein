@@ -7741,3 +7741,17 @@ More rolls per floor type without per-biome pools; occasional dramatic floors; p
 Each theme id is **less frequent** on a uniform roll (**1/24**). Tint × albedo pairings can read harsher on extremes. F2 **hue/sat** keys still cover only the six legacy moderate ids; no new **`debug-settings.json`** keys.
 
 ---
+
+## ADR-0493 — `debug-settings.json` URL base + telegraph strength cold default
+Date: 2026-04-13
+
+### Decision
+Fetch **`debug-settings.json`** using **`import.meta.env.BASE_URL`** (via **`debugSettingsJsonFetchUrl()`** in **`web/src/app/debugSettingsPersistence.ts`**) so non-root static hosts (**`vite build --base /repo/`**) load the file. Set **`makeInitialState`** **`ui.roomTelegraphStrength`** to **0.7** to match committed **`web/public/debug-settings.json`** **`debugUi.roomTelegraphStrength`**.
+
+### Rationale
+**0.22** in **`initialState`** was a stale hardcoded default: when the JSON fetch fails or an old deploy omits **`debugUi`**, the F2 slider showed **0.22** while the repo file carried **0.7**, which reads as “local vs published” drift. Aligning the cold default with the tracked JSON removes that false mismatch; fixing the fetch URL addresses a common production 404 class.
+
+### Consequences
+Deploys must still ship an up-to-date **`debug-settings.json`** for full parity; this only fixes **wrong-path** fetches and **missing-key** fallbacks. If **`debugUi.roomTelegraphStrength`** changes in JSON again, **`initialState`** should stay in sync (or a test could assert equality).
+
+---

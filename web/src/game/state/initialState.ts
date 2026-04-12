@@ -95,7 +95,7 @@ export function makeInitialState(
       sfxQueue: [],
       procgenDebugOverlay: undefined,
       roomTelegraphMode: 'auto',
-      roomTelegraphStrength: 0.22,
+      roomTelegraphStrength: 0.7,
       activityLog: [],
       death: undefined,
     },
