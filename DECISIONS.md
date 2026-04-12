@@ -7657,3 +7657,17 @@ The file is the **shipped render/audio/hub baseline**; leaving it unstaged stran
 Developers who enable **`core.hooksPath`** must **`git add web/public/debug-settings.json`** (or **`git commit --no-verify`**) before committing other work while the JSON is dirty. Clones do **not** enable the hook automatically until **`core.hooksPath`** is set locally.
 
 ---
+
+## ADR-0487 — Trade cursor URLs: match `Hand_trade_*.png` casing
+Date: 2026-04-12
+
+### Decision
+**`CursorLayer.module.css`** (**.trade1** / **.trade2**) and **`CursorLayer.tsx`** preload use **`/content/Hand_trade_01.png`** and **`/content/Hand_trade_02.png`**, matching the on-disk names in **`Content/`**.
+
+### Rationale
+**ADR-0316** chose lowercase **`hand_trade_*`** URLs, but shipped art is **`Hand_trade_01.png`** / **`Hand_trade_02.png`**. **macOS** default filesystems are often **case-insensitive**, so dev hid the mismatch; **Linux** production static hosts are **case-sensitive**, so those URLs **404** and the trade cursor has **no** background—looks like the hand **vanishes** over the innkeeper hit.
+
+### Consequences
+Supersedes the filename claim in **ADR-0316** for actual hosting behavior; **`DESIGN.md`** §6.1 documents the canonical URLs.
+
+---

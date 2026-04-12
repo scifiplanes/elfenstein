@@ -14,7 +14,7 @@
     "themeSaturation_ruins_bleach": 1,
     "themeSaturation_ruins_umber": 1,
     "baseEmissive": 0.055,
-    "bareLightIntensity": 35.84,
+    "bareLightIntensity": 3.14,
     "bareLightDistance": 3,
     "heldTorchIntensity": 37.91,
     "heldTorchDistance": 7.5,
@@ -319,8 +319,8 @@
         "h": 0.28
       },
       "cave": {
-        "x": 0.68,
-        "y": 0.52,
+        "x": 0.685,
+        "y": 0.57,
         "w": 0.2,
         "h": 0.2
       },

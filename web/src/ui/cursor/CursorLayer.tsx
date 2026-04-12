@@ -56,8 +56,8 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       '/content/Hand_Active.png',
       '/content/hand_attack_01.png',
       '/content/hand_attack_02.png',
-      '/content/hand_trade_01.png',
-      '/content/hand_trade_02.png',
+      '/content/Hand_trade_01.png',
+      '/content/Hand_trade_02.png',
     ]
     const imgs = srcs.map((src) => {
       const img = new Image()

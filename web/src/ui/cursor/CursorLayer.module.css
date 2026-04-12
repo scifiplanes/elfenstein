@@ -51,11 +51,11 @@
 
 /* Hub tavern innkeeper trade hit (two-frame flip; same cadence as attack). */
 .trade1 {
-  background-image: url('/content/hand_trade_01.png');
+  background-image: url('/content/Hand_trade_01.png');
 }
 
 .trade2 {
-  background-image: url('/content/hand_trade_02.png');
+  background-image: url('/content/Hand_trade_02.png');
 }
 
 .ghost {
