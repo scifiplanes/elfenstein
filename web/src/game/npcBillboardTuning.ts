@@ -11,6 +11,8 @@ export const DEFAULT_NPC_BILLBOARD: NpcBillboardByKind = {
   Swarm: row(),
   Chumbo: row(),
   Grub: row(),
+  SporeGrub: row(),
+  SunGrub: row(),
   Kuratko: row(),
   Grechka: row(),
   Snailord: row(),

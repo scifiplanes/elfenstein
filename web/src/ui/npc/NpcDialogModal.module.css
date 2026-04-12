@@ -1,9 +1,23 @@
-.backdrop {
-  position: fixed;
+/* Interactive: absolute fill of `HudLayout` `.npcDialogInteractiveLayer` (same padded box as death / capture NPC). */
+.backdropInteractiveInGame {
+  position: absolute;
   inset: 0;
-  /* Above `CursorLayer` (9999) so the invisible hit layer wins stacking even if any child regains `pointer-events`. */
-  z-index: 10100;
   pointer-events: auto;
+}
+
+.panelInteractiveInGame {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  max-width: 100%;
+}
+
+.speechInteractiveInGame {
+  position: absolute;
+  left: 50%;
+  bottom: 25px;
+  transform: translateX(-50%);
 }
 
 /*
@@ -59,18 +73,3 @@
   text-align: center;
 }
 
-/* Brief fallback before `gameViewportRef` measures (~25px at 1080px-tall viewport when game fills height). */
-.speechInteractiveFallback {
-  position: fixed;
-  left: 50%;
-  bottom: 2.315%;
-  transform: translateX(-50%);
-}
-
-.modal {
-  /* Default when no game viewport ref / measure yet (e.g. tests): top band, centered horizontally. */
-  position: fixed;
-  left: 50%;
-  top: 10%;
-  transform: translateX(-50%);
-}

@@ -22,7 +22,11 @@ import { assignDistrictsToRooms, applyTagConstraints, computeMainPathBandRooms, 
 import { pickFloorTheme } from './floorTheme'
 import { placePois, spawnNpcsAndItems } from './population'
 import { buildMissionGraph } from './missionGraph'
-import { planMissionBeforeGeometry } from './missionFirst'
+import {
+  planMissionBeforeGeometry,
+  plannedMissionTargetLockCount,
+  validatePlannedMissionRealized,
+} from './missionFirst'
 import { scoreLayout } from './scoreLayout'
 import { runDungeonBspLayout } from './realizeDungeonBsp'
 import { runCaveLayout } from './realizeCave'
@@ -44,6 +48,7 @@ const POI_CANONICAL_ID_ORDER: Partial<Record<string, number>> = {
   poi_crate: 5,
   poi_shrine: 6,
   poi_crackedWall: 7,
+  poi_kuratkoNest: 8,
 }
 
 const POI_KIND_PRIORITY: Partial<Record<PoiKind, number>> = {
@@ -55,6 +60,8 @@ const POI_KIND_PRIORITY: Partial<Record<PoiKind, number>> = {
   Crate: 5,
   Shrine: 6,
   CrackedWall: 7,
+  KuratkoNest: 9,
+  Campfire: 10,
 }
 
 function cellKey(p: { pos: { x: number; y: number } }) {
@@ -103,6 +110,13 @@ function maxAttemptsForDifficulty(d: FloorGenDifficulty): number {
   return 6
 }
 
+function isValidGenAttempt(out: FloorGenOutput, w: number, h: number): boolean {
+  if (!validateGen(out, w, h)) return false
+  const plan = out.meta.plannedMission
+  if (plan && !validatePlannedMissionRealized(out, plan)) return false
+  return true
+}
+
 export function generateDungeon(input: FloorGenInput): FloorGenOutput {
   const difficulty = normalizeFloorGenDifficulty(input.difficulty)
   const maxAttempts = maxAttemptsForDifficulty(difficulty)
@@ -115,7 +129,7 @@ export function generateDungeon(input: FloorGenInput): FloorGenOutput {
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const out = generateDungeonOnce({ ...input, seed: mixedSeed }, attempt, inputSeed)
     last = out
-    if (validateGen(out, input.w, input.h)) {
+    if (isValidGenAttempt(out, input.w, input.h)) {
       valid.push(out)
     }
   }
@@ -172,7 +186,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   const districtRng = mulberry32(streams.districts)
   const themeRng = mulberry32(streams.theme)
   const missionRng = mulberry32(streams.mission)
-  void planMissionBeforeGeometry(input, missionRng)
+  const plannedMission = planMissionBeforeGeometry(input, missionRng)
 
   let tiles: Tile[]
   let genRooms: GenRoom[]
@@ -227,7 +241,19 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
   solveRoomTags({ rooms: genRooms, tiles, w, h, floorProperties, rng: tagsRng, onPathBand })
   applyTagConstraints(genRooms, tiles, w, h, floorProperties, tagsRng)
 
-  const rawPois = placePois({ tiles, w, h, rooms: genRooms, entrance, exit, rng: popRng, floorProperties: floorProps })
+  const rawPois = placePois({
+    tiles,
+    w,
+    h,
+    rooms: genRooms,
+    entrance,
+    exit,
+    rng: popRng,
+    floorProperties: floorProps,
+    floorSeed: attemptSeed,
+    floorType,
+    floorIndex: input.floorIndex ?? 0,
+  })
   const { pois, dropped: droppedPois } = dedupePoisByCell(rawPois)
   if (import.meta.env?.DEV && droppedPois.length) {
     // Keep this as a warning (not a hard throw) so procgen remains resilient during iteration.
@@ -244,6 +270,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     }
   }
   const occupied = new Set<string>(pois.map((p) => `${p.pos.x},${p.pos.y}`))
+  const kuratkoNestPos = pois.find((p) => p.kind === 'KuratkoNest')?.pos ?? null
 
   const { npcs, floorItems: popItems } = spawnNpcsAndItems({
     tiles,
@@ -258,7 +285,13 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     floorProperties: floorProps,
     npcSpawnCountMin: input.npcSpawnCountMin,
     npcSpawnCountMax: input.npcSpawnCountMax,
+    floorIndex: input.floorIndex ?? 0,
+    populationStreamSeed: streams.population,
+    kuratkoNestPos,
   })
+
+  const targetLockCount =
+    plannedMission != null ? plannedMissionTargetLockCount(plannedMission) : undefined
 
   const { doors, floorItems: lockItems } = placeLocksOnPath({
     tiles,
@@ -270,6 +303,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     occupied,
     difficulty,
     floorProperties: floorProps,
+    targetLockCount,
   })
   for (const d of doors) occupied.add(`${d.pos.x},${d.pos.y}`)
   for (const it of lockItems) occupied.add(`${it.pos.x},${it.pos.y}`)
@@ -286,6 +320,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
           occupied,
           floorProperties: floorProps,
           chance: topology.decorativeDoorFrameChance,
+          decorativeDoorsMax: topology.decorativeDoorsMax,
         })
       : { decorApplied: 0 }
 
@@ -302,7 +337,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
     exit,
     theme,
     meta: {
-      genVersion: 5,
+      genVersion: plannedMission != null ? 7 : 6,
       inputSeed: recordedInputSeed,
       attemptSeed,
       attempt,
@@ -319,6 +354,7 @@ function generateDungeonOnce(input: FloorGenInput, attempt: number, recordedInpu
         doorFramesApplied: doorFrames.framesApplied,
         decorativeDoorsApplied: decorativeDoors.decorApplied,
       },
+      ...(plannedMission != null ? { plannedMission } : {}),
     },
     missionGraph: undefined,
   }
@@ -363,7 +399,7 @@ function generateDungeonFallback(input: FloorGenInput, recordedInputSeed: number
     exit,
     theme,
     meta: {
-      genVersion: 5,
+      genVersion: 6,
       inputSeed: recordedInputSeed,
       attemptSeed: seed >>> 0,
       attempt: 0,

@@ -1,7 +1,11 @@
 import type { GameState, ItemDefId, ItemId, TradeSession, TradeStockRow } from '../types'
+import { ContentDB } from '../content/contentDb'
 import { CAMP_INNKEEPER_TRADE, HUB_INNKEEPER_TRADE } from '../content/trading'
+import { inventoryItemFromDef } from './itemDurability'
 import { consumeItem, moveItemToInventorySlot } from './inventory'
 import { makeDropJitter } from './dropJitter'
+
+const TRADE_CONTENT = ContentDB.createDefault()
 
 export function cloneTradeStock(rows: readonly TradeStockRow[]): TradeStockRow[] {
   return rows.map((r) => ({ defId: r.defId, qty: r.qty }))
@@ -76,7 +80,7 @@ export function openFloorNpcTrade(state: GameState, npcId: string): GameState {
 
 function mintItemToInventoryOrFloor(state: GameState, defId: ItemDefId, stableId: string, pos: { x: number; y: number }): GameState {
   const newId = (`i_${defId}_${state.floor.seed}_${stableId}` as unknown) as ItemId
-  const items = { ...state.party.items, [newId]: { id: newId, defId, qty: 1 } }
+  const items = { ...state.party.items, [newId]: inventoryItemFromDef(TRADE_CONTENT, defId, newId, 1) }
   const inv = state.party.inventory
   const free = inv.slots.findIndex((s) => s == null)
   if (free >= 0) {

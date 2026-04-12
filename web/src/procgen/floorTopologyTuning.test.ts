@@ -10,6 +10,7 @@ import {
   LEGACY_RUINS_SHAPING,
   LEGACY_RUINS_TUNING,
   LEGACY_SCORE_WEIGHTS,
+  RUINS_LAYOUT_SCORE_WEIGHTS,
   TOPOLOGY_BY_FLOOR_TYPE,
   resolveTopologyTuning,
 } from './floorTopologyTuning'
@@ -56,20 +57,23 @@ describe('floorTopologyTuning', () => {
   it('base types keep legacy post-layout knobs', () => {
     expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.injectLoopsMax).toBe(2)
     expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.junctionMaxRooms).toBe(6)
-    expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.doorFramesMax).toBe(10)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.doorFramesMax).toBe(7)
     expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.decorativeDoorFrameChance).toBe(0.75)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.decorativeDoorsMax).toBe(8)
     expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.smoothPasses).toBe(1)
 
     expect(TOPOLOGY_BY_FLOOR_TYPE.Cave.injectLoopsMax).toBe(2)
     expect(TOPOLOGY_BY_FLOOR_TYPE.Cave.junctionMaxRooms).toBe(4)
 
     expect(TOPOLOGY_BY_FLOOR_TYPE.Ruins.junctionMaxRooms).toBe(4)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Ruins.injectLoopsMax).toBe(0)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Ruins.smoothPasses).toBe(0)
   })
 
-  it('base three types use full legacy score weights; reskins stay sane', () => {
-    for (const ft of ['Dungeon', 'Cave', 'Ruins'] as const) {
-      expect(TOPOLOGY_BY_FLOOR_TYPE[ft].score).toEqual(LEGACY_SCORE_WEIGHTS)
-    }
+  it('base three types use expected score weights; reskins stay sane', () => {
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Dungeon.score).toEqual(LEGACY_SCORE_WEIGHTS)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Cave.score).toEqual(LEGACY_SCORE_WEIGHTS)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Ruins.score).toEqual(RUINS_LAYOUT_SCORE_WEIGHTS)
     for (const ft of ALL_FLOOR_TYPES) {
       const s = TOPOLOGY_BY_FLOOR_TYPE[ft].score
       expect(s.reachableMult).toBeGreaterThan(0)
@@ -77,6 +81,8 @@ describe('floorTopologyTuning', () => {
       expect(s.pathLenCap).toBeGreaterThan(0)
       expect(s.junctionMult).toBeGreaterThan(0)
       expect(s.branchLatticeMult).toBeGreaterThan(0)
+      expect(s.junctionAntiBlobStartRatio).toBeGreaterThanOrEqual(0)
+      expect(s.junctionAntiBlobPenaltyPerUnit).toBeGreaterThanOrEqual(0)
     }
   })
 
@@ -90,6 +96,13 @@ describe('floorTopologyTuning', () => {
     expect(over.shaping.alcovePerRoomChance).toBeGreaterThan(
       resolveTopologyTuning('Cave', []).shaping.alcovePerRoomChance,
     )
+  })
+
+  it('Bunker and Golem override Dungeon-profile door caps', () => {
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Bunker.doorFramesMax).toBe(5)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Bunker.decorativeDoorsMax).toBe(4)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Golem.doorFramesMax).toBe(12)
+    expect(TOPOLOGY_BY_FLOOR_TYPE.Golem.decorativeDoorsMax).toBe(11)
   })
 
   it('Catacombs/Palace ruins cell size and Jungle loop samples diverge from base', () => {

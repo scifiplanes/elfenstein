@@ -16,6 +16,18 @@ type SfxTuning = {
 export class SfxEngine {
   private ctx: AudioContext | null = null
 
+  /** Create/resume context inside a user gesture (e.g. title “tap to start”). */
+  unlock() {
+    try {
+      if (!this.ctx)
+        this.ctx = new (window.AudioContext ||
+          (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()
+      if (this.ctx.state === 'suspended') void this.ctx.resume()
+    } catch {
+      // ignore
+    }
+  }
+
   play(kind: SfxKind, tuning?: Partial<SfxTuning>) {
     try {
       if (!this.ctx) this.ctx = new (window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext)()

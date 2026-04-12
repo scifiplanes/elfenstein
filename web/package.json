@@ -16,7 +16,11 @@
     "playwright:install": "node scripts/playwright-install.mjs",
     "preview": "vite preview",
     "audit:procgen-content": "tsx scripts/procgenContentAudit.ts",
-    "gen:crafting-graph": "node scripts/genCraftingRecipesGraph.mjs"
+    "gen:crafting-graph": "node scripts/genCraftingRecipesGraph.mjs",
+    "gen:consumables-viz": "tsx scripts/genConsumablesViz.ts",
+    "gen:item-emoji-tints-viz": "tsx scripts/genItemEmojiTintsViz.ts",
+    "bench:pipeline": "vite --open /bench-pipeline.html",
+    "test:bench:matrix": "playwright test e2e/pipelineBenchMatrix.spec.ts --config=playwright.bench.config.ts"
   },
   "dependencies": {
     "html2canvas": "^1.4.1",

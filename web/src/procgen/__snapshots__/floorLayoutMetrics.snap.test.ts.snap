@@ -3,7 +3,7 @@
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Bunker 1`] = `
 {
   "deadEnds": 0,
-  "decorativeDoorsApplied": 20,
+  "decorativeDoorsApplied": 4,
   "doorFramesApplied": 0,
   "junctions": 269,
   "loopsAdded": 1,
@@ -14,13 +14,13 @@ exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Bun
 
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Catacombs 1`] = `
 {
-  "deadEnds": 0,
+  "deadEnds": 1,
   "decorativeDoorsApplied": 0,
   "doorFramesApplied": 0,
-  "junctions": 722,
-  "loopsAdded": 2,
-  "reachableFloors": 746,
-  "wideness": 539,
+  "junctions": 557,
+  "loopsAdded": 1,
+  "reachableFloors": 611,
+  "wideness": 283,
 }
 `;
 
@@ -39,7 +39,7 @@ exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Cav
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Dungeon 1`] = `
 {
   "deadEnds": 0,
-  "decorativeDoorsApplied": 17,
+  "decorativeDoorsApplied": 8,
   "doorFramesApplied": 0,
   "junctions": 309,
   "loopsAdded": 2,
@@ -51,7 +51,7 @@ exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Dun
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Golem 1`] = `
 {
   "deadEnds": 0,
-  "decorativeDoorsApplied": 29,
+  "decorativeDoorsApplied": 11,
   "doorFramesApplied": 0,
   "junctions": 310,
   "loopsAdded": 3,
@@ -86,24 +86,24 @@ exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Liv
 
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Palace 1`] = `
 {
-  "deadEnds": 2,
+  "deadEnds": 0,
   "decorativeDoorsApplied": 0,
   "doorFramesApplied": 0,
-  "junctions": 510,
-  "loopsAdded": 1,
-  "reachableFloors": 538,
-  "wideness": 322,
+  "junctions": 435,
+  "loopsAdded": 0,
+  "reachableFloors": 472,
+  "wideness": 167,
 }
 `;
 
 exports[`floor layoutMetrics snapshots (topology regression) > layoutMetrics Ruins 1`] = `
 {
-  "deadEnds": 1,
+  "deadEnds": 0,
   "decorativeDoorsApplied": 0,
   "doorFramesApplied": 0,
-  "junctions": 572,
-  "loopsAdded": 1,
-  "reachableFloors": 599,
-  "wideness": 413,
+  "junctions": 518,
+  "loopsAdded": 0,
+  "reachableFloors": 534,
+  "wideness": 281,
 }
 `;

@@ -1,12 +1,71 @@
+import type { ItemDef } from '../content/contentDb'
 import type { Character, CharacterId, CombatState, CombatTurn, DamageType, GameState, Id, Resistances, StatusEffectId, WeaponDamageStat } from '../types'
 import { ContentDB } from '../content/contentDb'
+import { bossTraitSoloEncounter, resolveNpcCombatTuning } from '../content/npcBosses'
+
+export { resolveNpcCombatTuning }
 import { npcCombatTuningFromContent } from '../content/npcCombat'
 import { npcQuestGibberishLine } from '../npc/npcQuestSpeech'
 import { pushActivityLog } from './activityLog'
+import {
+  composeCombatLogLine,
+  npcAttackPcLegacyFormula,
+  npcAttackPcThematic,
+} from './combatActivityLog'
+import { pushPortraitToast } from './portraitToasts'
 import { addStatus, addStatusToNpc } from './status'
 import { roomForCell } from './roomGeometry'
 
 const COMBAT_CONTENT = ContentDB.createDefault()
+
+/** Stamina spent by **Defend** (`defend`). */
+export const COMBAT_DEFEND_STAMINA_COST = 4
+
+/** Stamina spent when attempting **Flee** (paid even on failure). */
+export const COMBAT_FLEE_STAMINA_COST = 8
+
+/** Softest PCs that enter weighted NPC aggro (clamped to party size). */
+export const NPC_TARGET_CANDIDATE_POOL = 3
+
+/** Max PC Speed that counts toward AC vs NPC hits (`10 + min(Speed, cap)` before status modifiers). */
+export const NPC_VS_PC_DEFENSE_SPEED_CAP = 10
+
+/** Stat value at which defend/flee/attack stamina matches the base weapon or `COMBAT_*` cost. */
+const COMBAT_STA_STAT_PIVOT = 5
+const COMBAT_DEFEND_FLEE_STA_K = 0.5
+const COMBAT_ATTACK_STA_K = 0.2
+
+function statPointsForWeaponDamage(pc: Character, damageStat?: WeaponDamageStat): number {
+  if (damageStat === 'strength') return pc.stats.strength
+  if (damageStat === 'agility') return pc.stats.agility
+  if (damageStat === 'intelligence') return pc.stats.intelligence
+  return 0
+}
+
+/** Integer STA for **Defend**, from `COMBAT_DEFEND_STAMINA_COST` and `stats.endurance`. */
+export function effectiveDefendStaminaCost(pc: Character): number {
+  const base = COMBAT_DEFEND_STAMINA_COST
+  const raw = Math.round(base - COMBAT_DEFEND_FLEE_STA_K * (pc.stats.endurance - COMBAT_STA_STAT_PIVOT))
+  return Math.max(1, Math.min(base + 4, raw))
+}
+
+/** Integer STA for **Flee** attempt, from `COMBAT_FLEE_STAMINA_COST` and `stats.speed`. */
+export function effectiveFleeStaminaCost(pc: Character): number {
+  const base = COMBAT_FLEE_STAMINA_COST
+  const raw = Math.round(base - COMBAT_DEFEND_FLEE_STA_K * (pc.stats.speed - COMBAT_STA_STAT_PIVOT))
+  return Math.max(2, Math.min(base + 4, raw))
+}
+
+/** Integer STA for a combat **Attack** with this weapon and PC (weapon `staminaCost` + optional `damageStat`). */
+export function effectiveCombatAttackStaminaCost(pc: Character, weapon: NonNullable<ItemDef['weapon']>): number {
+  const base = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+  const statPts = weapon.damageStat != null ? statPointsForWeaponDamage(pc, weapon.damageStat) : null
+  const raw =
+    statPts == null ? base : Math.round(base - COMBAT_ATTACK_STA_K * (statPts - COMBAT_STA_STAT_PIVOT))
+  const minCost = base === 0 ? 0 : 1
+  const maxCost = base + 4
+  return Math.max(minCost, Math.min(maxCost, raw))
+}
 
 /** Chance per NPC turn (deterministic roll) to echo quest gibberish in the activity log. */
 export const QUEST_SHOUT_CHANCE_PCT = 20
@@ -37,6 +96,43 @@ function pcHasActiveStatus(c: Character, state: GameState, id: StatusEffectId): 
 function tieBreak01(state: GameState, encounterId: Id, participantKey: string) {
   const h = hashStr(`${state.floor.seed}:${encounterId}:${participantKey}`)
   return ((h % 10_000) + 0.5) / 10_000 // (0, 1)
+}
+
+const NPC_SOFT_TARGET_WEIGHTS = [3, 2, 1] as const
+
+/** Weighted deterministic pick among the softest few PCs (prefers low HP; Defend padding unchanged). */
+function pickNpcPcTargetForNpcTurn(args: {
+  state: GameState
+  npcId: Id
+  living: Character[]
+  combat: CombatState | undefined
+  turnIndex: number
+}): Character {
+  const { state, npcId, living, combat, turnIndex } = args
+  const encId = combat?.encounterId ?? 'open'
+  const softness = (c: Character) => {
+    const defendBias = combat?.pcDefense?.[c.id] ? 8 : 0
+    return c.hp + defendBias + tieBreak01(state, encId, `npcTar:${npcId}:${c.id}`) * 0.001
+  }
+  const sorted = living.slice().sort((a, b) => {
+    const sa = softness(a)
+    const sb = softness(b)
+    if (sa !== sb) return sa - sb
+    return a.id.localeCompare(b.id)
+  })
+  const k = Math.min(NPC_TARGET_CANDIDATE_POOL, sorted.length)
+  const candidates = sorted.slice(0, k)
+  if (candidates.length <= 1) return candidates[0]!
+
+  let totalW = 0
+  for (let i = 0; i < candidates.length; i++) totalW += NPC_SOFT_TARGET_WEIGHTS[i]!
+  const r = hashStr(`${state.floor.seed}:${encId}:npcTarPick:${npcId}:${turnIndex}`) % totalW
+  let acc = 0
+  for (let i = 0; i < candidates.length; i++) {
+    acc += NPC_SOFT_TARGET_WEIGHTS[i]!
+    if (r < acc) return candidates[i]!
+  }
+  return candidates[candidates.length - 1]!
 }
 
 function rollD20(state: GameState, encounterId: Id, key: string): number {
@@ -94,10 +190,12 @@ export function collectEncounterNpcIds(state: GameState, primaryNpcId: Id): Id[]
   const py = state.floor.playerPos.y
   const joinMax = state.render.combatEncounterJoinChebyshevMax
   const ids = new Set<Id>([primary.id])
+  const soloBoss = primary.variant === 'boss' && bossTraitSoloEncounter(primary)
 
   if (room) {
     for (const n of state.floor.npcs) {
       if (!hostileJoinsEncounter(state, n)) continue
+      if (soloBoss && n.id !== primaryNpcId) continue
       if (roomForCell(state, n.pos.x, n.pos.y) === room) ids.add(n.id)
     }
   } else {
@@ -135,7 +233,7 @@ export function buildEncounterTurnQueue(state: GameState, encounterId: Id, party
   for (const id of npcIds) {
     const npc = state.floor.npcs.find((n) => n.id === id)
     if (!npc || npc.hp <= 0) continue
-    const base = npcCombatTuning(npc.kind).speed
+    const base = resolveNpcCombatTuning(npc).speed
     const init = base + tieBreak01(state, encounterId, `npc:${id}`)
     turns.push({ kind: 'npc', id: id as any, initiative: init })
   }
@@ -176,6 +274,17 @@ export function currentTurn(state: GameState): CombatTurn | undefined {
   if (!c || !c.turnQueue.length) return undefined
   const idx = ((c.turnIndex % c.turnQueue.length) + c.turnQueue.length) % c.turnQueue.length
   return c.turnQueue[idx]
+}
+
+/** First living NPC in encounter roster order (matches attack targeting / encounter UI). */
+export function firstLivingEncounterNpcId(state: GameState): string | null {
+  const ids = state.combat?.participants.npcs
+  if (!ids?.length) return null
+  for (const id of ids) {
+    const npc = state.floor.npcs.find((n) => n.id === id)
+    if (npc && npc.hp > 0) return id
+  }
+  return null
 }
 
 export function pruneCombatTurnQueue(state: GameState, combat: CombatState): CombatState {
@@ -248,7 +357,7 @@ export function applyCombatFireshield(
 export function defend(state: GameState, pcId: CharacterId): GameState {
   if (!state.combat) return state
   const combat = state.combat
-  const cost = 4
+  const cost = effectiveDefendStaminaCost(pc)
   const idx = state.party.chars.findIndex((c) => c.id === pcId)
   if (idx < 0) return state
   const pc = state.party.chars[idx]!
@@ -261,11 +370,23 @@ export function defend(state: GameState, pcId: CharacterId): GameState {
     const chars = state.party.chars.slice()
     chars[idx] = { ...pc, stamina: Math.max(0, pc.stamina - cost) }
     state = { ...state, party: { ...state.party, chars } }
+    state = pushPortraitToast(state, { characterId: pcId, kind: 'statDelta', text: `−${cost} STA` })
   }
   const pcDefense = { ...(combat.pcDefense ?? {}) }
   pcDefense[pcId] = { armorBonus: 2, resistBonusPct: 0.08 }
   const nextCombat: CombatState = { ...combat, pcDefense, lastAction: { actorKind: 'pc', actorId: pcId, action: 'defend', atMs: state.nowMs } }
   return pushActivityLog({ ...state, combat: nextCombat }, `${state.party.chars.find((c) => c.id === pcId)?.name ?? 'PC'} defends.`)
+}
+
+export function skipPcTurn(state: GameState, pcId: CharacterId): GameState {
+  if (!state.combat) return state
+  const combat = state.combat
+  const name = state.party.chars.find((c) => c.id === pcId)?.name ?? 'PC'
+  const nextCombat: CombatState = {
+    ...combat,
+    lastAction: { actorKind: 'pc', actorId: pcId, action: 'skip', atMs: state.nowMs },
+  }
+  return pushActivityLog({ ...state, combat: nextCombat }, `${name} waits.`)
 }
 
 export type AttemptFleeResult = { state: GameState; /** Paid stamina and failed roll: caller should advance initiative. */ advanceTurn: boolean }
@@ -275,23 +396,25 @@ export function attemptFlee(state: GameState): AttemptFleeResult {
   if (!combat) return { state, advanceTurn: false }
 
   const turn = currentTurn(state)
-  const livingPcs = state.party.chars.filter((c) => c.hp > 0)
-  const pc =
-    turn?.kind === 'pc' ? state.party.chars.find((c) => c.id === turn.id && c.hp > 0) ?? null
-    : livingPcs.sort((a, b) => b.stats.speed - a.stats.speed || a.id.localeCompare(b.id))[0] ?? null
+  if (!turn || turn.kind !== 'pc') {
+    let next = pushActivityLog(state, 'Not your turn.')
+    next = pushSfx(next, 'reject')
+    return { state: next, advanceTurn: false }
+  }
+
+  const pc = state.party.chars.find((c) => c.id === turn.id && c.hp > 0) ?? null
 
   const livingNpcs = combat.participants.npcs
     .map((id) => state.floor.npcs.find((n) => n.id === id))
     .filter((n): n is NonNullable<typeof n> => Boolean(n && n.hp > 0))
 
   const npc =
-    turn?.kind === 'npc' ? state.floor.npcs.find((n) => n.id === turn.id && n.hp > 0) ?? null
-    : livingNpcs.sort((a, b) => npcCombatTuning(b.kind).speed - npcCombatTuning(a.kind).speed || a.id.localeCompare(b.id))[0] ?? null
+    livingNpcs.sort((a, b) => resolveNpcCombatTuning(b).speed - resolveNpcCombatTuning(a).speed || a.id.localeCompare(b.id))[0] ?? null
 
   if (!pc || !npc) return { state, advanceTurn: false }
 
   // Stamina cost (MVP): fleeing is costly; if too exhausted, reject but do not consume a turn.
-  const fleeCost = 8
+  const fleeCost = effectiveFleeStaminaCost(pc)
   if (pc.stamina < fleeCost) {
     let next = pushActivityLog(state, 'Too exhausted to flee.')
     next = pushSfx(next, 'reject')
@@ -303,11 +426,12 @@ export function attemptFlee(state: GameState): AttemptFleeResult {
     if (idx >= 0) {
       chars[idx] = { ...chars[idx], stamina: Math.max(0, chars[idx].stamina - fleeCost) }
       state = { ...state, party: { ...state.party, chars } }
+      state = pushPortraitToast(state, { characterId: pc.id, kind: 'statDelta', text: `−${fleeCost} STA` })
     }
   }
 
   const pcSpeed = pc.stats.speed
-  const npcSpeed = npcCombatTuning(npc.kind).speed
+  const npcSpeed = resolveNpcCombatTuning(npc).speed
   const d20 = rollD20(state, combat.encounterId, `flee:${combat.turnIndex}:${Math.floor(state.nowMs / 333)}`)
   const margin = pcSpeed - npcSpeed
   const success = d20 + margin >= 11
@@ -320,7 +444,7 @@ export function attemptFlee(state: GameState): AttemptFleeResult {
 
   let next = pushActivityLog(state, 'You fail to flee!')
   // Free hit: use the fastest living NPC in the encounter.
-  const fastest = livingNpcs.sort((a, b) => npcCombatTuning(b.kind).speed - npcCombatTuning(a.kind).speed || a.id.localeCompare(b.id))[0]!
+  const fastest = livingNpcs.sort((a, b) => resolveNpcCombatTuning(b).speed - resolveNpcCombatTuning(a).speed || a.id.localeCompare(b.id))[0]!
   next = npcTakeTurn(next, fastest.id)
   const c = next.combat
   if (c) {
@@ -365,7 +489,7 @@ export function resolvePcAttackRoll(args: { state: GameState; attacker: Characte
   const d20 = rollD20(state, combat.encounterId, `hit:${attacker.id}:${npc.id}:${combat.turnIndex}`)
   let toHit = d20 + attacker.stats.perception + attacker.stats.agility
   if (pcHasActiveStatus(attacker, state, 'NanoTagged')) toHit -= 1
-  const defense = 10 + npcCombatTuning(npc.kind).speed
+  const defense = 10 + resolveNpcCombatTuning(npc).speed
   const hit = toHit >= defense
   const crit = d20 === 20
   return { hit, crit, d20, toHit, defense }
@@ -397,20 +521,13 @@ export function computePcAttackDamage(args: {
     crit = roll.crit
   }
 
-  const statPts =
-    damageStat === 'strength'
-      ? attacker.stats.strength
-      : damageStat === 'agility'
-        ? attacker.stats.agility
-        : damageStat === 'intelligence'
-          ? attacker.stats.intelligence
-          : 0
+  const statPts = statPointsForWeaponDamage(attacker, damageStat)
   const statBonus = damageStat ? Math.floor(statPts * 0.25) : 0
   const rawWeapon = weaponBaseDamage + statBonus
   const dmgBonus = Math.max(0, Number(state.run?.bonuses.damageBonusPct ?? 0))
   const afterRunPct = Math.max(1, Math.round(rawWeapon * (1 + dmgBonus)))
 
-  const tuned = npcCombatTuning(npc.kind)
+  const tuned = resolveNpcCombatTuning(npc)
   const isPhysical = weaponDamageType === 'Blunt' || weaponDamageType === 'Pierce' || weaponDamageType === 'Cut'
   const mitigated = isPhysical ? Math.max(0, afterRunPct - tuned.armor) : afterRunPct
   const resist = Math.max(0, Math.min(0.95, Number(tuned.resistances?.[weaponDamageType] ?? 0)))
@@ -426,21 +543,13 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   if (!living.length) return state
 
   const combat = state.combat
-  const encId = combat?.encounterId ?? 'open'
-  const softness = (c: Character) => {
-    const defendBias = combat?.pcDefense?.[c.id] ? 8 : 0
-    return c.hp + defendBias + tieBreak01(state, encId, `npcTar:${npc.id}:${c.id}`) * 0.001
-  }
-  let target = living[0]!
-  let bestS = softness(target)
-  for (let i = 1; i < living.length; i++) {
-    const c = living[i]!
-    const s = softness(c)
-    if (s < bestS || (s === bestS && c.id < target.id)) {
-      target = c
-      bestS = s
-    }
-  }
+  const target = pickNpcPcTargetForNpcTurn({
+    state,
+    npcId,
+    living,
+    combat,
+    turnIndex: combat?.turnIndex ?? 0,
+  })
 
   let st = state
   if (combat) {
@@ -453,7 +562,7 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
     }
   }
 
-  const tuned = npcCombatTuning(npc.kind)
+  const tuned = resolveNpcCombatTuning(npc)
   const dmgType = tuned.damageType
   const def = defenseForPc(st, target.id as any)
   const armor = def?.armor ?? Math.max(0, target.armor ?? 0)
@@ -470,9 +579,17 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   const mitigated = isPhysical ? Math.max(0, tuned.baseDamage - armor) : tuned.baseDamage
   const d20 = combat != null ? rollD20(st, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
   const toHit = d20 + tuned.speed
-  let defense = 10 + target.stats.speed
-  if (pcHasActiveStatus(target, st, 'Parasitized')) defense -= 1
-  if (pcHasActiveStatus(target, st, 'Spored')) defense -= 1
+  const speedForAc = Math.min(target.stats.speed, NPC_VS_PC_DEFENSE_SPEED_CAP)
+  let defense = 10 + speedForAc
+  const statusAcMods: string[] = []
+  if (pcHasActiveStatus(target, st, 'Parasitized')) {
+    defense -= 1
+    statusAcMods.push('−1 Parasitized')
+  }
+  if (pcHasActiveStatus(target, st, 'Spored')) {
+    defense -= 1
+    statusAcMods.push('−1 Spored')
+  }
   const hit = toHit >= defense
   const crit = d20 === 20
   const final = hit ? Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1))) : 0
@@ -483,17 +600,35 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   chars[idx] = { ...chars[idx], hp: Math.max(0, chars[idx].hp - final) }
 
   let next: GameState = { ...st, party: { ...st.party, chars } }
-  const npcAtk = `d20+Spd ${d20}+${tuned.speed}=${toHit}`
-  const pcAc = `10+Spd ${target.stats.speed}=${defense}`
+  const thematic = npcAttackPcThematic({
+    npcName: npc.name,
+    targetName: target.name,
+    hit,
+    crit,
+    finalDmg: final,
+  })
+  const legacy = npcAttackPcLegacyFormula({
+    npcName: npc.name,
+    targetName: target.name,
+    d20,
+    npcSpeed: tuned.speed,
+    toHit,
+    defense,
+    speedStat: target.stats.speed,
+    speedForAc,
+    defenseSpeedCap: NPC_VS_PC_DEFENSE_SPEED_CAP,
+    statusAcMods,
+    hit,
+    crit,
+    finalDmg: final,
+  })
+  const logLine = composeCombatLogLine({ debugOpen: st.ui.debugOpen, thematic, legacy })
   if (!hit) {
-    next = pushActivityLog(next, `${npc.name} → ${target.name}: ${npcAtk} vs ${pcAc} — miss.`)
+    next = pushActivityLog(next, logLine)
     next = pushSfx(next, 'swing')
     return next
   }
-  next = pushActivityLog(
-    next,
-    `${npc.name} → ${target.name}: ${npcAtk} vs ${pcAc} — hit${crit ? ' (nat 20)' : ''}, ${final} dmg.`,
-  )
+  next = pushActivityLog(next, logLine)
   next = pushSfx(next, 'hit')
   next = applyUiShake(next, crit ? 0.55 : 0.35, crit ? 180 : 140)
   next = applyPortraitShake(next, target.id, crit ? PORTRAIT_SHAKE_NPC_CRIT : PORTRAIT_SHAKE_NPC_HIT)

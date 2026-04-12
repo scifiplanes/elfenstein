@@ -1,12 +1,29 @@
-import type { GameState } from '../types'
+import { DEFAULT_STATUSES } from '../content/statuses'
+import type { GameState, StatusEffectId } from '../types'
+import { pushPortraitToast } from './portraitToasts'
+
+function statusToastLabel(id: StatusEffectId): string {
+  return DEFAULT_STATUSES.find((s) => s.id === id)?.name ?? id
+}
 
 export function applyStatusDecay(state: GameState): GameState {
   const nowMs = state.nowMs
   let charsChanged = false
+  let nextState = state
 
   const chars = state.party.chars.map((c) => {
+    const dropped = c.statuses.filter((s) => s.untilMs != null && s.untilMs <= nowMs)
     const nextStatuses = c.statuses.filter((s) => (s.untilMs == null ? true : s.untilMs > nowMs))
     if (nextStatuses.length !== c.statuses.length) charsChanged = true
+    if (dropped.length && c.hp > 0) {
+      for (const s of dropped) {
+        nextState = pushPortraitToast(nextState, {
+          characterId: c.id,
+          kind: 'status',
+          text: `−${statusToastLabel(s.id)}`,
+        })
+      }
+    }
     return nextStatuses === c.statuses ? c : { ...c, statuses: nextStatuses }
   })
 
@@ -18,11 +35,11 @@ export function applyStatusDecay(state: GameState): GameState {
     return nextStatuses.length === cur.length ? n : { ...n, statuses: nextStatuses }
   })
 
-  if (!charsChanged && !npcsChanged) return state
+  if (!charsChanged && !npcsChanged) return nextState
   return {
-    ...state,
-    party: charsChanged ? { ...state.party, chars } : state.party,
-    floor: npcsChanged ? { ...state.floor, npcs, floorGeomRevision: state.floor.floorGeomRevision + 1 } : state.floor,
+    ...nextState,
+    party: charsChanged ? { ...nextState.party, chars } : nextState.party,
+    floor: npcsChanged ? { ...nextState.floor, npcs, floorGeomRevision: nextState.floor.floorGeomRevision + 1 } : nextState.floor,
   }
 }
 

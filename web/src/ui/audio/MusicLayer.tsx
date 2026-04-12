@@ -4,6 +4,7 @@ import { MusicPlayer } from './MusicPlayer'
 import { SfxFilePlayer } from './SfxFilePlayer'
 import { ALL_MUSIC_TRACKS, BG_SFX_TRACKS, PROXIMITY_OVERLAYS } from './musicTracks'
 import { selectBgTrack, selectOverlays } from './musicRules'
+import { registerAudioUnlock } from './audioUnlockRegistry'
 
 /** Crossfade duration when the floor type changes and a new bg loop starts. */
 const BG_XFADE_SEC = 2.5
@@ -45,6 +46,15 @@ export function MusicLayer(props: { state: GameState }) {
   /** Last debugBgSfxTrigger seq we acted on — detects new triggers. */
   const lastSfxSeqRef     = useRef(-1)
 
+  useLayoutEffect(() => {
+    const unlock = () => {
+      bgPlayer.ensure()
+      for (const p of overlayPlayers.values()) p.ensure()
+      sfxPlayer.unlock()
+    }
+    return registerAudioUnlock(unlock)
+  }, [bgPlayer, overlayPlayers, sfxPlayer])
+
   // ── Mount / unmount ─────────────────────────────────────────────────────────
   useEffect(() => {
     const autoplayTimers: number[] = []
@@ -52,6 +62,7 @@ export function MusicLayer(props: { state: GameState }) {
     const resume = () => {
       bgPlayer.ensure()
       for (const p of overlayPlayers.values()) p.ensure()
+      sfxPlayer.unlock()
     }
     window.addEventListener('pointerdown', resume)
     window.addEventListener('keydown', resume)
@@ -67,6 +78,7 @@ export function MusicLayer(props: { state: GameState }) {
     const tryResume = () => {
       bgPlayer.ensure()
       for (const p of overlayPlayers.values()) p.ensure()
+      sfxPlayer.unlock()
     }
 
     void Promise.all([bgPlayer.preload(ALL_MUSIC_TRACKS), ...overlayPreloads]).then(() => {

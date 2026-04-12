@@ -6,7 +6,9 @@ import type { GameState, ItemDefId } from '../../game/types'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 import styles from './InventoryPanel.module.css'
 import { useCursor } from '../cursor/useCursor'
+import { portraitDropNormForDragDrop } from '../portraits/portraitDropNorm'
 import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
+import { ItemEmoji } from '../item/ItemEmoji'
 
 export function InventoryPanel(props: {
   state: GameState
@@ -59,7 +61,13 @@ export function InventoryPanel(props: {
           e.clientX,
           e.clientY,
         )
-        dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs: performance.now() })
+        dispatch({
+          type: 'drag/drop',
+          payload: drop.payload,
+          target,
+          nowMs: performance.now(),
+          ...portraitDropNormForDragDrop(target, e.clientX, e.clientY),
+        })
       }}
     >
       {slots.map((itemId, idx) => {
@@ -97,7 +105,13 @@ export function InventoryPanel(props: {
                         e.clientX,
                         e.clientY,
                       )
-                      dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs: performance.now() })
+                      dispatch({
+                        type: 'drag/drop',
+                        payload: drop.payload,
+                        target,
+                        nowMs: performance.now(),
+                        ...portraitDropNormForDragDrop(target, e.clientX, e.clientY),
+                      })
                       return
                     }
                     if (!tradeEligible || !item || !state.ui.tradeSession) return
@@ -111,9 +125,13 @@ export function InventoryPanel(props: {
                   }}
                   aria-label={def.name}
                 >
-                  {def.icon.kind === 'emoji' ? def.icon.value : '□'}
+                  {def.icon.kind === 'emoji' ? <ItemEmoji icon={def.icon} /> : '□'}
                 </button>
-                {item.qty > 1 ? <div className={styles.qty}>{item.qty}</div> : null}
+                {item.defId === 'GlowbugJar' && (item.glowbugs ?? 1) > 1 ? (
+                  <div className={styles.qty}>{item.glowbugs ?? 1}</div>
+                ) : item.qty > 1 ? (
+                  <div className={styles.qty}>{item.qty}</div>
+                ) : null}
               </>
             ) : null}
           </div>

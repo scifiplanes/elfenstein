@@ -9,9 +9,13 @@ import { findRecipe, recipeKey } from '../../game/content/recipes'
 import { currentTurn } from '../../game/state/combat'
 import { resolveWeaponItemIdForPcTurn } from '../../game/state/equipment'
 import { tradeStockRows } from '../../game/state/trade'
+import { ItemEmoji } from '../item/ItemEmoji'
+import { isBobrIntroActive } from '../../game/bobrIntroMs'
+import { canItemBreakOpenDoor } from '../../game/state/openDoorDestroy'
 
 export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const api = useContext(CursorContext)
+  const bobrIntroActive = isBobrIntroActive(props.state)
   const clickShakeRef = useRef<{ startedAtMs: number; untilMs: number } | null>(null)
   const prevIsPointerDown = useRef(false)
   const isPointerDown = api?.state.isPointerDown ?? false
@@ -19,16 +23,16 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
 
   useEffect(() => {
     if (!api) return
-    // Always hide the system cursor for the intended “hand cursor” feel.
     const prev = document.body.style.cursor
-    document.body.style.cursor = 'none'
+    // Bobr cutscene: `CursorLayer` stacks above the portaled intro — show the OS cursor and hide the hand.
+    document.body.style.cursor = bobrIntroActive ? '' : 'none'
     return () => {
       document.body.style.cursor = prev
     }
-  }, [api])
+  }, [api, bobrIntroActive])
 
   useEffect(() => {
-    if (!api) return
+    if (!api || bobrIntroActive) return
     let raf = 0
     let mounted = true
     const tick = () => {
@@ -41,10 +45,10 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       mounted = false
       cancelAnimationFrame(raf)
     }
-  }, [api])
+  }, [api, bobrIntroActive])
 
   useEffect(() => {
-    if (!api) return
+    if (!api || bobrIntroActive) return
     // Preload cursor sprites so state changes don’t hitch on image decode.
     const srcs = [
       '/content/Hand_Point.png',
@@ -65,7 +69,7 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       // Keep GC-able references only; no listeners attached.
       void imgs
     }
-  }, [api])
+  }, [api, bobrIntroActive])
 
   useEffect(() => {
     const prev = prevIsPointerDown.current
@@ -130,14 +134,14 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     return el ? el.getBoundingClientRect() : null
   })()
 
-  const craftPreviewText = (() => {
+  const craftPreviewGlyph = (() => {
     if (!craftReady) return null
     const k = recipeKey(craftReady.recipe.a, craftReady.recipe.b)
     const known = Boolean(props.state.ui.knownRecipes?.[k])
-    if (!known) return '?'
+    if (!known) return null
     const def = props.content.item(craftReady.recipe.result)
-    if (def?.icon?.kind === 'emoji') return def.icon.value
-    return '?'
+    if (def.icon.kind === 'emoji') return def.icon
+    return null
   })()
 
   const contextualAffordance =
@@ -169,9 +173,18 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
             return { icon: '✦', label: 'Use' }
           }
 
+          if (hoverTarget?.kind === 'openDoor') {
+            if (props.state.combat) return { icon: '…', label: 'Blocked' }
+            return canItemBreakOpenDoor(props.content, def.id)
+              ? { icon: '⚒', label: 'Break' }
+              : { icon: '…', label: 'Blocked' }
+          }
+
           if (hoverTarget?.kind === 'portrait') {
             if (hoverTarget.target === 'eyes') return { icon: '👁', label: 'Inspect' }
             if (hoverTarget.target === 'mouth') return def.feed ? { icon: '👄', label: 'Feed' } : { icon: '👄', label: 'Offer' }
+            if (hoverTarget.target === 'body')
+              return def.id === 'BandageStrip' ? { icon: '🩹', label: 'Apply' } : { icon: '…', label: 'Blocked' }
             if (hoverTarget.target === 'hat') return { icon: '🎩', label: 'Equip hat' }
             if (hoverTarget.target === 'hands') return { icon: '🤲', label: 'Equip hands' }
             return { icon: '👁', label: 'Inspect' }
@@ -205,12 +218,13 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
   const useTradeHand = Boolean(hubTradeHover)
 
   const isHoveringValidTarget = Boolean(dragging?.started && (contextualAffordance ?? affordance))
-  const ghostText = (() => {
-    if (!ghost) return ''
+  const ghostContent = (() => {
+    if (!ghost) return null
     const item = props.state.party.items[ghost.itemId]
     const def = item ? props.content.item(item.defId) : null
     if (!def) return ghost.itemId
-    return def.icon.kind === 'emoji' ? def.icon.value : def.name
+    if (def.icon.kind === 'emoji') return <ItemEmoji icon={def.icon} />
+    return def.name
   })()
 
   // HUD inventory DOM is opacity-0 (capture hit layer); name labels render here like affordance.
@@ -278,19 +292,23 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
       : styles.point
 
   return (
-    api ? (
+    api && !bobrIntroActive ? (
       <div className={styles.layer}>
         <div className={styles.handWrap} style={{ left: x, top: y, transform: handShakeTransform }}>
           <div className={`${styles.hand} ${handStateClass}`} />
         </div>
         {ghost ? (
           <div className={`${styles.ghost} ${isHoveringValidTarget ? styles.ghostShake : ''}`} style={{ left: x, top: y }}>
-            {ghostText}
+            {ghostContent}
           </div>
         ) : null}
-        {craftPreviewText ? (
+        {craftPreviewGlyph ? (
           <div className={styles.craftPreview} style={{ left: x, top: y }}>
-            {craftPreviewText}
+            <ItemEmoji icon={craftPreviewGlyph} />
+          </div>
+        ) : craftReady ? (
+          <div className={styles.craftPreview} style={{ left: x, top: y }}>
+            ?
           </div>
         ) : null}
         {crafting ? (
@@ -331,4 +349,5 @@ export function CursorLayer(props: { state: GameState; content: ContentDB }) {
     ) : null
   )
 }
+
 

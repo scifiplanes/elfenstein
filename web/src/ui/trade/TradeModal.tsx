@@ -14,6 +14,7 @@ import invStyles from '../inventory/InventoryPanel.module.css'
 import npcDlgStyles from '../npc/NpcDialogModal.module.css'
 import popup from '../shared/GamePopup.module.css'
 import styles from './TradeModal.module.css'
+import { ItemEmoji } from '../item/ItemEmoji'
 
 export type TradeModalVariant = 'interactive' | 'capture'
 
@@ -123,7 +124,6 @@ export function TradeModal(props: {
             <div className={styles.tradeStockGridInv} style={{ ['--inv-cols' as any]: invCols }}>
               {stockRows.map((row, i) => {
                 const def = content.item(row.defId)
-                const icon = def.icon.kind === 'emoji' ? def.icon.value : '□'
                 const picked = ts.askStockIndex === i
                 return (
                   <div
@@ -147,7 +147,7 @@ export function TradeModal(props: {
                           : undefined
                       }
                     >
-                      {icon}
+                      {def.icon.kind === 'emoji' ? <ItemEmoji icon={def.icon} /> : '□'}
                     </button>
                     {row.qty > 1 ? <div className={invStyles.qty}>×{row.qty}</div> : null}
                   </div>
@@ -181,7 +181,7 @@ export function TradeModal(props: {
                     }
                     onPointerCancel={variant === 'interactive' ? cursor.cancelDrag : undefined}
                   >
-                    {offerDef.icon.kind === 'emoji' ? offerDef.icon.value : '□'}
+                    {offerDef.icon.kind === 'emoji' ? <ItemEmoji icon={offerDef.icon} /> : '□'}
                   </button>
                   {offerItem.qty > 1 ? <div className={invStyles.qty}>×{offerItem.qty}</div> : null}
                 </>

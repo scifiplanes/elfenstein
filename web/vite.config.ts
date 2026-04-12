@@ -67,6 +67,10 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
+      input: {
+        main: path.resolve(__dirname, 'index.html'),
+        benchPipeline: path.resolve(__dirname, 'bench-pipeline.html'),
+      },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/three/examples/')) return 'three-examples'

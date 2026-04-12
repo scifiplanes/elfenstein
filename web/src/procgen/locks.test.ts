@@ -93,6 +93,55 @@ describe('placeLocksOnPath', () => {
     const li = 2 + y * w
     expect(tiles[li] === 'lockedDoor' || tiles[li] === 'lockedDoorOctopus').toBe(true)
   })
+
+  it('targetLockCount 0 places no locks even on a long path', () => {
+    const w = 9
+    const h = 3
+    const y = 1
+    const tiles = corridorMap(w, y)
+    const entrance = { x: 1, y }
+    const exit = { x: 7, y }
+    const rng = { next: () => 0.99 }
+
+    const { doors, floorItems } = placeLocksOnPath({
+      tiles,
+      w,
+      h,
+      entrance,
+      exit,
+      rng,
+      occupied: new Set<string>(),
+      difficulty: 1,
+      targetLockCount: 0,
+    })
+
+    expect(doors).toEqual([])
+    expect(floorItems).toEqual([])
+  })
+
+  it('targetLockCount 1 returns empty when exactly one lock cannot be placed', () => {
+    const w = 5
+    const h = 3
+    const y = 1
+    const tiles = corridorMap(w, y)
+    const entrance = { x: 1, y }
+    const exit = { x: 3, y }
+    const rng = { next: () => 0.99 }
+
+    const { doors } = placeLocksOnPath({
+      tiles,
+      w,
+      h,
+      entrance,
+      exit,
+      rng,
+      occupied: new Set<string>(),
+      difficulty: 1,
+      targetLockCount: 1,
+    })
+
+    expect(doors).toEqual([])
+  })
 })
 
 describe('validateGen', () => {

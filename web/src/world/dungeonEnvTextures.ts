@@ -6,8 +6,18 @@ export type DungeonEnvTextureSrcs = {
   ceiling: string
 }
 
-/** Albedo maps for floor / wall / ceiling voxels (~1 world unit per tile face). */
-export function getDungeonEnvTextureSrcs(floorType: FloorType): DungeonEnvTextureSrcs {
+/** Same triple as overgrown room overlay; **Jungle** floors use this for the whole level. */
+export const OVERGROWN_ENV_TEXTURE_SRCS: DungeonEnvTextureSrcs = {
+  floor: '/content/overgrown_floor.png',
+  wall: '/content/overgrown_wall.png',
+  ceiling: '/content/overgrown_ceiling.png',
+}
+
+/**
+ * Albedo maps for floor / wall / ceiling voxels (~1 world unit per tile face).
+ * Returns **null** for themes that use procedural **DataTexture**s in `dungeonEnvProceduralTextures.ts`.
+ */
+export function getDungeonEnvTextureSrcs(floorType: FloorType): DungeonEnvTextureSrcs | null {
   switch (floorType) {
     case 'Dungeon':
       return {
@@ -28,40 +38,8 @@ export function getDungeonEnvTextureSrcs(floorType: FloorType): DungeonEnvTextur
         ceiling: '/content/ruins_ceiling.png',
       }
     case 'Jungle':
-      return {
-        floor: '/content/jungle_floor.png',
-        wall: '/content/jungle_wall.png',
-        ceiling: '/content/jungle_ceiling.png',
-      }
-    case 'LivingBio':
-      return {
-        floor: '/content/livingbio_floor.png',
-        wall: '/content/livingbio_wall.png',
-        ceiling: '/content/livingbio_ceiling.png',
-      }
-    case 'Bunker':
-      return {
-        floor: '/content/bunker_floor.png',
-        wall: '/content/bunker_wall.png',
-        ceiling: '/content/bunker_ceiling.png',
-      }
-    case 'Golem':
-      return {
-        floor: '/content/golem_floor.png',
-        wall: '/content/golem_wall.png',
-        ceiling: '/content/golem_ceiling.png',
-      }
-    case 'Catacombs':
-      return {
-        floor: '/content/catacombs_floor.png',
-        wall: '/content/catacombs_wall.png',
-        ceiling: '/content/catacombs_ceiling.png',
-      }
-    case 'Palace':
-      return {
-        floor: '/content/palace_floor.png',
-        wall: '/content/palace_wall.png',
-        ceiling: '/content/palace_ceiling.png',
-      }
+      return OVERGROWN_ENV_TEXTURE_SRCS
+    default:
+      return null
   }
 }

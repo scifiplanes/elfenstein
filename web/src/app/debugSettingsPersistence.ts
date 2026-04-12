@@ -64,10 +64,12 @@ export function parseHubHotspotsPatch(raw: unknown): HubHotspotPatch | undefined
   if (village) {
     const tavernR = parseNormRect(village.tavern)
     const caveR = parseNormRect(village.cave)
-    if (tavernR || caveR) {
+    const tentR = parseNormRect(village.tent)
+    if (tavernR || caveR || tentR) {
       patch.village = {}
       if (tavernR) patch.village.tavern = tavernR
       if (caveR) patch.village.cave = caveR
+      if (tentR) patch.village.tent = tentR
     }
   }
   if (tavern) {

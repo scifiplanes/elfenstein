@@ -24,6 +24,8 @@ import { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
 import { getPressedPortraitCharacterId } from '../cursor/getPressedPortraitCharacterId'
 import { getPortraitCaptureHudRev } from '../portraits/portraitCaptureHudRev'
+import { ensureTentTintedPortraitOverlayTexture } from '../portraits/ensureTentTintedPortraitOverlayTexture'
+import { tentReplacementPortraitFilterCss } from '../portraits/tentReplacementPortraitFilter'
 import { roomPropertyUnderPlayer } from '../../game/state/roomTelemetry'
 
 type SpeciesId = GameState['party']['chars'][number]['species']
@@ -127,8 +129,14 @@ function computePortraitMouthOn(args: {
   return tick % 2 === 0 ? 1 : 0
 }
 
-export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<Action>; content: ContentDB }) {
-  const { state, dispatch, content } = props
+export function DitheredFrameRoot(props: {
+  state: GameState
+  dispatch: Dispatch<Action>
+  content: ContentDB
+  titleAudioPrimed?: boolean
+  onPrimeTitleAudio?: () => void
+}) {
+  const { state, dispatch, content, titleAudioPrimed, onPrimeTitleAudio } = props
 
   const latestStateRef = useRef<GameState>(state)
   const latestContentRef = useRef(content)
@@ -156,6 +164,7 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
   const uiTexRef = useRef<THREE.CanvasTexture | null>(null)
   const portraitTexCacheRef = useRef<Map<string, THREE.Texture>>(new Map())
   const portraitArCacheRef = useRef<Map<string, number>>(new Map())
+  const tentTintedPortraitOverlayTexCacheRef = useRef<Map<string, THREE.CanvasTexture>>(new Map())
   const textureLoaderRef = useRef<THREE.TextureLoader | null>(null)
   const navPushedTexRef = useRef<THREE.Texture | null>(null)
   const lastCaptureMsRef = useRef(0)
@@ -312,6 +321,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       presenterRef.current = null
       navPushedTexRef.current?.dispose()
       navPushedTexRef.current = null
+      for (const t of tentTintedPortraitOverlayTexCacheRef.current.values()) {
+        t.dispose()
+      }
+      tentTintedPortraitOverlayTexCacheRef.current.clear()
     }
   }, [])
 
@@ -415,12 +428,19 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
     const anyShakeActive =
       (!!ui.shake && ui.shake.untilMs > latestStateRef.current.nowMs) ||
       (!!ui.portraitShake && ui.portraitShake.untilMs > latestStateRef.current.nowMs)
-    const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > latestStateRef.current.nowMs
+    // `ui.portraitMouth.{startedAtMs,untilMs}` are authored with `performance.now()` (see `feedCharacter`);
+    // compare against the same rAF wall clock here. Using `state.nowMs` can skew vs `untilMs` and drop the
+    // `highFpsUi` capture burst while the DOM/compositor still shows an active mouth cue.
+    const mouthActive = !!ui.portraitMouth && ui.portraitMouth.untilMs > now
     const idlePulseActive = !!ui.portraitIdlePulse && ui.portraitIdlePulse.untilMs > now
     const pressedPortraitCharacterId = getPressedPortraitCharacterId(cs)
     const portraitPressActive = pressedPortraitCharacterId != null
+    // Portrait toasts animate in CSS; the dithered HUD is html2canvas snapshots—without a burst, motion between
+    // captures is invisible and the last frame looks “stuck”. Use the same rAF `now` as other fast-layer checks.
+    const portraitToastActive = (ui.portraitToasts ?? []).some((t) => t.untilMs > now)
     // Portrait mouth is a compositor overlay, but it still benefits from a higher cadence so flicker reads.
-    const highFpsUi = anyShakeActive || mouthActive || idlePulseActive || portraitPressActive
+    const highFpsUi =
+      anyShakeActive || mouthActive || idlePulseActive || portraitPressActive || portraitToastActive
 
     // When a high-FPS UI moment begins (e.g. portrait mouth flicker), force the next capture ASAP
     // so the burst doesn't "start late" waiting for a stale interval gate.
@@ -453,7 +473,13 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       // Keep this intentionally small: only include state that affects the captured HUD rendering.
       const invSlots = sForKey.party.inventory.slots.join(',')
       const chars = sForKey.party.chars
-        .map((c) => `${c.id}:${Math.round(c.hp)}:${Math.round(c.stamina)}:${Math.round(c.hunger)}:${Math.round(c.thirst)}`)
+        .map((c) => {
+          const th = c.tentReplacementPortraitHueDeg
+          const thKey = th === undefined ? '-' : String(Math.round(th))
+          const ts = c.tentReplacementPortraitSaturateMult
+          const tsKey = ts === undefined ? '-' : String(Math.round(ts * 1000))
+          return `${c.id}:${c.species}:${Math.round(c.hp)}:${Math.round(c.stamina)}:${Math.round(c.hunger)}:${Math.round(c.thirst)}:tHue=${thKey}:tSat=${tsKey}`
+        })
         .join('|')
       const itemsOnFloorN = sForKey.floor.itemsOnFloor.length
       const crafting = sForKey.ui.crafting ? `${sForKey.ui.crafting.srcItemId}->${sForKey.ui.crafting.dstItemId}:${sForKey.ui.crafting.endsAtMs}` : ''
@@ -474,7 +500,9 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
       const dbgDeathKey = sForKey.ui.debugShowDeathPopup ? '1' : '0'
       const dbgNpcDlgKey = sForKey.ui.debugShowNpcDialogPopup ? '1' : '0'
       const checkpointKey = sForKey.run.checkpoint ? '1' : '0'
-      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}|pCapIdle=${getPortraitCaptureHudRev()}`
+      const pt = sForKey.ui.portraitToasts
+      const toastKey = pt?.length ? pt.map((t) => `${t.id}:${Math.round(t.untilMs)}`).join(';') : ''
+      return `inv=${invSlots}|chars=${chars}|pose=${poseKey}|floorItems=${itemsOnFloorN}|craft=${crafting}|log=${logKey}|npcDlg=${npcDialogFor}|death=${death}|pulse=${pulseKey}|press=${pressKey}|pHover=${hoverPortraitKey}|screen=${screenKey}|paperdoll=${paperdollKey}|dbgDeath=${dbgDeathKey}|dbgNpcDlg=${dbgNpcDlgKey}|cp=${checkpointKey}|pCapIdle=${getPortraitCaptureHudRev()}|toast=${toastKey}`
     })()
     const hudDirty = hudKey !== lastHudKeyRef.current
     // Don't commit `lastHudKeyRef` until a capture succeeds; otherwise the very first capture
@@ -749,15 +777,56 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
         const isOpen = (portraitMouthIsOpen[idx] ?? 0) > 0
         const hasClosed = !!urls.mouthClosedSrc
         const mouthSrc = isOpen ? urls.mouthSrc : (urls.mouthClosedSrc ?? urls.mouthSrc)
-        portraitMouthTex.push(getTex(mouthSrc))
+        const isDead = c.hp <= 0
+        const tentHue = c.tentReplacementPortraitHueDeg
+        const tentSat = c.tentReplacementPortraitSaturateMult
+        const tentTintFilter =
+          tentHue !== undefined
+            ? tentReplacementPortraitFilterCss({
+                hueDeg: tentHue,
+                isDead,
+                saturateMultAlive: tentSat,
+              })
+            : null
+        const satKey = tentSat === undefined ? 'lg' : String(Math.round(tentSat * 1000))
+
+        let mouthTex: THREE.Texture | null = getTex(mouthSrc)
+        if (tentTintFilter && mouthTex) {
+          const okey = `tentOv|mouth|${mouthSrc}|h${Math.round(tentHue!)}|s${satKey}|d${isDead ? 1 : 0}`
+          mouthTex =
+            ensureTentTintedPortraitOverlayTexture(
+              mouthTex,
+              tentTintFilter,
+              okey,
+              tentTintedPortraitOverlayTexCacheRef.current,
+            ) ?? mouthTex
+        }
+
+        let eyesInspectTex: THREE.Texture | null = getTex(urls.eyesInspectSrc)
+        if (tentTintFilter && eyesInspectTex) {
+          const okey = `tentOv|eyes|${urls.eyesInspectSrc}|h${Math.round(tentHue!)}|s${satKey}|d${isDead ? 1 : 0}`
+          eyesInspectTex =
+            ensureTentTintedPortraitOverlayTexture(
+              eyesInspectTex,
+              tentTintFilter,
+              okey,
+              tentTintedPortraitOverlayTexCacheRef.current,
+            ) ?? eyesInspectTex
+        }
+
+        portraitMouthTex.push(mouthTex)
         portraitIdleTex.push(getTex(urls.idleSrc))
-        portraitEyesInspectTex.push(getTex(urls.eyesInspectSrc))
+        portraitEyesInspectTex.push(eyesInspectTex)
         portraitMouthAr.push(arCache.get(mouthSrc) ?? 1)
         portraitIdleAr.push(arCache.get(urls.idleSrc) ?? 1)
         portraitEyesInspectAr.push(arCache.get(urls.eyesInspectSrc) ?? 1)
         // If the species has a closed-mouth art, keep the compositor mouth overlay always active,
         // swapping textures between open/closed for instant transitions without capture latency.
-        portraitMouthOnForShader.push(hasClosed ? 1 : isOpen ? 1 : 0)
+        // Portrait toasts are positioned above the portrait box (outside `portraitRectPx`); the shader only
+        // paints mouth inside that rect, so compositor mouth does not occlude toast text. Baking mouth into
+        // `html2canvas` here used to throttle feed flicker to capture cadence (~100ms+).
+        const mouthOnForShader = hasClosed ? 1 : isOpen ? 1 : 0
+        portraitMouthOnForShader.push(mouthOnForShader)
       }
     }
 
@@ -1001,14 +1070,10 @@ export function DitheredFrameRoot(props: { state: GameState; dispatch: Dispatch<
             webglError={webglError}
             navPadPressedId={navPadPressedId}
             onNavPadVisualPress={onNavPadVisualPress}
+            titleAudioPrimed={titleAudioPrimed}
+            onPrimeTitleAudio={onPrimeTitleAudio}
           />
         </div>
-
-      {state.ui.npcDialogFor || (state.ui.screen === 'game' && state.ui.debugShowNpcDialogPopup) ? (
-        <div className={styles.stageModalLayer}>
-          <NpcDialogModal state={state} dispatch={dispatch} content={content} gameViewportRef={gameViewportRef} />
-        </div>
-      ) : null}
 
       {state.ui.settingsOpen ? (
         <div className={styles.stageModalLayer} style={{ pointerEvents: 'auto' }}>

@@ -1,4 +1,4 @@
-import type { GameState, ItemId, Vec2 } from '../types'
+import type { GameState, ItemDefId, ItemId, Vec2 } from '../types'
 import { makeDropJitter } from './dropJitter'
 
 export function swapInventorySlots(state: GameState, src: number, dst: number): GameState {
@@ -70,6 +70,68 @@ export function consumeItem(state: GameState, itemId: ItemId): GameState {
   const { [itemId]: _removed, ...rest } = state.party.items
   const cleared = removeItemFromInventory(state, itemId)
   return { ...cleared, party: { ...cleared.party, items: rest } }
+}
+
+/** Remove one fed unit from `itemId`, then add one `emptyDefId` (merge with an existing inventory stack, new slot, or floor if full). */
+export function consumeFeedLeavingEmpty(state: GameState, itemId: ItemId, emptyDefId: ItemDefId): GameState {
+  const item = state.party.items[itemId]
+  if (!item) return state
+
+  const afterUnit =
+    item.qty > 1
+      ? {
+          ...state,
+          party: {
+            ...state.party,
+            items: { ...state.party.items, [itemId]: { ...item, qty: item.qty - 1 } },
+          },
+        }
+      : (() => {
+          const { [itemId]: _removed, ...rest } = state.party.items
+          const cleared = removeItemFromInventory(state, itemId)
+          return { ...cleared, party: { ...cleared.party, items: rest } }
+        })()
+
+  for (const sid of afterUnit.party.inventory.slots) {
+    if (!sid) continue
+    const it = afterUnit.party.items[sid]
+    if (it?.defId === emptyDefId) {
+      return {
+        ...afterUnit,
+        party: {
+          ...afterUnit.party,
+          items: { ...afterUnit.party.items, [sid]: { ...it, qty: it.qty + 1 } },
+        },
+      }
+    }
+  }
+
+  const newId = (`i_${emptyDefId}_${afterUnit.floor.seed}_${String(itemId)}_${Math.floor(afterUnit.nowMs)}` as unknown) as ItemId
+  const items = { ...afterUnit.party.items, [newId]: { id: newId, defId: emptyDefId, qty: 1 } }
+  const inv = afterUnit.party.inventory
+  const free = inv.slots.findIndex((s) => s == null)
+  if (free >= 0) {
+    const nextSlots = inv.slots.slice()
+    nextSlots[free] = newId
+    return { ...afterUnit, party: { ...afterUnit.party, items, inventory: { ...inv, slots: nextSlots } } }
+  }
+
+  const dropPos = { ...afterUnit.floor.playerPos }
+  const jitter = makeDropJitter({
+    floorSeed: afterUnit.floor.seed,
+    itemId: newId,
+    nonce: Math.floor(afterUnit.nowMs),
+    radius: afterUnit.render.dropJitterRadius ?? 0.28,
+  })
+  return {
+    ...afterUnit,
+    party: { ...afterUnit.party, items },
+    floor: {
+      ...afterUnit.floor,
+      itemsOnFloor: afterUnit.floor.itemsOnFloor.concat([{ id: newId, pos: dropPos, jitter }]),
+      floorGeomRevision: afterUnit.floor.floorGeomRevision + 1,
+    },
+  }
 }
 
 export function dropItemToFloor(state: GameState, itemId: ItemId, desiredPos?: Vec2): GameState {

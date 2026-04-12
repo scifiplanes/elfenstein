@@ -67,6 +67,8 @@ export function runProcgenContentAudit(): ProcgenContentAuditResult {
     'Swarm',
     'Chumbo',
     'Grub',
+    'SporeGrub',
+    'SunGrub',
     'Kuratko',
     'Grechka',
     'Snailord',

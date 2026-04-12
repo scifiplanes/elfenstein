@@ -4918,7 +4918,7 @@ Date: 2026-04-10
 ### Decision
 Grow **`ALL_RECIPES`** in **`web/src/game/content/recipes.ts`** with:
 - **Alternate ingredient pairs** to existing results (e.g. **Club** smashes **Stone** for **Stone shard**, **Claw**/**Tooth**/**Bone** branches for weapons and remedies, **Moss**/**Mushrooms** cooking paths, **Bone** + **Gem** for **Staff**).
-- **Order-sensitive “traps”** where reversing drag order changes the result (e.g. **Salt** + **Rootsoup** → **Mold** vs **Rootsoup** + **Salt** → salted soup; **Lantern** + **Bobr juice** vs **Torch** + **Bobr juice**; **Slime**/**Fungus** reciprocals; **Bone**/**Stick**, **Foodroot**/**Waterbag (Full)**, **Cloth scrap**/**Mushrooms**, **Sweetroot**/**Shroomcake**).
+- **Order-sensitive “traps”** where reversing drag order changes the result (e.g. **Salt** + **Rootsoup** → **Mold** vs **Rootsoup** + **Salt** → salted soup; **Slime**/**Fungus** reciprocals; **Bone**/**Stick**, **Foodroot**/**Waterbag (Full)**, **Cloth scrap**/**Mushrooms**). (**ADR-0397** later removed **Lantern** + **Bobr juice** → **Torch** and **Sweetroot** + **Shroomcake** → **Mushed root**; **Torch** + **Bobr juice** → **Lantern** remains.)
 - **Swarm tools** from inventory: **Twine** + **Hive** → **Swarm basket**; **Hive** + **Grubling** or **Mushrooms** → **Captured swarm** (world drag of basket onto **Swarm** unchanged).
 
 No recipes use **Iron key**, **Brass key**, or other keys. No new **`ItemDef`**s.
@@ -5769,5 +5769,1877 @@ Users often closed the tab or switched away before the **2 s** debounce fired; *
 
 ### Consequences
 **`web/src/app/GameApp.tsx`**, **`web/vite.config.ts`**, **`DESIGN.md`** §3 (**Debug F2** persistence bullets).
+
+---
+
+## ADR-0357 — Per–door-visual F2 billboard tuning (`doorWoodenSprite*` / `doorOctopusSprite*`)
+Date: 2026-04-12
+
+### Decision
+Replace unified **`render.doorSprite*`** with eight fields: **`doorWoodenSpriteHeight`**, **`doorWoodenSpriteCenterY`**, **`doorWoodenSpriteNudgeX`**, **`doorWoodenSpriteNudgeZ`** and **`doorOctopusSpriteHeight`**, **`doorOctopusSpriteCenterY`**, **`doorOctopusSpriteNudgeX`**, **`doorOctopusSpriteNudgeZ`**. **`WorldRenderer`** tags door pickables with **`userData.doorVisual`** and **`syncDoorSprites`** applies the matching tuning; **`doorFxTracked`** uses its existing **`visual`**. **`clampRenderTuning`** reads legacy **`doorSprite*`** from the **incoming patch** when the new keys are absent (and strips merged legacy keys from state). F2 **DebugPanel** exposes eight sliders.
+
+### Rationale
+Wooden and octopus door art has different proportions; a single shared scale/placement made one variant look wrong when the other was tuned.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`** key set, **`DESIGN.md`** §3 / §8.1; supersedes the single-block description in **ADR-0336** for current behavior.
+
+---
+
+## ADR-0358 — Stamina economy + portrait floating toasts
+Date: 2026-04-12
+
+### Decision
+Add a **stamina gate** on dungeon **gameplay verbs**: **every living party member** pays the same integer cost for **step**, **strafe**, **turn**, **pickup**, **POI use** (when state changes), **door open/unlock**, and **craft start**; if **any** member is short, reject with log + SFX. **Inspect** (eyes drop) costs **only the inspected character**. **Combat** keeps existing **per-actor** weapon/defend/flee/shield stamina rules, with **portrait `statDelta`** toasts on those spends. **Portrait frame tap** performs **rest** for **that character**: trades **`portraitRestHungerCost` / `portraitRestThirstCost`** for **`portraitRestStaminaGain`**, with **`portraitRestCooldownMs`** per character; allowed in **hub** as well as **game**. Introduce **`ui.portraitToasts`** (kinds **`statDelta` / `lowStat` / `status`**) rendered above **`PortraitPanel`**, pruned on **`time/tick`**, plus **low-vital** warnings from fractional thresholds and cooldown. **`applyStatusDecay`** emits **−Status** portrait toasts when timed effects expire. **`feed.primaryStamina`** flags selected items for **“Stamina food”** feed copy. **`ui/toast`** remains **activity-log only**.
+
+### Rationale
+Positions stamina as the shared “energy currency” for exploration while keeping **party-as-one-organism** strictness; portrait taps give an always-available recovery loop tied to **hunger/thirst**; floating portrait lines telegraph changes without overloading the corner activity log.
+
+### Consequences
+**`partyStamina.ts`**, **`portraitToasts.ts`**, **`statusTelegraph.ts`**, **`vitalPortraitWarnings.ts`**, **`types.ts`** **`RenderTuning` + `UiState`**, **`tuningDefaults.ts`**, **`clampRenderTuning`**, **`reducer.ts`**, **`status.ts`**, **`interactions.ts`**, **`combat.ts`**, **`PortraitPanel`**, **`items.ts`**, **`contentDb.ts`**, **`debug-settings.json`**, **`DebugPanel`**, **`partyStamina.test.ts`**, **`DESIGN.md`** §6 / §7.3 / portrait bullets.
+
+---
+
+## ADR-0359 — Portrait toast F2 typography + timing
+Date: 2026-04-12
+
+### Decision
+Portrait floating toasts use the same **HUD title** stack as **`ActivityLog`** (**`--buttonTitleFontFamily`**, weight, letter-spacing, line-height, default color and text-shadow); **toast kind** modifiers override **color** only. Add **`RenderTuning`** **`portraitToastFontPx`** and **`portraitToastAnimMs`** (F2 + **`debug-settings.json`**), alongside existing **`portraitToastTtlMs`** (relabeled **display time** in the panel). **`PortraitPanel`** applies **font size** and **animation duration** from render tuning per toast row.
+
+### Rationale
+Keeps portrait telegraphs visually consistent with the activity log; exposes size/speed/hold without code edits.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`clampRenderTuning`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`PortraitPanel.tsx`**, **`PortraitPanel.module.css`**, **`DESIGN.md`** portrait toast bullet.
+
+---
+
+## ADR-0360 — Food drops, hunger, starter water, extra water vessels
+Date: 2026-04-12
+
+### Decision
+- Raise **NPC death loot** food weights and **`DROP_ROLL_MAX`** (~**58%** any-drop); duplicate **Mushrooms** / **Foodroot** in **storage POI** pools (Dungeon baseline + Cave/Jungle/LivingBio tails); **path-room** floor spawns consume two fixed **`rng.next()`** rolls and sometimes replace **Stick**/**Stone** with **Mushrooms**/**Foodroot**.
+- Increase **`feed.hunger`** on **Mushrooms** and **Foodroot**.
+- **New run** starts with **one** stack **`WaterbagFull` `qty: 4`** instead of a starter **empty** bag.
+- Add **Waterskin** and **Travel flask** (**empty**/**full**), **Well** fills via **`useOnPoi`**, thirst tiers **20** / **26** / **30**; **Flooded** room floor items pick among the three **empty** vessel defs (one RNG draw); allowlist **`*Full`** for procgen audit.
+- Crafts: **Stick** + **Cloth scrap** → **Waterbag (empty)**; **Twine** + **Moss** → **Waterskin (empty)**; **Glass vial** + **Twine** → **Travel flask (empty)**.
+- **`findRecipe`** treats **`WaterbagFull`**, **`WaterskinFull`**, **`TravelFlaskFull`** as interchangeable with authored **`WaterbagFull`** cooking rows (**`FULL_WATER_VESSEL_DEF_IDS`**); **two** full vessels as **A**+**B** yield **no** recipe.
+
+### Rationale
+Reduces early starvation friction; gives explicit crafting paths for containers; avoids duplicating every water-using recipe for each vessel.
+
+### Consequences
+**`npcLoot.ts`**, **`poiLootTables.ts`**, **`spawnTables.ts`**, **`items.ts`**, **`initialState.ts`**, **`recipes.ts`**, **`procgenContentNonSpawnAllowlist.ts`**, **`CraftingRecipesGraph.md`** (regen), **`DESIGN.md`**.
+
+---
+
+## ADR-0361 — Portrait toast upward float + float-speed tuning
+Date: 2026-04-12
+
+### Decision
+Portrait **`ui.portraitToasts`** use a **continuous upward** CSS motion (fade in, drift **up**, fade out). Add **`RenderTuning.portraitToastFloatPx`** (clamped **8–120** px, default **36**): sets **`--portrait-toast-rise`** on each toast row so vertical travel scales with tuning. Expose it in **F2 Portrait** as **Portrait toast float speed (px)** alongside **`portraitToastAnimMs`**. Persist via **`debug-settings.json`** / **`clampRenderTuning`**.
+
+### Rationale
+Makes status/stat lines read like classic floating combat text; separating **travel (px)** from **duration (ms)** gives an intuitive “speed” control without conflating it with how long the row stays in state (**`portraitToastTtlMs`**).
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`** **`clampRenderTuning`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`PortraitPanel.tsx`**, **`PortraitPanel.module.css`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0362 — Portrait toasts on compositor fast (rAF) layer (all kinds)
+Date: 2026-04-12
+
+### Decision
+**Amended** (supersedes **status-only** wording in the first revision): In **`DitheredFrameRoot.renderOnce`**, keep **`ui.portraitToasts`** in the capture **`hudKey`**. Treat **any** active portrait toast as **`highFpsUi`**: **`(ui.portraitToasts ?? []).some((t) => t.untilMs > now)`** where **`now = performance.now()`** matches the compositor **`requestAnimationFrame`** loop, so **`html2canvas`** runs at **burst** cadence for **`statDelta`**, **`lowStat`**, and **`status`**—not only **`status`**. **`PortraitPanel`** filters visible toast rows with **`state.nowMs`** vs **`untilMs`** (and schedules bump timeouts from **`untilMs - state.nowMs`**) so UI matches **`pushPortraitToast`**’s game clock; mouth / idle pulse cues stay on **wall** time where reducers already use **`performance.now()`**.
+
+### Rationale
+The **dithered** HUD is a **bitmap** of the capture tree. Default capture spacing (~**120ms**+) skips most of a multi-second CSS float, so **`statDelta`** / **`lowStat`** looked **static** and **stuck**. **`status`** had been opted into **`highFpsUi`** only; extending the flag to **all** active rows fixes the composite without a new compositor overlay.
+
+### Consequences
+**`DitheredFrameRoot.tsx`**, **`PortraitPanel.tsx`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0363 — Portrait toast float: inline motion for `html2canvas`
+Date: 2026-04-12
+
+### Decision
+Drive **`PortraitPanel`** portrait-toast **motion** with **per-frame inline** **`transform: translateY(…)`** and **`opacity`**, computed from **`performance.now() − startedAtMs`** vs **`render.portraitToastAnimMs`** and **`render.portraitToastFloatPx`** (easing matches the prior **`portraitToastFloat`** keyframes closely). **`pushPortraitToast`** stores **`startedAtMs`** (wall clock, same basis as **`state.nowMs`**); the field is **optional** on legacy rows with a **`untilMs − portraitToastTtlMs`** UI fallback. Remove CSS **`@keyframes`** for this toast (keep typography/background classes).
+
+### Rationale
+**ADR-0362** already raises HUD capture cadence while toasts are active, but **`html2canvas`** clones the DOM into a separate document where **CSS keyframe progress is not reliably preserved**. Captures tended to show a **static** pose—often **opacity 0** at animation start—so the float read as **missing**.
+
+### Consequences
+**`types.ts`** (**`PortraitToast.startedAtMs`**), **`portraitToasts.ts`**, **`PortraitPanel.tsx`**, **`PortraitPanel.module.css`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0364 — Portrait toast stack position (F2 / `debug-settings.json`)
+Date: 2026-04-12
+
+### Decision
+Add **`render.portraitToastOffsetXPx`** and **`render.portraitToastGapPx`** (clamped in **`clampRenderTuning`**, defaults **0** and **4**). **`PortraitPanel`** applies them as inline **`left`/`bottom`/`transform`** on the toast stack so the stack stays centered-by-default but can be nudged horizontally and vertically relative to the portrait frame (**negative gap** overlaps the frame for debug layout).
+
+### Rationale
+Toast **motion** was already tunable; **placement** was fixed in CSS (**centered**, **4px** above the frame). Art-direction and narrow rails benefit from live-adjustable anchor without rebuilds.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`PortraitPanel.tsx`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0365 — Full water vessels return empty containers on feed
+Date: 2026-04-12
+
+### Decision
+**Waterbag (Full)**, **Waterskin (Full)**, and **Travel flask (Full)** use **`ItemDef.feed.leaveEmptyAs`** pointing at their **empty** def. **`feedCharacter`** calls **`consumeFeedLeavingEmpty`**: remove one fed unit from the stack, then add one empty (merge **`qty`** onto an existing **inventory** stack of that def if any; otherwise occupy a free slot; if **inventory** is full, **mint** the empty at the player’s feet on the **floor**).
+
+### Rationale
+Drinking should **not** destroy the **vessel**; players can **refill** at a **Well**. **Cooking** and other **`consumeItem`** paths are unchanged (recipes still consume the **full** vessel item as before).
+
+### Consequences
+**`contentDb.ts`** (**`feed.leaveEmptyAs`**), **`items.ts`**, **`inventory.ts`**, **`interactions.ts`**, **`interactions.test.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0366 — Persistent craft catalysts and player Campfire POI
+Date: 2026-04-12
+
+### Decision
+Add optional **`RecipeDef.preserveA`** / **`preserveB`**: on craft success, those slots are **not** consumed; on craft failure with “something broke,” only **non-preserved** slots can be destroyed. Implement **Flint**, **Campfire kit**, **Iron pot**, **Kettle**, and roast outputs; recipes **Stick** + **Flint** → **Campfire kit** (**`preserveB: true`**), **Stone shard** + **Stone** → **Flint**, **Twine** + **Stone** → **Iron pot**, **Iron pot** + **Twine** → **Kettle**. New **`PoiKind` `Campfire`**: placing **Campfire kit** via **`floorDrop`** (validated like **Hive** deploy) consumes the kit and appends a POI with **`cookUsesLeft: 6`**. **`applyItemOnPoi`** cooks **Mushrooms** / **Foodroot** / **Grubling** / **Fungus** with deterministic **d20 + party-best cooking** vs **DC 9**; **Roasted.** drops the result on the floor; **Burnt.** consumes input on failure; each attempt decrements uses and removes the POI at **0**. **`poi_placeholder.png`** billboard and **`render.poiGroundY_Campfire`** until dedicated art.
+
+### Rationale
+Survival crafting needs **reusable tools** without a third inventory craft slot; **order-sensitive** **Stick**+**Flint** matches existing **A**/**B** semantics. **Floor-drop** placement reuses the **Hive** pattern. **Fuel** uses avoids infinite free cooking on one tile.
+
+### Consequences
+**`recipes.ts`**, **`crafting.ts`**, **`types.ts`**, **`items.ts`**, **`poi.ts`**, **`reducer.ts`**, **`poiDefs.ts`**, **`WorldRenderer.ts`**, **`generateDungeon.ts`** (priority), **`tuningDefaults.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`procgenContentNonSpawnAllowlist.ts`**, **`CraftingRecipesGraph.md`**, **`crafting.catalyst.test.ts`**, **`poi.test.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0367 — Portrait floating toasts: coexistence and stagger
+Date: 2026-04-12
+
+### Decision
+Raise **`PortraitPanel`**’s per-character visible toast slice from **3** to the same cap as state (**24**), exported as **`PORTRAIT_TOAST_QUEUE_CAP`** from **`portraitToasts.ts`**. Apply a fixed **~52 ms** per-row delay to the float animation’s effective elapsed time (by row index) so multiple rows pushed on the same **`state.nowMs`** do not animate identically.
+
+### Rationale
+The state queue already held up to **24** rows; the UI hid everything beyond the last **three**, so concurrent feedback could disappear. Co-timed rows also shared **`startedAtMs`**, so motion looked like a single flash.
+
+### Consequences
+Taller stacks are possible when many lines are active; **`portraitToasts.test.ts`** covers multi-push and cap trimming. **`PortraitPanel.tsx`**, **`portraitToasts.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0368 — Portrait toast stack: no flex layout after float ends
+Date: 2026-04-12
+
+### Decision
+In **`PortraitPanel`**, drive toast **`elapsed`** from **`state.nowMs`** (same clock as **`startedAtMs`** / **`untilMs`**). When **`elapsed >= portraitToastAnimMs`**, **do not render** that row: the motion curve is finished (**opacity 0**), but **`translateY`** does not remove the element from flex flow, so keeping it in the DOM inflated the stack until **`prunePortraitToasts`** ran.
+
+### Rationale
+Invisible “ghost” rows pushed visible toasts vertically and made the stack anchor appear to drift, especially with many lines or TTL longer than the anim.
+
+### Consequences
+**`PortraitPanel.tsx`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0369 — Forage patches on procgen floors
+Date: 2026-04-12
+
+### Decision
+**`spawnNpcsAndItems`** treats **Mushrooms**, **Fungus**, **Foodroot**, and **Grubling** (grub-shaped floor food) as **patch spawns**: several **qty 1** **`GenFloorItem`** entries on **distinct** floor cells within **Manhattan distance ≤2** of an anchor in the same **`GenRoom`**, with **2–5** cells per successful pass (clamped by a **16**-item budget from this loop and up to **four** passes). Non-patch defs stay a **single** item on **room center** when free. **`pickFloorItemDefFromTable`** gains **`floorType`** on **`ItemSpawnContext`**; **SporeMist** can return **Fungus**; **Infested** + **Habitat** and **Jungle** + **Habitat** can return **Grubling** (those defs were not previously reachable from the floor table).
+
+### Rationale
+Makes gathering spots readable and rewards exploration without relying on one icon per room; reuses existing per-item **jitter** in **`hydrateGenFloorItems`**. Spreading cells avoids piling many pickups on one tile (which would block **Campfire** placement rules).
+
+### Consequences
+More floor entities on some seeds; **`population.foragePatches.test.ts`** covers table branches + patch geometry; **`spawnTables.ts`**, **`population.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0370 — F2 craft duration scale (`craftDurationScale`)
+Date: 2026-04-12
+
+### Decision
+Add **`RenderTuning.craftDurationScale`** (default **1**, clamped **0–10** in **`clampRenderTuning`**). **`startCrafting`** sets **`endsAtMs`** from **`round(recipe.craftMs * craftDurationScale)`** (minimum **0** ms). Expose it in the F2 **Portrait** slider group as **Craft time scale (× recipe ms)**; persist with other **`render`** keys and keep **`public/debug-settings.json`** in sync for **`debugSettingsJsonParity`**.
+
+### Rationale
+Recipe **`craftMs`** values live in content; a single debug multiplier speeds up iteration on crafting UX and tests long bars without editing every recipe.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`crafting.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0371 — Extend persistent craft catalysts (chisel, club, mortar stone)
+Date: 2026-04-12
+
+### Decision
+Set **`preserveB: true`** on **`Stone` + `Chisel` → `StoneShard`**, **`Stone` + `Club` → `StoneShard`**, **`Foodroot` + `Stone` → `MortarMeal`**, and **`Sweetroot` + `Stone` → `MushedRoot`** in **`ALL_RECIPES`**, matching **`Stick` + `Flint` → `CampfireKit`**: slot **B** (drag target) is a **reusable tool** or **mortar stone** and is **not** consumed on success and is **excluded** from failure destruction when the other slot is not preserved.
+
+### Rationale
+Aligns older recipes with **ADR-0366**’s reusable-tool intent: equippable **Chisel** / **Club** should not vanish per chip, and **Stone** as a grinding surface should not disappear when the product is only the meal. **Spear** still consumes **Stick** + **Stone** (material becomes the head).
+
+### Consequences
+**`recipes.ts`**, **`crafting.catalyst.test.ts`**, **`CraftingRecipesGraph.md`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0372 — Duplicate emoji item icons: tint + scale
+Date: 2026-04-12
+
+### Decision
+Extend **`ItemEmojiIcon`** / **`ItemDef.icon`** with optional **`tintFilter`** (CSS `filter` string) and **`displayScale`** (uniform scale vs default slot size). Render via shared **`ItemEmoji`** in inventory, trade, paperdoll, portrait **`EquipIcon`**, and **`CursorLayer`** ghost / craft preview; apply the same parameters in **`WorldRenderer.makeItemIconBillboardMaterial`** (canvas **`filter`** + centered **`scale`**). Content assigns disambiguation on all but one item per shared **`value`** cluster; **`itemsEmojiDisambiguation.test.ts`** enforces invariants.
+
+### Rationale
+Several distinct items reused the same emoji glyph; color emoji do not follow **`color:`** reliably, so **`filter`** plus modest **`scale`** keeps stacks readable without new art.
+
+### Consequences
+**`contentDb.ts`**, **`items.ts`**, **`ItemEmoji.tsx`**, **`InventoryPanel`**, **`TradeModal`**, **`PaperdollModal`**, **`EquipIcon`**, **`CursorLayer`**, **`WorldRenderer.ts`**, **`itemsEmojiDisambiguation.test.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0373 — Persist well checkpoint to localStorage (title Continue)
+Date: 2026-04-12
+
+### Decision
+Persist the existing **`RunCheckpoint`** (created at **Well** POI saves) to **`localStorage`** under **`elfenstein.runCheckpoint`** as a versioned JSON envelope (`{ v: 1, checkpoint }`). **`GameApp`** merges a validated checkpoint into **`initialState`** on boot and syncs storage whenever **`state.run.checkpoint`** is set or cleared (so **Start** / **New run** clears the slot). Parsing validates minimal shape before trusting data.
+
+### Rationale
+**Continue** on the title screen already depends on **`run.checkpoint`** and **`run/reloadCheckpoint`**; without persistence, a full reload dropped all progress. Reusing the same snapshot avoids a second save format and keeps the reducer free of storage side effects.
+
+### Consequences
+**`runCheckpointPersistence.ts`**, **`runCheckpointPersistence.test.ts`**, **`GameApp.tsx`**, **`DESIGN.md`**. Still **well-gated** (no continuous autosave). **Single save slot** per origin; large floors may approach **localStorage** quotas; content/schema drift may invalidate old blobs (envelope **`v`** for future migrations). **`combat`** remains outside the checkpoint snapshot (unchanged).
+
+---
+
+## ADR-0374 — Hide custom cursor during Bobr starting cutscene
+Date: 2026-04-12
+
+### Decision
+While **`isBobrIntroActive(state)`** ( **`ui.bobrIntroUntilMs`** set and **`nowMs`** before that deadline), **`CursorLayer`** returns **`null`**, skips its animation/preload **`requestAnimationFrame`** loop, and sets **`document.body.style.cursor`** to **`''`** instead of **`none`**. Shared helper **`isBobrIntroActive`** lives in **`web/src/game/bobrIntroMs.ts`** and is used by **`BobrIntroPortal`** and **`CursorLayer`**.
+
+### Rationale
+**`CursorLayer`** is **`position: fixed`** with **`z-index: 9999`**, above **`.titleCutsceneMount`** (**z-index: 4**), so the hand sprite drew on top of the full-screen Bobr intro. Hiding the hand and showing the OS cursor matches a non-interactive cinematic read.
+
+### Consequences
+**`bobrIntroMs.ts`**, **`CursorLayer.tsx`**, **`BobrIntroPortal.tsx`**, **`DESIGN.md`** §6.1.
+
+---
+
+## ADR-0375 — More starting Stone and Stick
+Date: 2026-04-12
+
+### Decision
+**`makeInitialState`** gives **five** units each of **Stone** and **Stick** (`i_stone` / `i_stick`, `qty: 5`) instead of one—still one slot per material, same as other stacked starters (e.g. waterbags).
+
+### Rationale
+Early crafting and catalyst recipes consume or risk ingredients; a slightly larger baseline reduces friction without changing the inventory slot layout.
+
+### Consequences
+**`initialState.ts`**, **`DESIGN.md`** §7.2.
+
+---
+
+## ADR-0376 — Bandage strip: portrait apply (not feed)
+Date: 2026-04-12
+
+### Decision
+**`BandageStrip`** no longer uses **`feed`** / portrait **mouth**. While dragging a bandage, a **`body`** portrait drop layer sits above eyes/mouth hit targets; **`drag/drop`** may carry **`portraitDropNorm`** (release point vs the `.portrait` rect). **`applyBandageStrip`** removes **Bleeding**, consumes the item, queues light **`ui`** SFX (not **`munch`**), skips **`portraitMouth`**, appends **`ui.portraitBandageDecals`** (rotation from a seeded hash; decals persist for the run per **ADR-0377**), and logs **applies a bandage**. Checkpoint restore clears decals.
+
+### Rationale
+Bandages are topical, not food; avoids feeding hover/mouth animation while keeping drag/drop affordances and a clear visual payoff at the drop location.
+
+### Consequences
+**`types.ts`**, **`interactions.ts`**, **`reducer.ts`**, **`items.ts`**, **`contentDb.ts`** (**`remedy`** tag), **`recipes.ts`** comment, **`CursorProvider`**, **`CursorLayer`**, **`PortraitPanel`**, **`portraitDropNorm.ts`**, **`InventoryPanel`**, **`HudLayout`**, **`CharacterEquipStrip`**, **`applyBandageStrip.test.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0377 — Bandage portrait decals persist for the run
+Date: 2026-04-12
+
+### Decision
+**`PortraitBandageDecal.untilMs`** is optional; **`applyBandageStrip`** omits it so decals stay until **`run/new`**, checkpoint restore (which clears **`portraitBandageDecals`**), or a future explicit clear. **`prunePortraitBandageDecals`** only removes rows with a finite **`untilMs`** that has expired (backward compatibility).
+
+### Rationale
+Short TTL matched toast timing but read as the bandage “falling off” the portrait; players expect the visual to last for the run.
+
+### Consequences
+**`types.ts`**, **`interactions.ts`**, **`PortraitPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0377 — Title “Tap to start”: Web Audio unlock for iOS Safari
+Date: 2026-04-12
+
+### Decision
+Before the main title actions (**Continue** / **Start** / **Quit**), the interactive **`TitleScreen`** shows a full-screen **Tap to start** control on cold load. The first **pointer** or **Enter**/**Space** calls **`unlockAudioFromUserGesture()`** (registry fed by **`MusicLayer`**, **`FeedbackLayer`**, **`SpatialAudioLayer`** in **`useLayoutEffect`**) and flips session state in **`GameApp`** so the menu appears. **`TitleScreen`** **`variant="capture"`** does not pass **`titleAudioPrimed === false`**, so **html2canvas** still rasterizes the final footer. Playwright helpers click through the gate before **Start**.
+
+### Rationale
+**iOS Safari** keeps **`AudioContext`** suspended until **`resume()`** runs inside a real user gesture. A dedicated step guarantees every audio subsystem (music, bg file SFX, procedural SFX, spatial) is registered and unlocked together; relying only on **`window`** **`pointerdown`** was insufficient when contexts were split across layers.
+
+### Consequences
+**`audioUnlockRegistry.ts`**, **`SfxFilePlayer.unlock`**, **`SfxEngine.unlock`**, **`MusicLayer`**, **`FeedbackLayer`**, **`SpatialAudioLayer`**, **`TitleScreen`**, **`TitleScreen.module.css`**, **`GameApp`**, **`DitheredFrameRoot`**, **`HudLayout`**, **`e2e/helpers.ts`**, **`e2e/smoke.spec.ts`**, **`DESIGN.md`**.
+
+---
+
+## ADR-0378 — Craft start stamina: single payer (best recipe skill)
+Date: 2026-04-12
+
+### Decision
+**`staminaCostCraft`** (inventory **drag/drop** recipe match) deducts stamina from **one** living party member, not from everyone. **`pickCraftStaminaPayer`** in **`partyStamina.ts`** chooses the character with the highest **`skills[recipe.skill]`** among those who can afford the full cost; **`party.chars`** roster order breaks ties. If no living member can pay, the craft is **rejected** as before (**Too exhausted to craft.**). Payment uses **`applyCharacterStaminaCost`** so only that portrait gets the **−STA** toast.
+
+### Rationale
+Taxing the whole party for a single inventory craft was heavy versus other verbs; the payer now aligns with who contributes most to the existing party-best skill check on craft resolution.
+
+### Consequences
+**`partyStamina.ts`**, **`partyStamina.test.ts`**, **`reducer.ts`**, **`types.ts`** (**`RenderTuning`** comment), **`DebugPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0379 — Primary encounter PC actions: Attack, Defend, Skip, Flee
+Date: 2026-04-12
+
+### Decision
+Encounters expose four **primary** PC actions on the acting character’s initiative: **Attack** (unchanged click/drag), **Defend**, **Skip**, **Flee**. **`combat/skip`** + **`skipPcTurn`** log a wait, set **`combat.lastAction.action`** to **`skip`**, and advance initiative (**no** stamina). **Flee** (**`attemptFlee`**) runs **only** when **`currentTurn`** is a **PC**; **NPC** turns reject with **Not your turn.** (no fastest-PC flee). **Fireshield** on portrait **hands** still consumes the turn and sets **`lastAction`** **`skip`** (same turn-economy bucket as explicit Skip). **Quest give-on-NPC** during combat stays allowed and unchanged. **CombatIndicator** + **GameApp** (**Space** when an encounter is active on the game screen) surface **Skip**; **DebugPanel** includes a **Skip** trigger.
+
+### Rationale
+Players need a clear pass action; flee should respect per-character initiative; telemetry aligns ward and wait under one **`lastAction`** bucket without removing quest item diplomacy mid-fight.
+
+### Consequences
+**`types.ts`**, **`combat.ts`**, **`combat.test.ts`**, **`reducer.ts`**, **`CombatIndicator.tsx`**, **`CombatIndicator.module.css`**, **`GameApp.tsx`**, **`DebugPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0380 — Boss NPCs: variant rows, per-kind spawn + combat
+Date: 2026-04-12
+
+### Decision
+**Bosses** reuse existing **`NpcKind`** sprites and add **`variant: 'boss'`** + **`bossTraitId`** on procgen/runtime NPC rows. Content lives in **`web/src/game/content/npcBosses.ts`**: **`instanceBudgetPerFloor`** (including duplicate-kind packs, e.g. **Swarm**), spawn predicates (floor type/properties, path band, depth quantiles, room function/neighbors), combat multipliers + small **`BossTrait`** hooks (**`soloEncounter`**, poison amplification, skeleton fire bump). **Procgen**: up to **three** placements per floor inside **`spawnNpcsAndItems`**, RNG split via **`splitSeed(populationStreamSeed, BOSS_RNG_SUBSTREAM)`** so the main population shuffle is unchanged; bosses reserve cells before normal NPC fill. **`spawnBosses: false`** is for unit tests that assert exact NPC counts. **Combat**: **`resolveNpcCombatTuning(npc)`** drives initiative, to-hit, damage, and NPC swings; **`collectEncounterNpcIds`** omits same-room hostiles when the trigger is a **`soloEncounter`** boss. **Loot**: **`pickNpcLootDefId(state, npc)`** hashes **`npc.id`** + boss fields and adds a bonus drop cap. **XP**: **`maybeEndCombat`** adds **+15** per boss in the roster. **Rendering**: **`bossVisualScale`** in **`WorldRenderer`**. **`meta.genVersion`** bumped to **6**.
+
+### Rationale
+Delivers “scaled + per-kind identity + spawn rules” without exploding **`NpcKind`** unions; keeps deterministic, multiplayer-sane seeds; isolates test expectations behind **`spawnBosses`**.
+
+### Consequences
+**`types.ts`**, **`procgen/types.ts`**, **`npcBosses.ts`**, **`npcBosses.test.ts`**, **`population.ts`**, **`population.npcCount.test.ts`**, **`population.bosses.test.ts`**, **`generateDungeon.ts`**, **`combat.ts`**, **`combat.test.ts`**, **`npcLoot.ts`**, **`reducer.ts`**, **`WorldRenderer.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0381 — Stamina: charge step/strafe every N moves (integer vitals)
+Date: 2026-04-12
+
+### Decision
+Add **`render.staminaCostStepEveryN`** and **`render.staminaCostStrafeEveryN`** (clamped **1..30**, default **1**) so the integer **`staminaCostStep`** / **`staminaCostStrafe`** applies only every **N**-th successful **forward/back** or **strafe** grid move. Pace state lives on **`floor.staminaStepPaceCounter`** and **`floor.staminaStrafePaceCounter`** (reset on **Regen** / **Descend** and initial floor). **`attemptMoveTo`** computes cost from **`nextStaminaMovePace`**; if the party cannot pay on a charging move, the action is rejected and counters do not advance.
+
+### Rationale
+Allows tuning **below one STA per move** on average for exploration feel tests without fractional **`Character.stamina`** or non-integer HUD.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`debug-settings.json`**, **`clampRenderTuning`** in **`reducer.ts`**, **`attemptMoveTo`** + **`floor/regen`** + **`floorProgression.ts`** + **`initialState.ts`**, **`staminaMovePacing.ts`** + **`staminaMovePacing.test.ts`**, **`DebugPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0382 — Destroy open doors: drag weapon or Chisel
+Date: 2026-04-12
+
+### Decision
+**`doorOpen`** / **`doorOpenOctopus`** billboards use the default **Sprite** raycast again so **`pickTarget`** can return **`door`** behind **floorItem**-first ordering. **`resolveGameViewportDragDropTarget`** maps a hit on an open passable door to **`DragTarget`** **`openDoor`**. **`drag/drop`** clears the tile to **`floor`**, bumps **`floorGeomRevision`**, removes any **`floor.gen.doors`** entry at that **`pos`**, and plays feedback (**bones** + shake + activity log). Eligible dragged items: **`tags` includes `weapon`** with **`weapon.consumesOnUse` not true**, or **`defId === 'Chisel'`**. Range uses existing **`render.dropRangeCells`** (Manhattan from **`playerPos`**). Blocked in **combat**. **GameViewport** click on an open door issues **`player/step`** only when the picked cell equals the **forward** step cell.
+
+### Rationale
+Lets players clear doorframe clutter without a new keybind; reuses the **viewport drag** pipeline (**`pointerCapture`**-safe resolution) and **drop range**; avoids burning **Firebolt**-class items on wood.
+
+### Consequences
+**`WorldRenderer.ts`**, **`resolveGameViewportDragDropTarget.ts`**, **`HudLayout.tsx`**, **`GameViewport.tsx`**, **`CursorProvider.tsx`**, **`CursorLayer.tsx`**, **`types.ts`** (**`DragTarget`**), **`openDoorDestroy.ts`** + **`openDoorDestroy.test.ts`**, **`reducer.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0383 — F2: floor-item 3D billboard height (`floorItemSpriteHeight`)
+Date: 2026-04-12
+
+### Decision
+Add **`render.floorItemSpriteHeight`** (world units; clamped like door billboard heights **0.05–3**, default **0.5** matching the prior fixed scale). **`WorldRenderer.syncFloorItemSprites`** applies **`scale = (height × aspect, height, 1)`** each frame for pickables tagged **`floorItem`**, using **`textureAspectFromSpriteMaterial`** (square emoji canvas ⇒ aspect **1**). Expose an F2 slider under the **NPCs** section next to door billboard tuning; persist via existing **`pickRenderTuningForPersistence`** / **`debug-settings.json`**.
+
+### Rationale
+Lets designers scale dropped loot readability in the **3D** view without code changes, consistent with **door** / **NPC** billboard height tuning.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`** (`clampRenderTuning`), **`WorldRenderer.ts`**, **`DebugPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0385 — Per-character step/strafe stamina pacing (N from endurance)
+Date: 2026-04-12
+
+### Decision
+**`staminaCostStep`** / **`staminaCostStrafe`** still use F2 **base** **`EveryN`** (**`staminaCostStepEveryN`**, **`staminaCostStrafeEveryN`**), but **effective N** is computed **per living PC** from **`stats.endurance`** (**`effectiveStaminaMoveEveryN`**, pivot **5**, clamp **1..30**). Pace state is **`floor.staminaStepPaceByChar`** and **`floor.staminaStrafePaceByChar`** (**`Partial<Record<CharacterId, number>>`**), reset on **Regen** / **Descend** / initial floor. On each successful step/strafe, every living character advances their own counter via **`nextStaminaMovePace`**; **only** characters with a charging tick pay (**`applyCharacterStaminaCost`**). If **any** due payer cannot afford the cost, the move is **rejected** and counters do **not** advance.
+
+### Rationale
+Party-wide **EveryN** matched party-wide payment; with **per-character** spends, endurance should change how often each portrait is taxed on the same grid moves.
+
+### Consequences
+**`types.ts`**, **`staminaMovePacing.ts`**, **`staminaMovePacing.test.ts`**, **`staminaMovePacing.party.test.ts`**, **`reducer.ts`** (**`attemptMoveTo`**), **`floorProgression.ts`**, **`initialState.ts`**, **`DebugPanel.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**. Supersedes the single-counter description in **ADR-0381** for step/strafe (scalar counters removed).
+
+---
+
+## ADR-0384 — Centered combat action menu + acting portrait outline
+Date: 2026-04-12
+
+### Decision
+Split encounter chrome into **`CombatEncounterCorner`** (enemy roster + HP bars, bottom-right with **`ActivityLog`**) and **`CombatCenterActionMenu`** (centered framed menu on the **game** cell, **STA** costs per row, turn / next copy beside the card; **ADR-0386** moved **hotkeys** onto each menu row and removed a separate bottom bar). The center layer is full-bleed with **`pointer-events: none`** except the menu so **viewport** click attacks still reach **`GameViewport`**. Export **`COMBAT_DEFEND_STAMINA_COST`** and **`COMBAT_FLEE_STAMINA_COST`** from **`combat.ts`** for UI parity with **`defend`** / **`attemptFlee`**. **`PortraitPanel`** applies a **red outline** when **`currentTurn`** is that **PC** (hidden on **death** / **title** like other combat chrome).
+
+### Rationale
+Makes **whose turn it is** obvious (portrait + menu context), matches the **wireframe** layout, and keeps **diegetic** attack input on the **3D** view without a modal.
+
+### Consequences
+**`CombatIndicator.tsx`**, **`CombatIndicator.module.css`**, **`HudLayout.tsx`**, **`PortraitPanel.tsx`**, **`PortraitPanel.module.css`**, **`combat.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0386 — Combat menu: inline hotkeys, remove bottom bar
+Date: 2026-04-12
+
+### Decision
+Remove the separate bottom-of-game-cell combat **hotkey** string. Show **(viewport)** on **ATTACK**, **(F)** on **DEFEND**, **(Space)** on **WAIT**, **(R)** on **FLEE** inline on each **`CombatCenterActionMenu`** row (interactive + capture HUD).
+
+### Rationale
+One place for actions and keys; matches the framed menu and drops redundant chrome.
+
+### Consequences
+**`CombatIndicator.tsx`**, **`CombatIndicator.module.css`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0387 — Acting PC portrait: border for dithered HUD capture
+Date: 2026-04-12
+
+### Decision
+Keep **`PortraitPanel`** turn highlighting for the **acting PC** (**`currentTurn`**), but implement it as a **thick red border** on **`.portraitCombatActing`** instead of CSS **`outline`**.
+
+### Rationale
+The shipped view is the **dithered** presenter, whose portrait regions come from **`html2canvas`** on the capture HUD. **`outline`** is often **not** rasterized there, so the highlight was easy to miss even though **`DESIGN.md`** already described it.
+
+### Consequences
+**`PortraitPanel.module.css`**, **`DESIGN.md`**, **`DECISIONS.md`**. Supersedes the “red outline” wording in **ADR-0384** for how the highlight is drawn (behavior unchanged).
+
+---
+
+## ADR-0388 — Portrait HUD: square frame and toasts
+Date: 2026-04-12
+
+### Decision
+Remove corner rounding from **`PortraitPanel`**: the main **`.portrait`** frame, **`.portraitToast`** rows, and **eyes**/**mouth** hit targets use **`border-radius: 0`**. Inner **`.portraitArtClip`** / bandage layers keep **`border-radius: inherit`** (now square).
+
+### Rationale
+Sharper, pixel-forward chrome aligned with inventory-style square corners; user request to drop rounded edges on portraits.
+
+### Consequences
+**`PortraitPanel.module.css`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0389 — Combat action menu: block viewport + world cursor hit-through
+Date: 2026-04-12
+
+### Decision
+The combat **`CombatCenterActionMenu`** bottom cluster (**`.centerCluster`**) uses **`pointer-events: auto`** (was **`none`** except the card) so the **turn-aside** and flex **gaps** capture hits instead of the **3D** **`GameViewport`** underneath. The cluster carries **`data-combat-action-chrome`**; **`CursorProvider` `hitTestDropTargetAtPoint`** returns **`null`** when **`elementsFromPoint`** hits that subtree so **`floorDrop` / NPC / POI** targets do not leak through transparent menu DOM. **DEFEND** / **WAIT** / **FLEE** buttons set **`data-cursor-hand-active`** like **Title** / **Settings**. **`GameViewport`** **`pointerdown`/`click`** early-out if **`elementFromPoint`** is under **`[data-combat-action-chrome]`** as a stacking fallback.
+
+### Rationale
+Without this, **`elementsFromPoint`** walked past menu nodes (no **`data-drop-kind`**) to the viewport and showed the **attack** hand over UI; **`pointer-events: none`** on the cluster let clicks fall through to world actions.
+
+### Consequences
+**`combatActionChromeAttr.ts`**, **`CursorProvider.tsx`**, **`CombatIndicator.tsx`**, **`CombatIndicator.module.css`**, **`GameViewport.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0390 — Combat menu: block 3D virtual hover over action chrome
+Date: 2026-04-12
+
+### Decision
+**`HudLayout`** root **`onPointerMove`** skips **`world.pickObject` → `cursor.setVirtualHover`** when **`document.elementFromPoint`** lies under **`[data-combat-action-chrome]`**, using the same selector as **`GameViewport`** / **`CursorProvider`**.
+
+### Rationale
+**`hitTestDropTargetAtPoint`** already ignores combat chrome, but **`HudLayout`** still injected **viewport virtual hover** whenever the pointer was inside the **WebGL** rect. That **one-frame override** could show **attack** / **floor** cursor affordances on top of the **combat action menu** card and buttons.
+
+### Consequences
+**`HudLayout.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0391 — Combat action menu STA costs scale with character stats
+Date: 2026-04-12
+
+### Decision
+**Encounter** stamina for **Attack**, **Defend**, and **Flee** depends on the **acting PC**’s stats, using shared helpers in **`web/src/game/state/combat.ts`** so **`CombatCenterActionMenu`**, **`defend`**, **`attemptFlee`**, and **`reducer`** **`npc/attack`** (combat branch) stay aligned.
+
+- **Attack**: **`effectiveCombatAttackStaminaCost(pc, weapon)`** — base **`weapon.staminaCost`**; if **`weapon.damageStat`** is set, **`round(base − 0.2 × (stat − 5))`** (**Str** / **Agi** / **Int**); else **base only**. Clamps: **`min`** = **0** if base **0**, else **1**; **`max`** = **base + 4**.
+- **Defend**: **`effectiveDefendStaminaCost(pc)`** — base **`COMBAT_DEFEND_STAMINA_COST` (4)**; **`round(base − 0.5 × (endurance − 5))`**; clamp **1..base+4**.
+- **Flee**: **`effectiveFleeStaminaCost(pc)`** — base **`COMBAT_FLEE_STAMINA_COST` (8)**; **`round(base − 0.5 × (speed − 5))`**; clamp **2..base+4**.
+
+**`COMBAT_DEFEND_STAMINA_COST`** / **`COMBAT_FLEE_STAMINA_COST`** remain exported **bases**. **NPC** turn rows in the HUD still show **base** costs as a neutral readout.
+
+### Rationale
+Makes combat stamina costs legible and **stat-driven** (endurance / speed / weapon stat) without duplicating numbers between UI and rules; flee **cost** uses **speed** like the existing flee **roll**.
+
+### Consequences
+**`combat.ts`**, **`combatActionStamina.test.ts`**, **`reducer.ts`**, **`CombatIndicator.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**. **`computePcAttackDamage`** reuses **`statPointsForWeaponDamage`** (private) to avoid duplicating the **damageStat** mapping.
+
+---
+
+## ADR-0391 — Combat menu: ATTACK row is clickable
+Date: 2026-04-12
+
+### Decision
+**`CombatCenterActionMenu`** renders **ATTACK** as a real **`menuRowBtn`** (with **`data-cursor-hand-active`** like the other rows). **`onClick`** dispatches existing **`combat/clickAttack`** using the **first living** NPC id in **`combat.participants.npcs`** order (same ordering as **`CombatEncounterCorner`**). Inline hint is **`(menu / viewport)`**; **3D** foe **click** remains for explicit targeting.
+
+### Rationale
+**DEFEND** / **WAIT** / **FLEE** were already buttons; **ATTACK** was static text, so it looked broken and was not keyboard/controller-accessible from the menu stack. Reusing **`combat/clickAttack`** avoids new reducer surface area.
+
+### Consequences
+**`CombatIndicator.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0392 — F2: stamina drain multiplier for grid steps
+Date: 2026-04-12
+
+### Decision
+Add **`render.staminaDrainStepMultiplier`** (F2 **Portrait** sliders + **`debug-settings.json`**, default **1**, clamp **0..5**). On each **step** pacing tick, the charged STA is **`round(staminaCostStep × multiplier)`**, clamped **0..150** (**`attemptMoveTo`**). **Strafe** still uses **`staminaCostStrafe`** only.
+
+### Rationale
+Keeps **`staminaCostStep`** as an integer **base** while allowing fractional tuning (e.g. **1.5×** drain) without reworking the integer slider semantics.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`DebugPanel.tsx`**, **`debug-settings.json`**, **`staminaMovePacing.party.test.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0393 — Combat menu: ATTACK hint says “(click)”
+Date: 2026-04-12
+
+### Decision
+**`CombatCenterActionMenu`** shows **`(click)`** on the **ATTACK** row (interactive + capture HUD) instead of **`(menu / viewport)`**.
+
+### Rationale
+**Click** is clearer for players than internal wording about menu vs **3D** viewport.
+
+### Consequences
+**`CombatIndicator.tsx`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0394 — Procgen `trade` for friendly floor merchants
+Date: 2026-04-12
+
+### Decision
+**`spawnNpcsAndItems`** sets **`npc.trade`** (cloned from content templates) when **`status === 'friendly'`** and the kind is merchant-eligible (**Elder**, **Snailord**, **Bok**, **RegularBok**, **Grechka** — aligned with existing **`preferFriendly`** / near-entrance friendliness). Stock depletion persists on the NPC row at runtime (no separate run-level store, unlike the hub innkeeper).
+
+### Rationale
+Floor **`TradeModal`** / **`openFloorNpcTrade`** already existed; procedural NPCs never received **`trade`**, so players only saw dungeon trading on debug-spawned **Bobr**.
+
+### Consequences
+**`procgen/types.ts`** (`GenNpc.trade`), **`content/trading.ts`** (**`FLOOR_FRIENDLY_NPC_TRADE_TEMPLATES`**, **`pickFloorFriendlyNpcTrade`**), **`population.ts`**, **`population.floorTrade.test.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0395 — NPC dialog interactive hits in `HudLayout` (not `document.body`)
+Date: 2026-04-12
+
+### Decision
+**`NpcDialogModal`** (**interactive**) renders inside **`HudLayout`**’s **`.npcDialogInteractiveLayer`** in the **game** panel (**`z-index: 5`**, same **10px / 6px / 0** padding as **`npcCaptureLayer`** / death), with **`position: absolute`** top panel + speech strip—no **`createPortal`** to **`document.body`**. **`DitheredFrameRoot`** no longer wraps a separate **`stageModalLayer`** tree for NPC dialog.
+
+### Rationale
+The invisible **interactive HUD** lives under **`FixedStageViewport`** scaling; a **body**-portaled **`position: fixed`** layer used **viewport** coordinates that did not stay aligned with the scaled stage hit surface, so **Close** / **Trade** could fail to receive pointer events reliably.
+
+### Consequences
+**`NpcDialogModal.tsx`**, **`NpcDialogModal.module.css`**, **`HudLayout.tsx`**, **`HudLayout.module.css`**, **`DitheredFrameRoot.tsx`**, **`DitheredFrameRoot.module.css`**, **`npcCaptureInteractiveRect.ts`** (comment), **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0396 — Slime phial / Wurglepup capture-release loop
+Date: 2026-04-12
+
+### Decision
+- **Items**: **`SlimePhial`**, **`CapturedSlime`** in **`web/src/game/content/items.ts`** (tool-tagged; craft / capture outputs only).
+- **Crafting**: **`GlassVial` + `Slime`** and **`GlassVial` + `Mucus`** → **`SlimePhial`** in **`recipes.ts`**.
+- **World**: drag **`SlimePhial`** onto **`Wurglepup`** → consume phial, remove NPC, mint **`CapturedSlime`**. Drag **`CapturedSlime`** onto any NPC with **`kind !== 'Wurglepup'`** → seeded open-world HP damage (**12..19**), consume item (parallel to **`CapturedSwarm`** **18..25** vs non-Swarm).
+- **Combat**: same **Not while in combat.** rejection as Hive / Swarm basket / Captured swarm (**`reducer.ts`**).
+- **Procgen / loot**: **`SporeMist`** and **Infested Habitat** floor-item rolls can yield **`Slime`** / **`GlassVial`**; **`Wurglepup`** death loot includes **`Slime`**. Allowlist craft-only outputs in **`procgenContentNonSpawnAllowlist.ts`**.
+
+### Rationale
+Reuses the proven **Swarm basket** interaction shape and **`mintItemToInventoryOrFloor`** flow with **no new `NpcKind`**, minimal new defs, and existing materials (**Glass vial**, **Slime**, **Mucus**).
+
+### Consequences
+**`reducer.ts`**, **`spawnTables.ts`**, **`npcLoot.ts`**, **`DESIGN.md`** §7.3 / §7.7 / §13.2, **`CraftingRecipesGraph.md`** (regen), unit tests for capture/release/combat block. **`genCraftingRecipesGraph.mjs`**: item emoji regex now allows **`tintFilter`** / extra fields inside **`icon: { … }`** so graph generation matches **`items.ts`**.
+
+---
+
+## ADR-0398 — Emoji item icon `rotateDeg` (Club / Spear 180°)
+Date: 2026-04-12
+
+### Decision
+**`ItemEmojiIcon`** gains optional **`rotateDeg`** (clockwise, center origin). **`ItemEmoji`** applies it in CSS **`transform`**; **`WorldRenderer.makeItemIconBillboardMaterial`** applies the same rotation when rasterizing floor emoji billboards. **Club** and **Spear** use **`rotateDeg: 180`**.
+
+### Rationale
+Lets weapon glyphs read upright / consistent without swapping Unicode code points.
+
+### Consequences
+**`contentDb.ts`**, **`ItemEmoji.tsx`**, **`items.ts`**, **`WorldRenderer.ts`**, **`itemsEmojiDisambiguation.test.ts`**, **`DESIGN.md`**, **`DECISIONS.md`**.
+
+---
+
+## ADR-0399 — F2: per-equippable-hat portrait band height
+Date: 2026-04-12
+
+### Decision
+**`RenderTuning.portraitHatSlotHeightPctByDefId`** maps **`ItemDefId`** → **hat-band height as % of portrait frame** (clamped **4–50**). **`PortraitPanel`** applies the value for the equipped head item when set; otherwise **16%** (CSS default). F2 **Portrait** lists one slider per def from **`equippableHats.ts`** (**`hat`** tag + **`head`** slot); **`render/portraitHatHeight`** updates tuning (same persistence as other **`render`** keys).
+
+### Rationale
+Emoji/sprite hats need different vertical space on the portrait mirror; debug lets artists tune per item without branching CSS per def.
+
+### Consequences
+**`types.ts`**, **`tuningDefaults.ts`**, **`reducer.ts`**, **`equippableHats.ts`**, **`PortraitPanel.tsx`**, **`DebugPanel.tsx`**, **`debug-settings.json`** (empty map), **`DESIGN.md`**.
+
+---
+
+## ADR-0397 — Cooking water vessels, recipe removals, Stone cookpot label
+Date: 2026-04-12
+
+### Decision
+- **`FULL_WATER_VESSEL_TO_EMPTY`** in **`web/src/game/content/recipes.ts`** mirrors **`feed.leaveEmptyAs`** on **Waterbag (Full)** / **Waterskin (Full)** / **Travel flask (Full)**. **`maybeFinishCrafting`** (**`crafting.ts`**) uses **`consumeFeedLeavingEmpty`** for those **defIds** on **success** instead of **`consumeItem`**, so cooks behave like drinking. Failure “something broke” still uses **`consumeItem`** (full vessel can be destroyed outright).
+- Removed recipes: **Lantern** + **Bobr juice** → **Torch**; **Sweetroot** + **Shroomcake** → **Mushed root** (order-sensitive downgrade / “unbake” paths).
+- **`IronPot`** item **`name`** is **Stone cookpot**; **`id`** stays **`IronPot`** for saves and code.
+- Regenerated **`CraftingRecipesGraph.md`**. Tests: **`web/src/game/state/crafting.waterVessel.test.ts`**.
+
+### Rationale
+Alternate full vessels must not vanish when used as the water ingredient in cooking. Downgrade recipes read as bugs or exploits. “Iron pot” from **Twine** + **Stone** was flavor-inconsistent without renaming the **`id`**.
+
+### Consequences
+**`recipes.ts`**, **`crafting.ts`**, **`items.ts`**, **`DESIGN.md`** §7.3, **`DECISIONS.md`**, **`CraftingRecipesGraph.md`**.
+
+---
+
+## ADR-0400 — Spore garden: mold/spore/salt recipes + SporeMist/Infested procgen bias
+Date: 2026-04-12
+
+### Decision
+- **Crafting** (`web/src/game/content/recipes.ts`): **`Salt` + `SporePaste` → `Mold`** (foraging, high **`failDestroyChancePct`**, order trap vs **`SporePaste` + `Salt` → `BrinedSpore`**). **`Mold` + `Mushrooms` → `BitterHerb`** vs existing **`Mushrooms` + `Mold` → `SporePaste`**.
+- **Procgen** (`web/src/procgen/spawnTables.ts`): **`pickNpcKindFromTable`** — **`SporeMist`** rooms on **non-Infested** floors keep the prior single-draw **45% `Wurglepup` / 55% `Bobr`** split. On **`Infested`** floors, the same **one** `rng.next()` partitions **Bulba** / **Grub** / **Wurglepup** / **Bobr** (cutpoints documented in code). **`pickFloorItemDefFromTable`** — **`SporeMist`** keeps the same two-draw shape; **`sp2`** ranges repartitioned to add **Salt** and **Mold** without extra RNG calls.
+- Tests: **`population.foragePatches.test.ts`**, **`crafting.catalyst.test.ts`** (`findRecipe`).
+
+### Rationale
+Extends the **salt-style** crafting triangle and ties **floor property** + **floor Infested** to a coherent fungal biome using existing **NpcKind** and **ItemDefId** values only.
+
+### Consequences
+Floors that roll **SporeMist** rooms may produce **different** downstream procgen than before (table change). **`DESIGN.md`**, **`CraftingRecipesGraph.md`** (regen).
+
+---
+
+## ADR-0401 — Glowbug jar (Glass vial + Glowbug)
+Date: 2026-04-12
+
+### Decision
+- **Item** **`GlowbugJar`** in **`web/src/game/content/items.ts`**: **`playerLight: 'glowbug'`**, hand slots, **`useOnPoi.Shrine`** with **`blessPartyMs: 15_000`** and **`consumeOffering`** (shorter than **Sweetroot**).
+- **Recipe**: **`GlassVial` + `Glowbug` → `GlowbugJar`** (vial-first only, **`weaving`** row near **Slime phial**).
+- **Allowlist**: **`procgenContentNonSpawnAllowlist.ts`** (`GlowbugJar` craft-only).
+
+### Rationale
+Reuses **Slime phial** / **Shrine** patterns and **Kuratko** / **Snailord** loot ingredients (**Glass vial**, **Glowbug**) with **no** new light tier.
+
+### Consequences
+**`items.ts`**, **`recipes.ts`**, allowlist, **`DESIGN.md`**, **`CraftingRecipesGraph.md`** (regen), **`crafting.catalyst.test.ts`**.
+
+---
+
+## ADR-0402 — Club emoji icon rotation (−90° from 180°)
+Date: 2026-04-12
+
+### Decision
+**`Club`** **`ItemDef.icon.rotateDeg`** changes from **180** to **90** (a **−90°** adjustment in the same clockwise **`rotateDeg`** convention as **`contentDb.ts`**).
+
+### Rationale
+Readability tweak for the **🏏** glyph in inventory, paperdoll, cursor ghost, and **3D** floor billboards (**`ItemEmoji`** / **`makeItemIconBillboardMaterial`**).
+
+### Consequences
+**`items.ts`**, **`DESIGN.md`** “Last updated” line (**ADR-0398** summary now lists **Spear** **180°** and **Club** **90°**).
+
+---
+
+## ADR-0404 — Octopus door opening sprite sequence (`ui.doorOpenFx`)
+Date: 2026-04-12
+
+### Decision
+When an **octopus** closed door (**`doorOctopus`** / **`lockedDoorOctopus`**) opens, **`tryOpenDoor`** appends **`ui.doorOpenFx`** with **`visual: 'octopus'`**, **`startedAtMs` / `untilMs`** spanning **900 ms** (shared **`DOOR_OCTOPUS_OPEN_FX_DURATION_MS`** in **`tiles.ts`**). **`WorldRenderer.syncDoorFx`** cycles **`door_octopus_opening_01..03`** using **`DOOR_OCTOPUS_OPEN_FRAME_MS`** (**280 ms**), with a **clamped** frame index (no wrap). **`syncDoorSprites`** sets the static **`doorOpenOctopus`** mesh billboard **`visible: false`** while an active octopus FX targets the same cell, avoiding double billboards. **`time/tick`** prunes expired **`doorOpenFx`** entries. **Wooden** doors do not use this path (unchanged **`door_open.png`** only).
+
+### Rationale
+Persistent **`doorOpenOctopus`** tiles already showed only the final frame; players never saw the authored opening strip. Reusing the existing overlay hook matches **ADR-0336**-era intent for octopus timing without reintroducing wooden door FX.
+
+### Consequences
+**`tiles.ts`** (timing exports), **`reducer.ts`** (**`tryOpenDoor`**, **`time/tick`**), **`WorldRenderer.ts`**, **`web/public/content/door_octopus_*.png`**, **`DESIGN.md`**, **`doorOpenOctopusFx.test.ts`**.
+
+---
+
+## ADR-0405 — Portrait floating toasts: transparent background
+Date: 2026-04-12
+
+### Decision
+**`PortraitPanel`** **`.portraitToast`** rows use **`background: transparent`** with **no** border or box shadow (previously a dark semi-opaque panel). Readability stays on **`--buttonTitleTextShadow`** plus **`ActivityLog`**-aligned typography and per-**kind** colors.
+
+### Rationale
+Floating text reads cleaner over the portrait and HUD without a card chrome behind every line.
+
+### Consequences
+**`PortraitPanel.module.css`**, **`DESIGN.md`** (portrait toasts bullet + **Last updated**).
+
+---
+
+## ADR-0406 — Cap + shuffle Dungeon decorative doors
+Date: 2026-04-12
+
+### Decision
+**Dungeon** profile floors keep **`applyDecorativeDoorsOnDoorFrames`** after **`placeLocksOnPath`**, but **`LayoutTopologyTuning`** now includes **`decorativeDoorsMax`**: candidates are **collected**, **Fisher–Yates shuffled** on the **`decorDoors`** stream, then visited in that order with the existing per-cell **`decorativeDoorFrameChance`** roll until the cap is reached. Per-**`FloorType`** defaults: base **`Dungeon`** **`decorativeDoorsMax` 8** and **`doorFramesMax` 7**; **`Bunker`** **4** / **`doorFramesMax` 5** (unchanged); **`Golem`** **11** with **`doorFramesMax` 12** (unchanged). **`applyDecorativeDoorsOnDoorFrames`** requires **`rng.int`** for the shuffle.
+
+### Rationale
+**BSP** corridors are **1 tile** wide, so almost every straight cell matches **`isDoorFrameCandidate`**. A flat **0.75** roll per cell scaled with corridor length and produced far too many decorative doors; a hard cap matches intent (**ADR-0342**) without rewriting throat geometry. Shuffling spreads accepted doors across the map instead of row-major clumping.
+
+### Consequences
+**`floorTopologyTuning.ts`**, **`doorFrames.ts`**, **`generateDungeon.ts`**, **`doorFrames.test.ts`**, **`floorTopologyTuning.test.ts`**, **`floorLayoutMetrics.snap.test.ts.snap`**, **`DebugPanel.tsx`** (**topology** readout **`decorMax=`**), **`DESIGN.md`** §8. Same **`genVersion`**; reroll winners can shift when topology tuning changes (**existing `layoutScore` note**).
+
+---
+
+## ADR-0407 — Elder: procedural in-world distortion billboard
+Date: 2026-04-12
+
+### Decision
+**`NpcKind` `Elder`** is drawn in the **3D** view as a **shared `ShaderMaterial`** on a **camera-quaternion–aligned `PlaneGeometry` mesh**, with procedural **UV warp**, **noise**, and **shimmer** (`web/src/world/elderDistortionBillboard.ts`). **`WorldRenderer`** branches **`buildGeometry`** for **`Elder`** instead of **`THREE.Sprite`** + **`getNpcSpriteMat`**. **`npc_elder.png`** stays in **`NPC_SPRITE_SRC`** for content parity and tooling but is **not** loaded for the in-world billboard.
+
+### Rationale
+Gives **Elder** a distinct, otherworldly read without shipping a bespoke animated sprite; avoids true scene refraction (extra render targets) while fitting the existing scene → composite → dither pipeline.
+
+### Consequences
+**`WorldRenderer`**: **`npcBillboards`** union (**sprite** vs **elder** mesh), **`elderDistortionMat`** lifecycle (skip disposing that material when tearing down floor **`geoGroup`** meshes; dispose on renderer shutdown), **`disposeGeoGroupResources`** disposes **Elder** plane **geometries** only. **`DESIGN.md`** §7.5 notes the **Elder** exception; **`npcDefs.ts`** comment on **`Elder`**.
+
+---
+
+## ADR-0408 — 3D ray pick: PoI over passable open door on the same ray
+Date: 2026-04-12
+
+### Decision
+**`WorldRenderer`** ray-hit resolution uses a small pure helper **`resolveWorldPickHit`** (`web/src/world/resolveWorldPickHit.ts`): **floor items** still win first; **closed/locked** door billboards return immediately (block behind); **PoIs** win over **passable** **`doorOpen` / `doorOpenOctopus`** billboards on the same ray; **NPC** vs **passable open door** is resolved by **distance order** (closer pick wins). **`pickTarget`** and **`pickObject`** take **`GameState`** so door cells can be classified against **`floor.tiles`**.
+
+### Rationale
+Open-door sprites sit between the camera and room contents; treating them like the first of `{poi,npc,door}` made **`GameViewport`** fire **`player/step`** into the **PoI** tile and hit **`poiOccupiesCell`** (**“Something is in the way.”**) when the player meant to **`poi/use`**. Skipping **only passable** open doors preserves **drag-to-smash** pickability and **click-to-step** when the door is the closest meaningful target (including vs a farther NPC).
+
+### Consequences
+Call sites pass **`GameState`**: **`GameViewport`**, **`HudLayout`** (**`pickObject`** hover), **`resolveGameViewportDragDropTarget`**. **`resolveWorldPickHit.test.ts`** covers the priority table. **`DESIGN.md`** §6.2 **3D viewport ray pick** updated.
+
+---
+
+## ADR-0409 — F2 + `debug-settings.json`: Elder procedural shader tuning
+Date: 2026-04-12
+
+### Decision
+**`RenderTuning.elderDistortion`** (`ElderDistortionTuning` in **`types.ts`**) holds **all** uniforms for the **Elder** **`ShaderMaterial`** (silhouette, warp, shimmer, alpha). **`clampElderDistortion`** in **`elderDistortionTuning.ts`** validates ranges; **`render/elderDistortion`** updates one field; **F2** **DebugPanel** lists sliders under **NPCs** → **Elder 3D shader**; **`public/debug-settings.json`** includes the object for parity with **`DEFAULT_RENDER`**.
+
+### Rationale
+Lets art and design iterate the **Elder** look without code edits; matches existing **F2** / JSON persistence patterns (**`npcBillboard`**, doors).
+
+### Consequences
+**`elderDistortionBillboard.ts`** reads tuning every frame via **`applyElderDistortionUniforms`**; **`WorldRenderer`** uses **`elderDistortion.billboardAspect`** for quad width (replaces the old fixed **`ELDER_BILLBOARD_ASPECT`** constant).
+
+---
+
+## ADR-0412 — Floor item 3D billboard position nudges in F2
+Date: 2026-04-12
+
+### Decision
+Expose **`render.floorItemSpriteNudgeX`**, **`floorItemSpriteNudgeY`**, and **`floorItemSpriteNudgeZ`** (clamped like door nudges, **±0.5** world units) for dropped **floor-item** billboards. **`WorldRenderer`** stores **`baseX`** / **`baseZ`** in sprite **`userData`** (cell center + drop jitter) and applies additive offsets in **`syncFloorItemSprites`** together with the existing baked center **Y** plus **`nudgeY`**.
+
+### Rationale
+Art/layout tuning for pickup icons vs the floor plane and grid alignment without changing gameplay placement or procgen jitter.
+
+### Consequences
+F2 **Viewport** sliders and **`debug-settings.json`** include the three keys; **`debugSettingsJsonParity`** stays aligned with **`DEFAULT_RENDER`**.
+
+---
+
+## ADR-0414 — Kuratko nest emoji billboard scale slider
+Date: 2026-04-12
+
+### Decision
+Add **`RenderTuning.poiKuratkoNestSpriteScale`** (default **1**, clamp **0.25..3**), applied in **`WorldRenderer.syncPoiSpriteScales`** as a height multiplier on the usual POI base (**0.55** world units) for **`KuratkoNest`** only (independent of **Exit**’s **2×** rule). F2 **Viewport** slider **POI KuratkoNest emoji scale**; persisted via **`pickRenderTuningForPersistence`** / **`debug-settings.json`**.
+
+### Rationale
+Emoji nest icons may need per-theme size tuning without changing global **`poiSpriteBoost`** or **`poiGroundY_KuratkoNest`**.
+
+### Consequences
+**`DEFAULT_RENDER`**, **`clampRenderTuning`**, **`debugSettingsJsonParity`**, and **`DESIGN.md`** §8 F2 list stay aligned with the new key.
+
+---
+
+## ADR-0413 — Kuratko nest 3D: emoji billboards
+Date: 2026-04-12
+
+### Decision
+**`KuratkoNest`** no longer loads **`poi_kuratko_nest*.png`** in **`WorldRenderer`**. The POI uses **`makeItemIconBillboardMaterial`** with **🪺** while the nest still has eggs and **🪹** when **`opened`** (empty). **`poiDefs`** exports **`POI_KURATKO_NEST_EMOJI_WITH_EGGS`** / **`POI_KURATKO_NEST_EMOJI_EMPTY`**; **`POI_SPRITE_SRC`** / **`POI_OPENED_SPRITE_SRC`** are keyed by **`PoiBitmapSpriteKind`** (**`Exclude<PoiKind, 'KuratkoNest'>`**). Emoji sprites set **`userData.poiEmojiBillboard`** so **`syncPoiSpriteBoost`** and **`syncFloorItemThemeTint`** apply **`themeSpriteColor`** × **`poiSpriteBoost`**. **`disposableItemIcon`** + **`CanvasTexture`** disposal match floor-item emoji POIs on geom rebuild.
+
+### Rationale
+Clear nest-vs-empty read at a glance without shipping bespoke PNGs for this POI; reuses the proven emoji billboard path.
+
+### Consequences
+**`floorGeomRevision`** still rebuilds the POI mesh when nest state changes (unchanged). **`DESIGN.md`** §9 notes the emoji exception to PNG POI billboards.
+
+---
+
+## ADR-0411 — Kuratko nest PoI and egg chain
+Date: 2026-04-12
+
+### Decision
+Add **`KuratkoNest`** to **`PoiKind`** with **`FloorPoi.eggsLeft`** (**2–4** at spawn). **Procgen** places **`poi_kuratkoNest`** on **Cave** / **Jungle** / **LivingBio** / **Ruins** when a **Habitat** room center is valid; egg count is **`2 + hash % 3`** from a **pure FNV-1a** on **`${attemptSeed}:kuratkoNest:poi_kuratkoNest`** so **`placePois` does not call `popRng.next()`** (avoids shifting NPC/item rolls). **Gameplay** mirrors **Chest** drops: each **`applyPoiUse`** mints one **`KuratkoEgg`** on the nest tile; depletion sets **`opened`** for **`POI_OPENED_SPRITE_SRC`**. **Campfire** roasts **`KuratkoEgg` → `RoastKuratkoEgg`**. **Crafts**: **`KuratkoEgg` + WaterbagFull-pattern vessel** → **`BoiledKuratkoEgg`**; **`KuratkoEgg` + `HerbLeaf`** → **`HerbKuratkoOmelette`**. **Dedup**: **`POI_KIND_PRIORITY`** adds **`KuratkoNest: 9`**, **`Campfire: 10`**. **Art**: **`poi_kuratko_nest.png`** / **`poi_kuratko_nest_empty.png`** ship as **copies of `poi_placeholder.png`** until bespoke sprites.
+
+### Rationale
+Thematic loot tied to **Kuratko** without changing NPC tables; finite nest rewards pacing; deterministic count preserves replay/sync; hash-only egg count preserves **`streams.population`** consumption order vs pre-change baselines.
+
+### Consequences
+**`procgenContentNonSpawnAllowlist`** lists nest-only / cooked egg defs. **`render.poiGroundY_KuratkoNest`** + F2 slider. Regenerate **`CraftingRecipesGraph.md`** / **`web/public/crafting-graph.html`** via **`npm run gen:crafting-graph`**. **ADR-0413** supersedes the **3D** placeholder **PNG** pair with **emoji** billboards.
+
+---
+
+## ADR-0410 — Elder procedural shader: tier quality, uniform cache, early discard
+Date: 2026-04-12
+
+### Decision
+**`RenderTuning.elderShaderQuality`** (**0** = simple, **1** = reduced, **2** = full) is part of **GPU tier** presets (**`low` → 0**, **`balanced` → 1**, **`high` → 2**) and **`TIER_OWNED_RENDER_KEYS`** so F2 **`render/set`** overrides force **`gpuTier: 'custom'`**. The Elder **`ShaderMaterial`** fragment shader branches on **`uQuality`** (fewer trig / no cell noise in simple; one irid sine in reduced). **`applyElderDistortionUniforms`** updates **`uTime`**, theme, and quality every frame but **re-applies tuning-driven uniforms only when** a **`JSON.stringify`** snapshot of **`elderDistortion`** changes (**`WeakMap`** per material). The mesh material uses **`FrontSide`** only; fragments with **`ell > uAlphaEdgeEnd`** **`discard`** before warp/shimmer.
+
+### Rationale
+Cuts CPU (uniform writes) and GPU (ALU, pixels outside the visible silhouette) cost while keeping the **high**-tier look aligned with the previous single-path shader.
+
+### Consequences
+**`WorldRenderer.syncTuning`** passes **`state.render.elderShaderQuality`**; **`DebugPanel`** adds a **Rendering** slider; **`vitest`** covers cache keys and uniform updates (**`elderDistortionBillboard.test.ts`**). **`DESIGN.md`** GPU quality + NPC expansion bullets updated.
+
+---
+
+## ADR-0415 — Snailing and Snailing shell (Snailord loot + crafts)
+Date: 2026-04-12
+
+### Decision
+Add **`Snailing`** (juvenile snail critter) and **`SnailingShell`** as **Snailord** **`npcLoot`** rows. Inventory recipes: **`PickledSnailing`** from **Snailing** + **Salt** or **Moss**; **`ShellSpike`** (**SnailingShell** + **Stone shard**), **`ShellCharm`** (**SnailingShell** + **Twine**), **`SnailSlimePaste`** (**Snailing** + **Slime**). **Campfire** roasts **Snailing** → **`RoastSnailing`**. Register all seven new **`ItemDefId`**s in **`procgenContentNonSpawnAllowlist`** (procgen audit does not treat **npcLoot** as “used”). No new **`NpcKind`** or slime-style capture jar in this pass.
+
+### Rationale
+Extends the **Snailord** / **slime** ingredient economy without new spawns or reducer capture branches; mirrors **Grubling** preservation and **Bone spike** / **Gem charm** patterns.
+
+### Consequences
+**`items.ts`**, **`recipes.ts`**, **`npcLoot.ts`**, **`poi.ts`** **`CAMPFIRE_ROAST`**, **`procgenContentNonSpawnAllowlist.ts`**, **`crafting.catalyst.test.ts`** + **`poi.test.ts`**; regenerate **`CraftingRecipesGraph.md`** / **`web/public/crafting-graph.html`**.
+
+---
+
+## ADR-0416 — Bahno, Shell hat, Nest hat, Rapier (floor content)
+Date: 2026-04-12
+
+### Decision
+Add four **`ItemDef`s** in **`web/src/game/content/items.ts`**: **`Bahno`** (**material** + **food**, **`feed.hunger: 0`**, **`feed.hp: 8`**), **`ShellHat`** / **`NestHat`** (**hat** + **`head`**), **`Rapier`** (one-hand **Pierce**, **`agility`**, **8** base damage, **5** stamina). Register them in **`PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS`** and **`pickFloorItemDefFromTable`** (`web/src/procgen/spawnTables.ts`): **Workshop** extended **`rw`** ladder includes **Rapier**; **Passage** / **Communal** / **Habitat** headwear rolls use a **five-way** split (adds **ShellHat**, **NestHat**); **Habitat** outcomes **Mushrooms** / **Fungus** can nudge to **Bahno** (~**5.5%**). **Rapier** icon uses **⚔️** (tint/scale/rotate) to satisfy **`itemsEmojiDisambiguation.test.ts`** vs **Spear**’s **🗡️**; **ShellHat** uses a distinct **🐚** tint/scale vs **SnailingShell** / **ShellSpike**.
+
+### Rationale
+Expands consumable healing and head cosmetics without new crafting rows; gives a finesse pierce option found in the world; procgen audit requires every seeded item be spawn-used or allowlisted.
+
+### Consequences
+**`DESIGN.md`** §7.3 bullets updated. Storage **POI** loot lists unchanged (curated separately from the floor spawn union).
+
+---
+
+## ADR-0417 — Kuratko nest requires a tool (egg pry + empty cleanup)
+Date: 2026-04-12
+
+### Decision
+**`KuratkoNest`** no longer yields eggs on bare **`poi/use`**. Players must **drag** **Chisel** or a non-consuming **weapon** onto the nest (**`canItemBreakKuratkoNest`** in **`openDoorDestroy.ts`**, same rule as **`canItemBreakOpenDoor`**). Each successful drag removes one egg (*You pry a Kuratko egg loose.*). Wrong items get *That will not reach into the nest.* with **reject** SFX. When the nest is **empty** (**`opened`** or **`eggsLeft ≤ 0`**), the same tool **removes** the **POI** (*You scatter the empty nest.*).
+
+### Rationale
+Makes nests feel like something you **work** at with gear, reuses an already-learned “breaking” rule, and lets players clear the empty **🪹** marker from the cell.
+
+### Consequences
+**`poi.ts`**, **`openDoorDestroy.ts`**, **`poi.test.ts`**, **`DESIGN.md`** §9 **Kuratko nest** bullet.
+
+---
+
+## ADR-0418 — Snailing shell from Snailing (chipping)
+Date: 2026-04-12
+
+### Decision
+Add **`Snailing` + `Chisel` → `SnailingShell`** in **`web/src/game/content/recipes.ts`** (**`skill: 'chipping'`**, **`preserveB: true`** so **Chisel** stays), with drag order **`a: Snailing`**, **`b: Chisel`** (same convention as **Stone** + **Chisel**). Regenerate **`CraftingRecipesGraph.md`** / **`web/public/crafting-graph.html`** via **`npm run gen:crafting-graph`**.
+
+### Rationale
+**Snailord** **`npcLoot`** rolls **one** weighted item per successful drop, so players can receive **Snailing** without **Snailing shell** and be blocked from **shell spike** / **shell charm**. A chipping recipe reuses the existing tool-catalyst pattern instead of changing loot to multi-drop.
+
+### Consequences
+Gaining a shell costs one **Snailing** (fewer pickle / roast / **snail-slime paste** inputs unless the player farms more **Snailord** drops). **`DESIGN.md`** §7.3 **Snailing / Snailord** bullet updated.
+
+---
+
+## ADR-0419 — Claw / Tooth craft parity with Bone (weapons + bandage)
+Date: 2026-04-12
+
+### Decision
+Extend **`web/src/game/content/recipes.ts`** so **Claw** and **Tooth** mirror **Bone** where **Bone** already had a recipe: **Chisel** (**Stone shard** + **Claw**/**Tooth**), **Staff** (**Claw**/**Tooth** + **Gem**), **Bone spike** (**Claw** + **Stone shard**; **Tooth** + **Stone shard** already existed), **Bandage strip** (**Claw**/**Tooth** + **Cloth scrap**, same **A**/**B** order as **Bone** + **Cloth scrap**), **Bolas** (**Twine** + **Tooth**; **Claw** + **Twine** because **Twine** + **Claw** remains **Sling**). Regenerate **`CraftingRecipesGraph.md`** / **`web/public/crafting-graph.html`** via **`npm run gen:crafting-graph`**.
+
+### Rationale
+**`DESIGN.md`** already described trio parity; implementation lagged, leaving **npcLoot** **Claw**/**Tooth** weak when players had **Twine**, **Stone shard**, **Gem**, or **Cloth scrap** but no **Bone**. Ordered **`findRecipe`** forces a different **Claw**/**Twine** pairing for **Bolas** vs **Sling**.
+
+### Consequences
+**`DESIGN.md`** §7.3 **Authoritative pairs**, **Weapons/tools**, and **Remedies** bullets updated for the **Claw**/**Twine** split and **Claw**/**Tooth** bandage inputs.
+
+---
+
+## ADR-0421 — Head equipment slot rejects hand gear in `equipItem`
+Date: 2026-04-12
+
+### Decision
+**`equipItem`** now applies the same **`head`** rules as **`equipHatFromPortrait`**: the item must have the **`hat`** tag, and if **`equipSlots`** is set it must include **`head`**. Otherwise the function returns the state unchanged (no inventory mutation).
+
+### Rationale
+Portrait **hat** drops already used **`equipHatFromPortrait`**, but **paperdoll** and **`equipmentSlot`** **`drag/drop`** called **`equipItem`** directly for **`head`**, which only validated **hand** slots—so **one-hand** / **two-hand** items could be placed on the head.
+
+### Consequences
+**`web/src/game/state/equipment.ts`**, **`equipment.headSlot.test.ts`**, **`DESIGN.md`** §7.4 **Item tags for equip rules**.
+
+---
+
+## ADR-0420 — Weapon and tool durability (wear, break, portrait toast, F2 tuning)
+Date: 2026-04-12
+
+### Decision
+Add optional **`ItemDef.durabilityMax`** and per-instance **`InventoryItem.durability`** (meaningful when **`qty === 1`**). While **`render.itemDurabilityEnabled`** is on, subtract **`itemDurabilityWeaponHitCost`** after each **successful** PC **`npc/attack`** hit (misses unchanged) and **`itemDurabilityToolUseCost`** after **open-door** splinters and **Kuratko nest** tool uses (egg pry + empty scatter). Skip **`weapon.consumesOnUse`** for hit wear. At **≤ 0**, **`destroyPartyItem`** removes the row from equipment, inventory, and **`party.items`**, and **`pushPortraitToast`** (**`kind: 'status'`**) shows **`{def.name} broke!`** on a resolved party character (equip drag hint → first equippor → slot 0). Mint paths (**`mintItemToInventoryOrFloor`**, **trade**, **crafting**, **POI** loot, **reducer** loot/debug spawn, **`inventoryItemFromDef`**) initialize **`durability`** from content. **`RenderTuning`** holds the three knobs (persisted like other **`render`** keys in **`debug-settings.json`**). **`items.ts`**: **`durabilityMax`** on major non-consuming weapons plus **Chisel**.
+
+### Rationale
+Gives gear attrition tied to real verbs (fights + prying), surfaces breaks on portraits without a new toast kind, and keeps tuning in the existing F2 / JSON pipeline.
+
+### Consequences
+**`itemDurability.ts`**, **`reducer`** (**`npc/attack`**, **`openDoor`**, **`applyItemOnPoi`**), **`poi.ts`**, **`trade.ts`**, **`crafting.ts`**, **`initialState`**, **`DebugPanel`**, **`GameApp`** effect deps, **`itemDurability.test.ts`**, **`openDoorDestroy.test.ts`**, **`DESIGN.md`** §7.2 / §7.7 + header, **`DECISIONS.md`**.
+
+---
+
+## ADR-0422 — Procgen may spawn a drained well (deep floors)
+Date: 2026-04-12
+
+### Decision
+**`placePois`** sets **`FloorPoi.drained: true`** on the **Well** when **`floorIndex > 0`** and **`hash(\`${attemptSeed}:well:drained\`) % 100 < 30`** (same **FNV-1a** helper as **Kuratko** egg count; does **not** consume **`streams.population`**). **`floorIndex === 0`** never spawns drained. **`applyItemOnPoi`** rejects **`useOnPoi.Well`** **`transformTo`** (empty portable vessels) when the well is already drained (*The well is dry.*).
+
+### Rationale
+Adds environmental variety and pressure on water on later floors without risking the first floor tutorial path; closes the hole where a procgen-dry well could still be filled like a full pool.
+
+### Consequences
+**`population.ts`**, **`generateDungeon.ts`**, **`poi.ts`**, **`population.wellSpawn.test.ts`**, **`poi.test.ts`**, **`DESIGN.md`** §8.2 / §9.
+
+---
+
+## ADR-0423 — NPC combat baseline difficulty bump
+Date: 2026-04-12
+
+### Decision
+Raise hostile pressure by increasing per-**`NpcKind`** **`baseDamage`**, **`hpMax`**, **`armor`** on bruisers, **`resistances`** where present, modest **`speed`** (initiative + NPC to-hit), and slightly stronger **`statusOnHit`** on poison/parasite-style enemies in **`web/src/game/content/npcCombat.ts`**. Nudge boss **`hpMul`**, **`damageMul`**, **`resistMul`**, and **`armorFlat`** in **`web/src/game/content/npcBosses.ts`** so **boss** instances stay clearly above trash after the table change.
+
+### Rationale
+Combat had room for more threat without new systems; content-table tuning is localized and **`resolveNpcCombatTuning`** / spawn **`hp`** paths already consume these values.
+
+### Consequences
+**`npcCombat.ts`**, **`npcBosses.ts`**, **`DESIGN.md`** §7.7 **NPC combat data** bullet + header **Last updated**; Vitest on **`web/`**. **`staminaMovePacing.party.test.ts`** clears **`floor.npcs`** so step-stamina pacing is not conflated with **combat/enter** when procgen places a hostile on the step line. **`floorLayoutMetrics.snap.test.ts.snap`** updated for **Ruins** / **Catacombs** / **Palace** to match current **`generateDungeon`** best-attempt **`layoutMetrics`** (snapshots had drifted from procgen on this branch).
+
+---
+
+## ADR-0428 — Enemy HP and damage multipliers set to ×3 (authored table)
+Date: 2026-04-12
+
+### Decision
+Set **`NPC_SPAWN_HP_TABLE_MUL`** and **`NPC_COMBAT_DAMAGE_TABLE_MUL`** to **3** in **`web/src/game/content/npcCombat.ts`** (replacing **1.45** / **1.35**). Same application points: **`npcKindHpMax`**, **`npcCombatTuningFromContent`** (boss **`hpMul`** / **`damageMul`** still apply on top).
+
+### Rationale
+Request for a **×3** step on enemy threat using the existing global knobs.
+
+### Consequences
+**`DESIGN.md`** §7.7 + header; Vitest **`web/`**. **`makeInitialState`** accepts optional **`floorSeed`** for deterministic tests; **`staminaMovePacing.party.test.ts`** uses a fixed seed so step-1 is not procgen-flaky. Very high pressure vs **ADR-0423** table—retune downward if runs become unwinnable.
+
+---
+
+## ADR-0429 — Enemy global multipliers reduced to ×2 (authored table)
+Date: 2026-04-12
+
+### Decision
+Set **`NPC_SPAWN_HP_TABLE_MUL`** and **`NPC_COMBAT_DAMAGE_TABLE_MUL`** to **2** in **`web/src/game/content/npcCombat.ts`** (down from **3** in **ADR-0428**).
+
+### Rationale
+**×3** overshot desired difficulty; **×2** keeps the same two-knob model with less extreme TTK and burst damage.
+
+### Consequences
+**`DESIGN.md`** §7.7 + header; Vitest **`web/`**.
+
+---
+
+## ADR-0430 — Ruins layout: stop single-hall collapse
+Date: 2026-04-12
+
+### Decision
+**Ruins** profile (`BASE_RUINS_TYPE` and reskins): **`smoothPasses: 0`**, **`injectLoopsMax: 0`** (Catacombs/Palace **1**), higher **`stampSkipChance`**, lower **`doorwayChance`** used only for **non–spanning-tree** edges, and **`runRuinsLayout`** connects stamped cells with a **random spanning forest** of macro doorways plus **sparse** extras. **`LayoutScoreWeights`** gains **`junctionAntiBlobStartRatio` / `junctionAntiBlobPenaltyPerUnit`** (non‑Ruins stay **0**); **`RUINS_LAYOUT_SCORE_WEIGHTS`** sets positive values so **`layoutScore`** does not always prefer one open hall among rerolls. **`RuinsLayoutTuning.spanningTreeDoorways`** (default **true**; **false** = legacy Bernoulli per edge).
+
+### Rationale
+Independent high **`doorwayChance`** on a dense stamp grid percolates to one walkable component; **`smoothWallsCarveOnly`** then removed **1‑tile** inter‑chamber walls (≥**6**/8 floor neighbors); **`injectLoops`** punched more holes; **`layoutScore`** rewarded junction-heavy blobs. Together that produced **one giant room** visually and often one macro **`GenRoom`**.
+
+### Consequences
+**`realizeRuins.ts`**, **`floorTopologyTuning.ts`**, **`scoreLayout.ts`**, **`realizeRuins.test.ts`**, **`floorTopologyTuning.test.ts`**, **`floorLayoutMetrics` snapshots**; **`DESIGN.md`** §8.1–§8.2.
+
+---
+
+## ADR-0426 — Raise global enemy HP/damage multipliers again
+Date: 2026-04-12
+
+### Decision
+Increase **`NPC_SPAWN_HP_TABLE_MUL`** from **1.25** → **1.45** and **`NPC_COMBAT_DAMAGE_TABLE_MUL`** from **1.2** → **1.35** in **`web/src/game/content/npcCombat.ts`**.
+
+### Rationale
+Encounters still felt light after **ADR-0425**; same two-knob model avoids per-row churn.
+
+### Consequences
+**`DESIGN.md`** §7.7 + header; Vitest **`web/`**.
+
+---
+
+## ADR-0425 — Global enemy HP and damage multipliers (`npcCombat`)
+Date: 2026-04-12
+
+### Decision
+Add **`NPC_SPAWN_HP_TABLE_MUL` (1.25)** and **`NPC_COMBAT_DAMAGE_TABLE_MUL` (1.2)** in **`web/src/game/content/npcCombat.ts`**, applied in **`npcKindHpMax`** and **`npcCombatTuningFromContent`** so all kinds (and **boss** instances, which multiply from the scaled base) are stronger without re-authoring every **`NPC_COMBAT_BY_KIND`** cell.
+
+### Rationale
+Encounters needed another difficulty pass; a pair of exported constants keeps tuning localized and composes cleanly with existing boss **`hpMul`** / **`damageMul`** on top of **`npcKindHpMax`** / **`resolveNpcCombatTuning`**.
+
+### Consequences
+**`DESIGN.md`** §7.7 **NPC combat data**; Vitest **`web/`** (no snapshot drift expected).
+
+---
+
+## ADR-0424 — Ruins macro GenRooms: doorway + touch clustering
+Date: 2026-04-12
+
+### Decision
+**`runRuinsLayout`** (`web/src/procgen/realizeRuins.ts`) groups stamp chambers into macro **`GenRoom`s** using **union–find** edges from (**a**) **successful macro-cell doorway carves** between stamped neighbors and (**b**) pairs of stamp rects with **Chebyshev distance 0** (touch/overlap). The previous rule (merge when rect distance **≤ 2**) is removed. The existing **merge-smallest-into-nearest** step when component count exceeds **`maxMacroClusters`** is unchanged.
+
+### Rationale
+Distance-**≤ 2** merging almost always connected the entire stamp grid into **one** bounding box, so districts, tags, entrance/exit bias, loop injection, and spawns treated the floor as a single room despite varied tiles.
+
+### Consequences
+**Ruins**, **Catacombs**, and **Palace** **`meta.layoutMetrics`** snapshots update (entrance/exit and **`injectLoops`** depend on **`genRooms`**). Vitest: **`realizeRuins.test.ts`**; **`floorLayoutMetrics.snap.test.ts`** snapshot refresh. **`DESIGN.md`** §8.2 **Ruins profile** bullet.
+
+---
+
+## ADR-0427 — Kuratko nest room guarantees a Kuratko NPC
+Date: 2026-04-12
+
+### Decision
+After POI dedupe, **`generateDungeon`** passes **`kuratkoNestPos`** into **`spawnNpcsAndItems`**. **`ensureKuratkoInNestRoom`** (in **`web/src/procgen/population.ts`**) runs at the end of population: resolve the **`GenRoom`** whose **`rect`** contains the nest tile; if there is no non-boss **Kuratko** there yet, retune the first non-boss NPC in that rect (stable **`id`** sort) to **Kuratko** (**hostile**, **`npcKindHpMax`**, clear **`quest`/`trade`**); else inject one on the first free **floor** cell in deterministic **`(y,x)`** scan order with id **`g_npc_Kuratko_nest_{x}_{y}`**. **Boss** rows are excluded from retuning.
+
+### Rationale
+Nests and **Kuratko** mobs were only loosely themed; nest floors did not even weight **Kuratko** in default **`spawnTables`** tables. Coupling the POI to a guaranteed **Kuratko** in the same semantic room keeps the fiction coherent without rebalancing every floor-type table.
+
+### Consequences
+Rare **+1** NPC when the nest room had no non-boss NPC to retune but still has a free **floor** cell. Possible **kind swap** in that room when retuning. **`population.kuratkoNestSpawn.test.ts`**; **`DESIGN.md`** §8 population + §9 **Kuratko nest**.
+
+---
+
+## ADR-0428 — Consumables vitals visualization (generated HTML)
+Date: 2026-04-12
+
+### Decision
+Add **`web/scripts/genConsumablesViz.ts`** (run via **`npm run gen:consumables-viz`** from **`web/`**) that imports **`DEFAULT_ITEMS`** and writes **`web/public/consumables-viz.html`**: an SVG scatter (**stamina** vs **HP** per **`feed`** use), bubble size from **hunger + thirst**, tooltips for status chances, and a sortable table.
+
+### Rationale
+Balances **food vs drink** and **STA vs HP** at a glance for content tuning without hand-maintaining a spreadsheet.
+
+### Consequences
+**`DESIGN.md`** §7.3 **Crafting breadth** documents the page and regen command. Regenerate after editing **`items.ts`** **`feed`** blocks.
+
+---
+
+## ADR-0431 — Dead portraits, Tent recruitment, Cave living gate
+Date: 2026-04-12
+
+### Decision
+- **0 HP** PCs are **dead** for UX and rules: **`PortraitPanel`** keeps eyes hidden, disables idle/blink, greys/dims art; **`CharacterEquipStrip`** is non-interactive; **`interactions.ts`** and **`reducer`** **`drag/drop`** block inspect/feed/bandage and equipping onto or from dead slots (with **`stowEquipped`** / **`moveEquippedItemToInventorySlot`** guards).
+- **Hub village** third hotspot **`village.tent`** (**`HubHotspotConfig`**, F2 sliders, **`debug-settings.json`**) dispatches **`hub/recruitAtTent`**: replace **first** **`hp ≤ 0`** slot (**stable `Character.id`**), **`recruitAtTent.ts`** + **`run.tentRecruitsCompleted`** for deterministic recruit variety; strip gear via **`unequipItem`**, else log + remove overflow items.
+- **`hub/enterDungeon`** requires **`some(c => c.hp > 0)`**; otherwise log + **reject** SFX.
+- **Full party wipe** in-dungeon still sets **`ui.death`** on **`time/tick`** (unchanged).
+
+### Rationale
+Supports **partial wipes** and return to hub without soft-ending the run on total death; clear **visual** and **input** affordances for fallen characters; one **authorable** recruit point aligned with camp/village art.
+
+### Consequences
+**Vitest** **`recruitAtTent.test.ts`**, **`interactions.test.ts`** dead-feed case; Playwright **`hub.spec.ts`** tent presence; optional future **`camp_*_tent_hover.png`** / **`village_tent_hover.png`** for parity with tavern/cave hovers.
+
+---
+
+## ADR-0432 — Per-session inventory crafting rolls
+Date: 2026-04-12
+
+### Decision
+**`maybeFinishCrafting`** (`web/src/game/state/crafting.ts`) includes **`ui.crafting.startedAtMs`** in the FNV-1a hash strings for both the craft **d20** (vs recipe DC) and the failure **destroy** roll. Each **`startCrafting`** sets **`startedAtMs`** from **`state.nowMs`**, so a **new** craft bar retries with a **new** effective roll even when **`srcItemId` / `dstItemId`** are unchanged.
+
+### Rationale
+The previous hash used only floor seed + item ids + recipe fields, so players could **never** succeed on some pairs until stacks split or IDs changed—felt like a bug (e.g. **Flint**). Retries should behave like new attempts.
+
+### Consequences
+Same two stacks no longer guarantee the same outcome across **separate** craft sessions. Outcome remains **deterministic** for a given saved timeline (no **`Math.random()`**). **`DESIGN.md`** §7.3 clarifies per-attempt **d20**. Campfire cook and portrait inspect rolls unchanged.
+
+---
+
+## ADR-0433 — Run XP: threat-based combat, depth scaling, POI/craft grants
+Date: 2026-04-12
+
+### Decision
+Centralize run XP tuning in **`web/src/game/state/runProgression.ts`** (named constants + helpers). **Combat** victory XP is **per-enemy threat** from runtime **`hpMax`** and content-**scaled** **`baseDamage`**, plus a **boss** flat bonus, summed over the encounter roster, then multiplied by a **depth** factor from **`floor.floorIndex`** and **`floor.difficulty`** (capped). **Non-combat** grants: **floor descent**, **key door**, **crafting** success (from recipe **DC**), and selected **POI** successes (container first open, **Shrine** curse cleanse, **Cracked wall**, **Campfire** roast, **Kuratko** egg). **`applyXpWithActivityLog`** and **`pushLevelUpActivityLogs`** standardize activity-log + correct **`Reached level N`** lines for those grants; combat keeps a single **Encounter won** summary line.
+
+### Rationale
+Flat **10 × headcount + boss** XP overpaid large weak packs and underpaid tough singles; tying XP to **effective stats** matches threat better. **Depth** scaling rewards deeper floors without changing fixed POI/door numbers. **Exploration** and **craft** now contribute to the same roguelite run progression loop.
+
+### Consequences
+Pacing vs the old formula may need a follow-up tuning pass. **`combatVictoryXp`** and **`combatXpDepthMul`** are unit-tested for monotonicity and boss uplift. **`DESIGN.md`** §7.7 documents sources and points at exported constants.
+
+---
+
+## ADR-0434 — Campfire POI: 🔥 emoji + slow flicker
+Date: 2026-04-12
+
+### Decision
+**Campfire** POIs in the **3D** view use a **🔥** **emoji** billboard (**`makeItemIconBillboardMaterial`**, same path as **Kuratko nest** / floor-item emoji), not **`poi_placeholder.png`**. **`WorldRenderer.syncCampfireEmojiFlicker`** animates **`SpriteMaterial.opacity`** with two low-frequency sines plus a per-**`poi.id`** phase so multiple fires do not pulse in sync.
+
+### Rationale
+Placeholder PNG read poorly as fire; emoji is readable immediately until dedicated campfire art ships.
+
+### Consequences
+**Campfire** removed from **`POI_SPRITE_SRC`** (**`PoiBitmapSpriteKind`** excludes it). Emoji height tuning is **`render.poiCampfireSpriteScale`** (**ADR-0435**, separate from **`poiKuratkoNestSpriteScale`**). **`DESIGN.md`** §7 / §9 updated.
+
+---
+
+## ADR-0435 — Separate F2 scales for Campfire vs Kuratko nest emoji POIs
+Date: 2026-04-12
+
+### Decision
+Add **`RenderTuning.poiCampfireSpriteScale`** (default **1**, clamp **0.25..3**). **`poiKuratkoNestSpriteScale`** applies only to **`KuratkoNest`**; **`poiCampfireSpriteScale`** applies only to **`Campfire`**, both in **`WorldRenderer.syncPoiSpriteScales`**. F2 **NPCs** section: **POI Campfire emoji scale** and **POI Kuratko nest emoji scale**; both persist via **`pickRenderTuningForPersistence`** / **`debug-settings.json`**.
+
+### Rationale
+Nest and campfire need independent size tuning (different glyphs, ground pivots, and readability).
+
+### Consequences
+**`DEFAULT_RENDER`**, **`clampRenderTuning`**, parity test schema, and shipped **`debug-settings.json`** gain **`poiCampfireSpriteScale`**.
+
+---
+
+## ADR-0436 — Procedural dungeon env for five reskins; Jungle uses overgrown triple
+Date: 2026-04-12
+
+### Decision
+**`WorldRenderer.getEnvTexturesForFloorType`** routes **`FloorType`** as follows: **`Bunker`**, **`Golem`**, **`Catacombs`**, **`Palace`**, and **`LivingBio`** use **`makeProceduralDungeonEnvTextures`** (**`web/src/world/dungeonEnvProceduralTextures.ts`**) — small **`THREE.DataTexture`** floor/wall/ceiling albedos with stable per-theme seeds and RGB tints. **`Jungle`** returns the same loaded textures as overgrown room overlay (**`OVERGROWN_ENV_TEXTURE_SRCS`**, **`getOvergrownEnvTextures`**) and is **not** cached separately in **`envTex`** to avoid double-**`dispose`**. **`getDungeonEnvTextureSrcs`** returns PNG paths only for **`Dungeon`**, **`Cave`**, **`Ruins`**, and **`Jungle`** (overgrown URLs); procedural themes return **`null`**. **`dispose()`** now disposes **`overgrownEnvTex`** once after clearing **`envTex`**.
+
+### Rationale
+Theme-specific **`bunker_*`**, **`golem_*`**, etc. were duplicate placeholder PNGs (same bytes as other themes), costing redundant decode and GPU uploads when switching types. Procedural textures remove that dependency while keeping themes visually distinct. **`Jungle`** sharing **`overgrown_*`** matches the overgrown room art direction and loads one triple for both whole-floor jungle and selective overgrown cells.
+
+### Consequences
+Old **`jungle_*`** / reskin PNG triples are no longer referenced by the renderer (files may remain in **`Content/`** until removed manually). **`DESIGN.md`** §11 / §13 updated. Pixel filtering for PNG env maps stays as before; procedural maps use **nearest** filtering and no mipmaps.
+
+---
+
+## ADR-0437 — NPC encounter aggro: weighted soft pool + capped Speed on AC
+Date: 2026-04-12
+
+### Decision
+**`npcTakeTurn`** selects the struck PC by **sorting** living characters by existing **softness** (HP, **Defend** virtual padding, deterministic micro-jitter), taking the **up to three** softest, then choosing among them with **weights 3:2:1** via a **hash** of **`floor.seed`**, **`encounterId`**, NPC id, and **`turnIndex`** (still **no** `Math.random()`). **NPC vs PC** hit defense uses **`10 + min(PC Speed, NPC_VS_PC_DEFENSE_SPEED_CAP)`** (default cap **10**) before **Parasitized** / **Spored** **AC** penalties. Exported **`NPC_TARGET_CANDIDATE_POOL`** / **`NPC_VS_PC_DEFENSE_SPEED_CAP`** in **`combat.ts`**. **Debug** NPC swing lines (`npcAttackPcLegacyFormula`) show the **min(Spd, cap)** breakdown.
+
+### Rationale
+Pure **lowest-HP** focus made every NPC pile on one character; pairing that with **10 + full Speed** made **fast, injured** PCs both **always** targeted and **often** missed. Weighted selection spreads pressure when HP pools are close; the cap keeps very high **Speed** from trivializing trash **to-hit** without changing **PC→NPC** rolls.
+
+### Consequences
+Encounter combat is slightly **easier** against very fast PCs on the **defensive** axis only; aggro is **less** deterministic with **2+** living PCs. **`DESIGN.md`** §7.7 and **`combat.test.ts`** (two-PC coverage) updated.
+
+---
+
+## ADR-0438 — Hub Tent recruit name pool
+Date: 2026-04-12
+
+### Decision
+Replace **`RECRUIT_NAMES`** in **`web/src/game/state/recruitAtTent.ts`** with **Gonkalo**, **Hnat**, **Talker**, **Candidate**, **Big Thought**, **Cutie**, **Bobblin** (**7** entries). Selection remains **`hashStr(\`${runId}:tent:${seq}\`) % length`** alongside **`SPECIES_ORDER`**.
+
+### Rationale
+Author-requested flavor for village/camp tent replacements.
+
+### Consequences
+**`DESIGN.md`** §5.1 documents the pool. Deterministic variety modulo **7** (was **8**).
+
+---
+
+## ADR-0439 — Duplicate-species portrait tint
+Date: 2026-04-12
+
+### Decision
+When the party contains **multiple** characters with the same **`species`**, **`PortraitPanel`** applies a **CSS filter** to **later** slots in **`party.chars`** order (first occurrence keeps the canonical colors). Logic lives in **`web/src/ui/portraits/duplicateSpeciesPortraitTint.ts`**; styles in **`PortraitPanel.module.css`** target **`.portraitArtClip`** for alive and dead (combined filter chain) states.
+
+### Rationale
+Recruits and tent replacements can reuse a species already in the party; identical portrait stacks are hard to tell apart at a glance. Tinting avoids new art and works with **`html2canvas`** HUD capture like existing dead-portrait filters.
+
+### Consequences
+Players learn that **party order** picks which duplicate keeps the “default” hue. Compositor overlays stay **species-keyed** in **`DitheredFrameRoot`** (shared textures for duplicates).
+
+**Follow-up (same release):** The alive duplicate filter was strengthened (**~88°** **hue-rotate**, **~1.65** **saturate**, modest **contrast**/**brightness** bump; dead duplicates use a still-strong hue before **grayscale**) after playtest feedback that the first tuning was too subtle to read as two different Miclops slots.
+
+---
+
+## ADR-0440 — Enemy global HP/damage table multipliers set to ×3
+Date: 2026-04-12
+
+### Decision
+Set **`NPC_SPAWN_HP_TABLE_MUL`** and **`NPC_COMBAT_DAMAGE_TABLE_MUL`** to **3** in **`web/src/game/content/npcCombat.ts`**, replacing the shipped **×2** from **ADR-0429**.
+
+### Rationale
+Author request for **×3** global enemy threat using the existing two-knob model (**ADR-0425** lineage).
+
+### Consequences
+Higher spawn **HP** / encounter **HUD** bars and higher **NPC** **baseDamage** (including **boss** stacks on top). **Run XP** threat terms that read **`hpMax`** and scaled **`baseDamage`** increase accordingly. **`DESIGN.md`** §7.7 + header **Last updated**. Retune downward if TTK or burst damage feels excessive (**ADR-0429** rationale still applies).
+
+---
+
+## ADR-0441 — Camp hub: no village camp sprites
+Date: 2026-04-12
+
+### Decision
+Mid-run **`hubKind: camp`** village scene art uses **`camp_cave*.png`** or **`camp_dungeon*.png`** only, via **`campHubSkinForFloorType`** in **`web/src/ui/hub/campHubSkin.ts`** (**`HubViewport`**). **`village.png`** and **`village_*_hover.png`** remain exclusive to the **starting** hub (**`hubKind`** unset). **`camp_village*`** assets are no longer selected by this path.
+
+### Rationale
+Only the first hub should read as the home **village**; periodic camps stay **cave/dungeon** camp reskins aligned to procgen **layout profile** and floor kind.
+
+### Consequences
+**Ruins**-profile segments no longer load **`camp_village`**—**Ruins** floor type → **`cave`**, **Catacombs** / **Palace** → **`dungeon`**. **`DESIGN.md`** §5.1 updated.
+
+---
+
+## ADR-0442 — Orphan combat: tick + flee reconcile via maybeEndCombat
+Date: 2026-04-12
+
+### Decision
+When an encounter’s **`participants.npcs`** no longer maps to any **living** row on **`floor.npcs`**, **`maybeEndCombat`** runs on every **`time/tick`** return path (while **`state.combat`** is set) and at the start of **`combat/fleeAttempt`** before **`attemptFlee`**. Export **`firstLivingEncounterNpcId`** from **`combat.ts`** and use it to **disable Flee** in **`CombatIndicator`** when there is no valid foe (same rule as attack targeting). Regression tests in **`orphanCombat.test.ts`**.
+
+### Rationale
+**`attemptFlee`** previously returned silently when **`livingNpcs`** was empty, leaving **Attack** disabled and **Flee** appearing usable — a soft-lock. Reusing **`maybeEndCombat`** avoids parallel end rules and matches normal **victory** XP + log.
+
+### Consequences
+Rare desyncs self-heal within a tick or on flee; players no longer need **Wait**/**Defend** as the only escape. **`DESIGN.md`** §7.7 + header **Last updated**.
+
+---
+
+## ADR-0443 — Open-world NPC drag damage starts combat when the foe survives
+Date: 2026-04-12
+
+### Decision
+After **`npc/attack`** resolves **outside** an encounter with **finalDmg > 0** and the defender **still alive**, if **`collectEncounterNpcIds`** would include that NPC (same **hostile** / **Swarm Queen** / **solo boss** rules as **`combat/enter`**), chain **`combat/enter`** on that **`npcId`**. Apply the same rule after **Captured Swarm** and **Captured slime** drag-release damage blocks in **`drag/drop`**.
+
+### Rationale
+Dragging a **weapon** (or those consumables) onto a hostile was applying **open-world** damage without entering **encounter mode**, which felt inconsistent with stepping into a hostile and left no proper turn flow after a non-lethal hit.
+
+### Consequences
+The **opening strike** still uses the existing **open-world** **`npc/attack`** path (no encounter to-hit roll or attack **STA** for that swing when **`actorId`** is unset). **Initiative** and any **NPC** follow-up turns run only **after** that state, via the normal **`enterCombat`** + **`autoResolveNpcTurns`** path. **One-shot** kills avoid starting an empty encounter. Tests in **`dragDamageCombatEnter.test.ts`**. **`DESIGN.md`** §6.2 / §7.7 + header **Last updated**.
+
+---
+
+## ADR-0444 — Lit dungeon billboards (MeshLambert vs SpriteMaterial)
+Date: 2026-04-12
+
+### Decision
+Replace world **`THREE.Sprite` / `SpriteMaterial`** billboards in **`web/src/world/WorldRenderer.ts`** with **camera-facing `THREE.Mesh` planes** and **`MeshLambertMaterial`** (transparent, **`depthWrite: false`**, floor-matched **emissive** lift, **`poiSpriteBoost`** applied to **POI** emissive only). Keep **Elder** on its existing **`ShaderMaterial`** (still oriented with the camera). Keep **well** **glow**/**sparkle** as **`Sprite`** so they stay additive VFX. Use two shared **`PlaneGeometry`** instances (center pivot vs POI bottom pivot).
+
+### Rationale
+**`SpriteMaterial`** does not receive scene **PointLight** contributions; tinting **`material.color`** only faked consistency with the lantern. **MeshLambert** matches environment lighting (camera light + nearest **POI** torches) with minimal shader cost.
+
+### Consequences
+Per-frame **quaternion** copies for all lit billboards; **transparency sorting** remains a tradeoff. **`DESIGN.md`** §1 / renderer notes + header **Last updated**.
+
+---
+
+## ADR-0445 — Palace v1: `plannedMission` + lock `targetLockCount`
+Date: 2026-04-12
+
+### Decision
+For **`floorType === 'Palace'`** only, **`planMissionBeforeGeometry`** (RNG stream **`meta.streams.mission`**) emits a validated linear **`PlannedMission`** with **`templateId`** **`palace_spine`** (no procgen locks), **`palace_seal_a`**, or **`palace_seal_ab`**, biased by **`difficulty`**. **`placeLocksOnPath`** accepts optional **`targetLockCount`** **`0` / `1` / `2`** so realized locks match the plan (**`0`** skips placement; **`2`** may attempt two locks even when base **`allowTwoLock`** would be false). **`generateDungeon`** rejects attempts where **`validatePlannedMissionRealized`** fails. **`meta.plannedMission`** is stored and **`meta.genVersion`** is **7** when a plan is present (**6** otherwise). **`buildMissionGraph`** orders lock/key nodes along the planned linear path when **`plannedMission`** exists. Ruins macro layout is unchanged (no stamp↔node embed yet). F2 **Procgen** shows **`plannedMission`** template id.
+
+### Rationale
+Ships the first **mission-planning** slice on the easiest floor type (Palace → Ruins profile) without rewriting **`realizeRuins`**, while tying procgen lock count to an auditable abstract graph for dumps and debug.
+
+### Consequences
+Palace may reroll more often when a **two-lock** template hits a short entrance→exit path. **`missionFirst.test.ts`** + **`locks.test.ts`** cover validation and **`targetLockCount`**. **`DESIGN.md`** §8 / §8.4 + header **Last updated**.
+
+---
+
+## ADR-0446 — F2 `npcSpriteBoost` for NPC billboard emissive + Elder RGB
+Date: 2026-04-12
+
+### Decision
+Add **`render.npcSpriteBoost`** (clamped like **`poiSpriteBoost`**, default **1**): multiply **MeshLambert** NPC billboard **`emissiveIntensity`** with **`baseEmissive`** (scaled by **`globalIntensity`** as today), and multiply **Elder** **`ShaderMaterial`** output **RGB** via uniform **`uNpcSpriteBoost`**. Expose an F2 **NPCs** slider; persist in **`web/public/debug-settings.json`**.
+
+### Rationale
+**POIs** already had **`poiSpriteBoost`** to tune readability against dungeon tint; **NPC** Lambert billboards had no separate multiplier, and **Elder** is not Lambert—artists need one knob that tracks both paths without raising global **`baseEmissive`** (which also lifts walls/floor/doors).
+
+### Consequences
+**`WorldRenderer.syncLitBillboardEmissive`** and **`applyElderDistortionUniforms`** must stay in sync with the same render field. **`DESIGN.md`** §7.5 rendering bullets updated.
+
+---
+
+## ADR-0447 — F2 well glow/sparkle world nudges
+Date: 2026-04-12
+
+### Decision
+Add **`render.poiWellGlowNudgeX/Y/Z`** and **`poiWellSparkleNudgeX/Y/Z`** (clamped ±**0.5**, same spirit as door/floor-item nudges), applied in **`WorldRenderer.syncPoiSpriteScales`** when positioning filled-well **`Sprite`** layers. Defaults: glow **0**; sparkle **Y** **0.02**, others **0** (replaces the prior fixed **`sparkle.position.y += 0.02`**). Expose six F2 **NPCs** sliders; persist via **`pickRenderTuningForPersistence`** / **`debug-settings.json`**.
+
+### Rationale
+**`poiGroundY_Well`** aligns the main well billboard to the floor; **glow**/**sparkle** art can still sit wrong relative to that mesh. Separate per-layer **X**/**Y**/**Z** offsets let artists tune VFX without re-exporting PNGs.
+
+### Consequences
+**`debug-settings.json`** and **`DEFAULT_RENDER`** gain six keys; **`debugSettingsJsonParity`** must stay green.
+
+---
+
+## ADR-0448 — Sprite boost scales Lambert `color` (not emissive alone)
+Date: 2026-04-12
+
+### Decision
+In **`WorldRenderer.syncLitBillboardEmissive`**, apply **`render.npcSpriteBoost`** and **`render.poiSpriteBoost`** to **`MeshLambertMaterial.color`** (**RGB = boost**) as well as **`emissiveIntensity`** (still × **`baseEmissive`**). Include **POI emoji** pickables that use **`poiSpriteBoost`**. **Elder** unchanged (**`uNpcSpriteBoost`** on shader **RGB** only).
+
+### Rationale
+With **lantern** + **torch** lighting, **diffuse** dominates **MeshLambert** output; **emissive** is a small floor-matched lift, so a boost that only touched **emissive** was effectively invisible. Scaling **`color`** multiplies texture × lights and makes F2 sliders meaningful.
+
+### Consequences
+**`DESIGN.md`** §1 / §7.5 and **`types.ts`** comments updated. Do not use **`material.color`** for non-boost tinting on these materials without resetting or composing with boost.
+
+---
+
+## ADR-0449 — Glowbug jar: stow up to 12 bugs for brighter `glowbug` light
+Date: 2026-04-12
+
+### Decision
+- **`InventoryItem.glowbugs?: number`** (**Glowbug jar** rows only, **1–12**; omit = **1**) — **not** **`qty`**, so **Shrine** **`consumeOffering`** still removes the whole jar via **`consumeItem`** at **`qty: 1`**.
+- **Recipes** (`recipes.ts`): **`Glowbug` + `GlowbugJar` → `GlowbugJar`** and **`GlowbugJar` + `Glowbug` → `GlowbugJar`** (faster/weaker DC than vial craft). **`maybeFinishCrafting`** enriches **in place** (consume **Glowbug** only, increment **`glowbugs`**, no new **`itemId`**). New jar from **Glass vial** + **Glowbug** sets **`glowbugs: 1`**.
+- **Cap**: **`GLOWBUG_JAR_MAX_GLOWBUGS` 12**; reducer rejects starting craft when the jar already has **12** bugs.
+- **Light**: **`resolveGlowbugLightMultiplier`** (`playerLight.ts`) — party **max** among equipped **`glowbug`** sources; **`WorldRenderer`** multiplies **`glowbug`** **intensity** × that value and **distance** × **`sqrt`** of it.
+
+### Rationale
+Lets players invest **Glowbugs** into one portable light without a new **`playerLight`** tier; keeps **Shrine** whole-item consumption correct.
+
+### Consequences
+**`types.ts`**, **`recipes.ts`**, **`crafting.ts`**, **`reducer.ts`**, **`playerLight.ts`**, **`WorldRenderer.ts`**, **`InventoryPanel.tsx`**, tests, **`DESIGN.md`**, **`CraftingRecipesGraph.md`** / **`crafting-graph.html`** (regen).
+
+---
+
+## ADR-0450 — Well glow/sparkle X nudge: wider negative clamp
+Date: 2026-04-12
+
+### Decision
+**`clampRenderTuning`** uses **`clampPoiWellNudgeX`**: **`poiWellGlowNudgeX`** and **`poiWellSparkleNudgeX`** are clamped to **−1..0.5** world units; **Y**/**Z** well nudges remain **±0.5**. F2 **NPCs** sliders for those two **X** keys use **`min: -1`**.
+
+### Rationale
+**−0.5** on **X** was not enough to align **glow**/**sparkle** art with the main well billboard in some layouts; asymmetric range keeps **positive** and **Y**/**Z** limits unchanged.
+
+### Consequences
+Amends **ADR-0447** (which stated **±0.5** for all six keys). **`types.ts`** JSDoc and **`DESIGN.md`** §9 **Well** bullet note the **X** vs **Y**/**Z** clamp split.
+
+---
+
+## ADR-0451 — Well glow: additive emissive read + draw order above base
+Date: 2026-04-12
+
+### Decision
+**Filled Well** **`npc_well_glow.png`** uses **`SpriteMaterial`** with **`AdditiveBlending`**, **`toneMapped: false`**, and **`renderOrder`** **above** the main **`MeshLambert`** well billboard (**sparkle** sprites use **`renderOrder`** one step higher). Replaces the prior **`renderOrder`** below the base (which let the Lambert quad paint over the glow) and the mostly-alpha blend pass.
+
+### Rationale
+The glow should read **self-lit** in dark cells and stay **visible on top of** the well art instead of sitting **behind** the billboard in the transparent sort.
+
+### Consequences
+**`WorldRenderer`** well stack order is **base → glow → sparkle**. If the additive glow reads too hot, tune texture alpha or a future **`render.poiWellGlowIntensity`** rather than reverting draw order.
+
+---
+
+## ADR-0452 — `poiSpriteBoost` on well glow/sparkle + F2 slider parity
+Date: 2026-04-12
+
+### Decision
+In **`WorldRenderer.syncLitBillboardEmissive`**, apply **`render.poiSpriteBoost`** to **`wellGlowMat`** and **`wellSparkleMat`** via **`SpriteMaterial.color.setRGB(boost, boost, boost)`** each frame (same **`poiBoost`** as **Lambert** POI billboards). F2 **POI sprite boost** slider **`min`** is **0** (matches **`clampRenderTuning`** and **NPC** boost); label notes **well VFX**.
+
+### Rationale
+**NPC** **`npcSpriteBoost`** already hits every NPC read path (**Lambert** + **Elder** shader). **POI** boost updated **Lambert** POIs but left filled-well **glow**/**sparkle** at fixed white, so tuning **POI** brightness could feel weaker or inconsistent on wells. Multiplying sprite **`color`** ties the whole well stack to one knob.
+
+### Consequences
+Very high **`poiSpriteBoost`** can push **additive** glow harder; reduce boost or texture alpha if needed. **`types.ts`** JSDoc and **`DESIGN.md`** document the behavior.
+
+---
+
+## ADR-0453 — World-space `playerLight` (held + dropped items)
+Date: 2026-04-12
+
+### Decision
+**`WorldRenderer`** places the primary equipped **`playerLight`** **`PointLight`** in **scene** space at **player grid** center plus **game yaw** forward (**`lanternForwardOffset`** / **`lanternVerticalOffset`** mapped to XZ/Y), so **debug pitch** and **roll** do not move the source. **Headlamp** keeps the light **parented to the camera** with the prior local offset. **Dropped** inventory items whose defs set **`playerLight`** gain additional **scene** **`PointLight`**s at their floor billboard positions (grid + jitter), **nearest-first**, capped by **`render.playerLightFloorItemMax`** (**0–4**, defaults **2**; GPU presets **0** / **1** / **2**), **no** shadows, **decay** **2**.
+
+### Rationale
+Camera-attached fill reads flat when the view tilts; anchoring to the **grid** matches first-person navigation. Glowing loot should **cast** into the **Lambert** room without unbounded light counts.
+
+### Consequences
+More **Three.js** lights per frame on **High**; **Low** tier sets **`playerLightFloorItemMax`** to **0**. Theme **tint** on the primary light still drives **POI torch** and floor-item light **color**.
+
+---
+
+## ADR-0454 — Tent recruits: strong per-portrait hue
+Date: 2026-04-12
+
+### Decision
+**`hub/recruitAtTent`** sets **`Character.tentReplacementPortraitHueDeg`** to **`hashStr(\`${runId}:tentPortraitHue:${seq}\`) % 360`** (independent of the species/name hash). **`PortraitPanel`** applies **`tentReplacementPortraitFilterCss`** as an inline **`filter`** on **`.portraitArtClip`** when that field is set, using the same numeric stack as duplicate-species alive/dead rules (**`PortraitPanel.module.css`** / **ADR-0439**) but with the stored hue. **`portraitDupSpeciesTint`** is **not** applied when **`tentReplacementPortraitHueDeg`** is set.
+
+### Rationale
+Duplicate-species tinting only helped when the same **species** appeared twice; a lone tent recruit could still look identical to a starter. **Every** replacement should read as a distinct **tinted** portrait without new art; deterministic hue preserves **save/checkpoint** stability and matches the **no `Math.random()`** style elsewhere.
+
+### Consequences
+**`html2canvas`** HUD capture includes the tinted base stack; **WebGL** mouth/idle/inspect overlays in **`DitheredFrameRoot`** stay **species-keyed** (same limitation as **ADR-0439**). Starters omit the field; legacy saves without it behave as before. **ADR-0456** moves the applied **`filter`** to **`.spriteStack`** so **`hue-rotate`** is visible alongside per-sprite **drop-shadow**.
+
+---
+
+## ADR-0455 — Provoke neutral/friendly NPCs on damaging attacks
+Date: 2026-04-12
+
+### Decision
+When a **weapon** **`npc/attack`** or **Captured Swarm** / **Captured slime** release deals **damage** (`finalDmg` / roll damage **> 0**) to a floor NPC whose **`status`** is **neutral** or **friendly** and they **survive**, set **`status: 'hostile'`**, append **`{name} becomes hostile!`** to the activity log (same wording as **hated** **npc/give**), then run the existing **`collectEncounterNpcIds`** + **`combat/enter`** path. **Swarm** + party **Swarm Queen** weapon attacks stay rejected before damage.
+
+### Rationale
+Players expect starting a fight by hitting someone; parity with **quest hated** gifts; reuses encounter roster logic without special cases beyond the status flip.
+
+### Consequences
+**Friendly** merchants stop meeting **`trade.ts`** **`friendly`** checks while **`trade`** data may remain on the row; **walking into** non-hostiles is unchanged.
+
+---
+
+## ADR-0456 — Portrait hue on `spriteStack` + F2 tent hue regenerate
+Date: 2026-04-12
+
+### Decision
+Tent (**`tentReplacementPortraitStackFilter`**) and duplicate-species (**`PortraitPanel.module.css`**) portrait color **`filter`** chains apply on **`.spriteStack`** together with the portrait **`drop-shadow`** (same numeric shadow as **`.sprite`**), with **`.spriteStack.spriteStackCombinedFilter .sprite { filter: none }`**. When the stack carries a dead tint, **`[data-portrait-dead-filter-on-stack]`** on **`.portraitArtClip`** suppresses the generic **`.portraitDead .portraitArtClip`** grayscale so it is not doubled. **`debug/regenerateTentPortraitHues`** (F2 **Portrait** section) re-rolls **`tentReplacementPortraitHueDeg`** for every character that already has it, using **`hashStr(\`${runId}:tentPortraitRegen:${charId}:${rev}\`) % 360`** and **`run.debugTentPortraitHueRevision`**.
+
+### Rationale
+Each **`.sprite`** used **`filter: drop-shadow(...)`**, which created a separate filtered subtree so a parent **`hue-rotate`** on **`.portraitArtClip`** did not recolor the raster as intended. Merging **hue + shadow** on **`.spriteStack`** fixes visibility. Debug **Regenerate** supports iteration without re-recruiting from the Tent.
+
+### Consequences
+**ADR-0454**/**ADR-0439** UI behavior is unchanged in intent; implementation detail moves from **`.portraitArtClip`**-only filters for these paths. Slightly different shadow compositing (one stack-level shadow vs per-layer) is acceptable.
+
+**Follow-up:** **`DitheredFrameRoot`** **`hudKey`** **`chars=`** segment must include **`tentReplacementPortraitHueDeg`** (and related identity fields as needed); otherwise **`html2canvas`** skips as “clean” and the dithered composite keeps a stale portrait tint after **Regenerate** or tent recruit.
+
+---
+
+## ADR-0457 — Stronger duplicate-glyph emoji item tints
+Date: 2026-04-12
+
+### Decision
+In **`web/src/game/content/items.ts`**, every **non-canonical** row that shares an emoji **glyph** with another item uses a **stronger** **`icon.tintFilter`** (higher **`saturate`**, larger **`hue-rotate`**, usually **`contrast`**) so inventory, trade, equip UI, cursor ghost, and **3D** floor emoji billboards separate stacks at a glance. **`Hive`** (**🪺**) and **`NestHat`** (**🪹**) gain strong tints vs **Kuratko nest** POI emoji billboards. The **🫗** pair keeps **`SporePaste`** as the single **default**-presentation item (per **`itemsEmojiDisambiguation.test.ts`**); **`SnailSlimePaste`** carries the strong tint.
+
+### Rationale
+Mild sepia or small hue nudges were still easy to confuse when several rows share one Unicode emoji.
+
+### Consequences
+**`ItemEmoji`** / **`makeItemIconBillboardMaterial`** pick up the new filters automatically. **`itemsEmojiDisambiguation.test.ts`** rules (one default presentation per glyph group, unique disambiguation keys) remain satisfied.
+
+---
+
+## ADR-0459 — Maximum-practical hue on duplicate-glyph item tints
+Date: 2026-04-12
+
+### Decision
+**ADR-0457** **`icon.tintFilter`** strings in **`items.ts`** are tightened again: **`hue-rotate`** spans roughly **±100°–±170°** (and up to **~250°** where useful) with **`saturate(2.45–2.55)`** so shared glyphs are unmistakable in inventory and on **3D** emoji billboards.
+
+### Rationale
+Stronger separation at a glance; CSS filters are cheap compared to mistaken item identity.
+
+### Consequences
+Icons may look more “posterized” or neon; **`itemsEmojiDisambiguation.test.ts`** still passes.
+
+---
+
+## ADR-0458 — Portrait floating toasts above mouth art
+Date: 2026-04-12
+
+### Decision
+In **`PortraitPanel`**, keep **`ui.portraitToasts`** visually **above** portrait **mouth** art in both places it is drawn:
+
+1. **DOM / capture tree**: raise **`.portraitToastStack`** **`z-index`**, render it **last** inside **`.portrait`**, **`isolation: isolate`** on **`.portraitArtClip`**.
+2. **Dithered presenter**: **`CompositeShader`** draws the **mouth** texture **over** the captured HUD (**`tUi`**), which covered toast text regardless of DOM order. While a character has **`ui.portraitToasts`** rows with **`untilMs > state.nowMs`**, **`DitheredFrameRoot`** sets **`portraitMouthOn` = 0** for that slot and **`PortraitPanel`** (**`captureForPostprocess`**) **bakes** closed/open mouth sprites into the capture (same rules as the interactive HUD) so the mouth is **under** the toast stack in **`tUi`**.
+
+### Rationale
+**Mouth** layers use **`drop-shadow`** and **chomp** transforms; some engines composite DOM sprites oddly. The **presented** image is **`over(tUi, mouthOverlay)`**; only suppressing the compositor mouth and rasterizing mouth into **`tUi`** fixes the visible stack.
+
+### Consequences
+During active portrait toasts, **mouth** uses **HUD capture** cadence (not the compositor’s instant open/closed swap for **Afonso**). If **`isolation`** causes an unexpected capture regression, remove it and keep the **z-index** + DOM order + compositor rule.
+
+---
+
+## ADR-0460 — Debug: replace entire party with tent templates + `hudKey` species
+Date: 2026-04-12
+
+### Decision
+Add **`debug/replaceAllPartyWithTentTemplates`** (F2 **Portrait** **Replace party**): for each **`party.chars`** row in order, run the same **`stripCharacterEquipment`** loop as hub **Tent** recruits, then replace the character with a tent-equivalent template (**`bodyForSpecies`**, deterministic **`species`**/**`name`** from hashed salts that **do not** advance **`run.tentRecruitsCompleted`**), **`hp`/`stamina`** at **`hpMax`/`staminaMax`**, **`statuses: []`**, **`equipment: {}`**, always **`tentReplacementPortraitHueDeg`**, preserving **`Character.id`**. Bump **`run.debugReplaceAllPartyRevision`** each successful run. **`reducer`** rejects with **`rejectNotWhileInCombat`** when **`state.combat`** is set. Log one line: *Debug: party replaced with tent templates.*
+
+Extend **`DitheredFrameRoot`** capture **`hudKey`** **`chars=`** tokens to include **`Character.species`** (alongside **`tHue=`**) so duplicate-species portrait tinting cannot stay stale when vitals are unchanged.
+
+### Rationale
+Bulk debug reshaping of the roster should reuse tent strip/rebuild rules instead of a second, divergent path. **`html2canvas`** keys must track any DOM-affecting identity change; **`species`** can change without HP/stamina deltas after a replace.
+
+### Consequences
+**`recruitAtTent.ts`** owns the implementation next to tent recruit logic. **Vitest** covers replace + combat rejection. **DESIGN.md** documents the action and **`hudKey`** field.
+
+---
+
+## ADR-0461 — Tinted item emoji: canvas raster + two-pass filter
+Date: 2026-04-12
+
+### Decision
+**`web/src/game/renderItemEmojiIconCanvas.ts`** draws the item emoji (and faux shadow) with **`ctx.filter = 'none'`**, then, when **`tintFilter`** is set, copies that bitmap through a second canvas pass with **`ctx.filter = tintFilter`** (**`drawImage`**). **`WorldRenderer`** **`makeItemIconBillboardMaterial`** uses this helper. **`ItemEmoji`** renders a **`1em`×`1em` `<canvas>`** (via **`useLayoutEffect`**) whenever **`tintFilter`** is present; untinted icons stay a plain **`<span>`** with optional CSS **`transform`**.
+
+### Rationale
+CSS **`filter` on DOM nodes** that contain **Apple / Segoe color emoji** often leaves glyphs unchanged. **`fillText` with `ctx.filter` set** is also unreliable for color fonts. Filtering the **composited bitmap** matches how raster content is expected to behave.
+
+### Consequences
+Slightly more HUD work per tinted icon; **`html2canvas`** still captures canvases. No change to **`items.ts`** filter strings.
+
+---
+
+## ADR-0462 — Nest hat icon: brown tint
+Date: 2026-04-12
+
+### Decision
+**`NestHat`** in **`web/src/game/content/items.ts`** uses a **sepia**-forward **`icon.tintFilter`** (**`sepia` + warm `hue-rotate` + `brightness`**) so the **`🪹`** reads **brown/twig** in HUD, trade, paperdoll, portraits, and **3D** floor billboards.
+
+### Rationale
+The prior strong **`hue-rotate(~205°)`** read as a cool shift; art direction calls for an earthy nest.
+
+### Consequences
+Still visually distinct from **Kuratko nest** **POI** emoji billboards, which use **unfiltered** emoji textures for **🪺** / **🪹**.
+
+---
+
+## ADR-0463 — Wool cap icon: brown tint
+Date: 2026-04-12
+
+### Decision
+**`WoolCap`** in **`web/src/game/content/items.ts`** sets **`icon.tintFilter`** (**sepia** + warm **`hue-rotate`** + **`brightness`/`contrast`**) and a modest **`displayScale`** so the billed-cap **`🧢`** reads **brown wool** in inventory, trade, portrait equip mirror, and **3D** floor billboards.
+
+### Rationale
+Default platform **🧢** is strongly **blue**; craft flavor calls for a natural fiber cap.
+
+### Consequences
+Uses the same canvas two-pass **`tintFilter`** path as other tinted emoji items (**ADR-0461**). **🧢** remains unique among **`DEFAULT_ITEMS`**, so duplicate-glyph disambiguation is unchanged.
+
+---
+
+## ADR-0464 — Mushrooms: ivory tint, smaller glyph
+Date: 2026-04-12
+
+### Decision
+**`Mushrooms`** in **`web/src/game/content/items.ts`** uses a **low-chroma ivory** **`icon.tintFilter`** (**`grayscale` + light `sepia` + low `saturate` + lifted `brightness`**) and **`displayScale: 0.82`** so the default forage **`🍄`** reads **small and pale** next to **Spore cap**, **Fungus**, and roast mushroom rows.
+
+### Rationale
+Art direction: wild mushrooms should feel **muted and modest**, not the same saturated red-cap platform emoji as specialty items.
+
+### Consequences
+**`Fungus`** keeps the **single** default (untinted, **`displayScale` 1**) **`🍄`** row required by **`itemsEmojiDisambiguation.test.ts`**; all other **`🍄`** defs stay tint/scale-disambiguated with **unique** keys.
+
+---
+
+## ADR-0465 — Emoji world placeholders for select NPC kinds + CrackedWall POI
+Date: 2026-04-12
+
+### Decision
+In **`WorldRenderer`**, replace **3D** PNG billboards with **canvas emoji** billboards (same pipeline as **Kuratko nest** / **Campfire** / floor-item emoji) for **`NpcKind`**: **BigHands** 🙌, **Bok** 🪬, **RegularBok** 🧿, **Swarm** 🦟, **Gargantula** 🕷️, **Grechka** 🐞, **Bulba** 🐝, **Kerekere** 🪰 — driven by **`NPC_WORLD_EMOJI_PLACEHOLDER`** / **`getNpcWorldEmojiPlaceholder`** in **`npcDefs.ts`**. **CrackedWall** POIs use **`POI_CRACKED_WALL_EMOJI`** 🛘; **`CrackedWall`** is removed from **`POI_SPRITE_SRC`** / **`PoiBitmapSpriteKind`** bitmap set. Emoji NPC meshes use **`npcEmojiBillboard`** + **`disposableItemIcon`** so **`disposeGeoGroupResources`** and **`syncLitBillboardEmissive`** apply **`render.npcSpriteBoost`** like textured NPCs.
+
+### Rationale
+These kinds still shipped **placeholder PNG** art; emoji gives distinct silhouettes immediately without new bitmaps.
+
+### Consequences
+**`NPC_SPRITE_SRC`** paths for those kinds are unused in **3D** until the map is cleared; **`poi_cracked_wall.png`** is no longer referenced by code (file may remain in **`Content/`** / **`public/content/`** as an orphan until cleanup).
+
+---
+
+## ADR-0466 — 🍄 icons: Fungus ↔ Roast fungus tint swap; Roast mushrooms charred black
+Date: 2026-04-12
+
+### Decision
+In **`web/src/game/content/items.ts`**: **`Fungus`** adopts the **`hue-rotate(-172deg) saturate(2.5) brightness(0.86) contrast(1.12)`** + **`displayScale: 0.88`** stack previously on **`RoastFungus`**; **`RoastFungus`** drops **`tintFilter`**/**`displayScale`** so it is the **default stock** **`🍄`** row; **`RoastMushrooms`** replaces its warm sepia/hue stack with **`grayscale(1) brightness(0.36) contrast(1.3)`** (near-black / charred read), keeping **`displayScale: 1.06`**.
+
+### Rationale
+Material **Fungus** should read as the **altered** mushroom among **`🍄`** defs; campfire **Roast mushrooms** should look **blackened**; **Roast fungus** can present as the plain cooked cap.
+
+### Consequences
+**`itemsEmojiDisambiguation.test.ts`** still allows **one** default **`🍄`** row (**`RoastFungus`** now); regenerate **`web/public/item-emoji-tints-viz.html`** via **`npm run gen:item-emoji-tints-viz`**. Supersedes the **“Fungus keeps stock 🍄”** consequence line in **ADR-0464** for **`Fungus`**/**`RoastFungus`** only.
+
+---
+
+## ADR-0467 — Tent portrait hue: canvas composite for `html2canvas` capture HUD
+Date: 2026-04-12
+
+### Decision
+When **`PortraitPanel`** renders with **`captureForPostprocess`** and **`tentReplacementPortraitHueDeg`** is set, **do not rely on CSS `filter` on `.spriteStack`** for the final pixels. **Hide** the source **`<img>`** stack (**`visibility: hidden`**) and paint a **sibling `<canvas>`** each animation frame: composite visible layers (same order/classes as the DOM stack), then apply **`tentReplacementPortraitStackFilter`** via **Canvas2D `ctx.filter`** + **`drawImage`** (`paintTentReplacementPortraitCanvas.ts`). The **interactive** HUD instance keeps the **CSS** path.
+
+### Rationale
+Runtime logs showed **correct** `getComputedStyle(...).filter` on both the live DOM and the **`html2canvas` clone**, while the **dithered compositor** still presented **untinted** portraits—consistent with **`html2canvas`** not faithfully rasterizing stacked **CSS filters** on portrait art. **Item emoji** tints already use **canvas `ctx.filter`** for the same reason (**ADR-0461**).
+
+### Consequences
+Slight **extra CPU** on the capture HUD only (**`requestAnimationFrame`** repaint per tent-tinted portrait). Mouth **CSS keyframe** poses remain correct because **`drawImage`** samples the **current** frame of animated **`<img>`** elements.
+
+---
+
+## ADR-0468 — Tent replacement portrait saturation range
+Date: 2026-04-12
+
+### Decision
+**`hub/recruitAtTent`**, **`debug/replaceAllPartyWithTentTemplates`**, and **`debug/regenerateTentPortraitHues`** set **`Character.tentReplacementPortraitSaturateMult`**: the alive-portrait **CSS `saturate()`** multiplier, drawn deterministically from **`hashStr`** in **`~0.32–1.92`** (constants in **`tentReplacementPortraitTint.ts`**). **`tentReplacementPortraitFilter.ts`** applies it; the dead chain uses the same **1.4/1.65** scaling relative to the alive value as before. **`tentReplacementPortraitHueDeg` without** this field keeps **`1.65`** (legacy saves).
+
+### Rationale
+Hue alone left every recruit at the same **boosted** saturation; a wider spread—including **well below 1.0**—makes stacked **same-species** tent recruits easier to tell apart and reads **more muted** when the roll lands low.
+
+### Consequences
+**`DitheredFrameRoot`** **`hudKey`** **`chars=`** adds **`tSat=`** (milli-units) when saturation is stored so capture does not stay stale vs vitals-only changes.
+
+---
+
+## ADR-0469 — Party-wide additive `playerLight` (single PointLight)
+Date: 2026-04-12
+
+### Decision
+Replace party-wide **strongest-single** resolution (**`resolvePlayerCameraLightKind`**, party-**max** glowbug fill) with **`resolvePartyPlayerLightAggregate`**: **sum** every equipped **`playerLight`** row (**all** **`party.chars`** × **`handLeft` / `handRight` / `head`**), apply theme mults per tag (**torch** vs **lantern** intent), **Glowbug jar** × clamped **`glowbugs`** **per row** (linear intensity, distance × **√mult** per row); combined **distance** is the **max** across contributing sources. **`WorldRenderer`** sets **one** primary **`PointLight`**: equipped path uses **sum × `globalIntensity` × flicker**, clamped by new **`render.equippedLightIntensityCap`**; **bare** path unchanged in spirit (**`bareLight*`** × **`lanternIntensityMult`** × global × flicker, **no** equipped cap). **Any** **headlamp** still parents the light on the **camera**. **`glowbugMulForInventory`** shared with nearest floor-item lights. Default **`render`** bases rebalance for **per-instance** summing (**`heldTorchIntensity`**, **`equippedLanternIntensity`**, **`headlampIntensity`**, **`glowbugIntensity`**) plus **`equippedLightIntensityCap`**.
+
+### Rationale
+Multiple lit party members should **stack** readably without adding extra shadow-casting lights; per-slot weaker bases + a hard cap prevent wash-out.
+
+### Consequences
+**ADR-0449**/**ADR-0453** prose on party-**max** jar fill and single-winner **kind** is superseded for the **primary** equipped light. **Vitest** covers **`playerLight.ts`** aggregation. **F2** exposes **`equippedLightIntensityCap`**.
+
+---
+
+## ADR-0470 — `equippedLightIntensityCap` high enough for party sums to show
+Date: 2026-04-12
+
+### Decision
+Raise default **`render.equippedLightIntensityCap`** from **9** to **32** so a full party’s **per-instance** bases (e.g. **12** lit slots × **~1.35** after **ADR-0475**) are not **all** flattened to the same post-flicker intensity. Widen **`clampRenderTuning`** upper bound and F2 slider max from **120** to **500**. Shipped **`debug-settings.json`** uses cap **400** so extreme per-slot intensities there still allow **visible** differences when summands change.
+
+### Rationale
+Runtime logs showed **`summandCount` 11 vs 12** with **`raw` ~309 vs ~371** but **`finalIntensity` stuck at 9** because **`cap` 9** — perceived as “party light doesn’t add.” The cap must exceed plausible stacked totals for defaults **and** remain tunable when F2/debug JSON use very large per-slot bases.
+
+### Consequences
+Brighter max equipped light when players raise cap/sliders; still bounded at **500** in **`clampRenderTuning`**. **ADR-0476** raises **`DEFAULT_RENDER`** default from **32** to **80**.
+
+---
+
+## ADR-0471 — Party `playerLight` distance stacks √(Σ d²)
+Date: 2026-04-12
+
+### Decision
+**`resolvePartyPlayerLightAggregate`** exposes **`combinedDistance`**: **√(Σ d_i²)** over every equipped **`playerLight`** source’s configured reach (**`render.*Distance`**, **glowbug** rows use **`glowbugDistance × √glowbugs`** per source as before). **`WorldRenderer`** sets the primary **`PointLight` `distance`** from that value (replacing **max-only** combine).
+
+### Rationale
+Intensity already **sums** across the party; **max** distance ignored extra lit gear. Root-sum-square adds reach **somewhat** with each extra source without growing as fast as a linear sum (keeps one **PointLight** plausible).
+
+### Consequences
+**ADR-0469** distance sentence (**max** across sources) is superseded for the **primary** equipped light. **`playerLight.test.ts`** asserted **RSS** stacking (**superseded by ADR-0474**).
+
+---
+
+## ADR-0472 — Weaker default per-equipped `playerLight` intensity bases
+Date: 2026-04-12
+
+### Decision
+Lower shipped **`DEFAULT_RENDER`** per-instance bases for equipped primary light summands: **`heldTorchIntensity`** **0.38 → 0.31**, **`equippedLanternIntensity`** and **`headlampIntensity`** **1.35 → 1.1**, **`glowbugIntensity`** **0.11 → 0.09**. **`equippedLightIntensityCap`** stays **32**.
+
+### Rationale
+Single-source dungeon read was still a bit bright; weaker per-slot terms keep stacking readable without changing sum/cap mechanics.
+
+### Consequences
+Fresh installs / reset F2 defaults see dimmer torches/lanterns/headlamps/glowbugs; committed **`debug-settings.json`** keeps its own numeric overrides (parity test checks **keys** only). Nearest floor **`playerLight`** accents scale from the same **`render`** keys and dim proportionally.
+
+---
+
+## ADR-0473 — Brighter default per-equipped `playerLight` bases (after ADR-0472)
+Date: 2026-04-12
+
+### Decision
+Raise **`DEFAULT_RENDER`** per-instance equipped light bases from **ADR-0472** to **`heldTorchIntensity` 0.35**, **`equippedLanternIntensity`** / **`headlampIntensity` 1.25**, **`glowbugIntensity` 0.1** (between **ADR-0472** and the pre-0472 **~1.35 / 0.38 / 0.11** line).
+
+### Rationale
+Playtest: **ADR-0472** defaults felt **too weak** for a comfortable single-lantern read while still staying below the older per-slot peaks before party-wide summing was tuned down.
+
+### Consequences
+Slightly brighter primary equipped light and matching floor **`playerLight`** accents at default F2; cap **32** unchanged.
+
+---
+
+## ADR-0474 — Party `playerLight` distance: max + √(Σ_rest d²)
+Date: 2026-04-12
+
+### Decision
+Replace **ADR-0471**’s **√(Σ d_i²)** with **`combinedPartyPlayerLightDistance`**: **max(d) + √(Σ_{i ≠ argmax} d_i²)** over equipped sources. **Two** sources ⇒ **d₁ + d₂**; more sources stack **stronger** than pure RSS but **below** a full linear sum of every **d**.
+
+### Rationale
+**ADR-0471** still felt **too weak** for “party adds light”; two lit slots should read as **fully additive** reach on the single primary **`PointLight`**, while many slots stay bounded vs **Σ d**.
+
+### Consequences
+**ADR-0471** distance rule superseded. **`combinedPartyPlayerLightDistance`** is exported; **`playerLight.test.ts`** covers the helper and aggregate cases.
+
+---
+
+## ADR-0475 — Restore pre-0472 default per-equipped `playerLight` intensity bases
+Date: 2026-04-12
+
+### Decision
+Set **`DEFAULT_RENDER`** **`heldTorchIntensity`** / **`equippedLanternIntensity`** / **`headlampIntensity`** / **`glowbugIntensity`** back to **0.38** / **1.35** / **1.35** / **0.11** (the per-instance line from before **ADR-0472**), superseding **ADR-0473**’s **0.35** / **1.25** / **0.1**.
+
+### Rationale
+Further playtest: **ADR-0473** was still **too weak** for a comfortable default dungeon read with party-wide summing + **ADR-0474** distance stacking.
+
+### Consequences
+Brighter default equipped primary light and floor **`playerLight`** accents; **`equippedLightIntensityCap` 32** unchanged at time of **ADR-0475** (raised to **80** in **ADR-0476**). **ADR-0472**/**0473** remain historical; shipped defaults now match the stronger per-slot row again.
+
+---
+
+## ADR-0476 — Default `equippedLightIntensityCap` 80
+Date: 2026-04-12
+
+### Decision
+Set **`DEFAULT_RENDER.equippedLightIntensityCap`** from **32** to **80**. **`clampRenderTuning`** upper bound and F2 slider max stay **500** (**ADR-0470**).
+
+### Rationale
+Full party + per-slot **~1.35** bases can sum well above **32** after **global × flicker**; a higher default cap preserves stacking contrast before players hit the ceiling.
+
+### Consequences
+Brighter maximum equipped primary light at fresh defaults; **`debug-settings.json`** cap value updated to match when aligning to defaults.
+
+---
+
+## ADR-0477 — Equipped `playerLight` ladder: headlamp ceiling (~four ≈ 60 / 90)
+Date: 2026-04-12
+
+### Decision
+Re-tune **`DEFAULT_RENDER`** per equipped **`playerLight`** tag so **headlamp** is the **brightest per instance**: **`headlampIntensity` 15**, **`headlampDistance` 32.94** (four equal sources at **`lanternIntensityMult` 1 and `globalIntensity` 1**, flicker **1**, yield party sum **~60** intensity and combined distance **~90** via **`max(d)+√(Σ_rest d²)`**). Space other tags between that ceiling and unchanged **bare** (**`bareLightIntensity`/`bareLightDistance`** **4**/**24**): **`heldTorchIntensity`/`heldTorchDistance`** **6.5**/**12**, **`equippedLanternIntensity`/`equippedLanternDistance`** **12**/**28**, **`glowbugIntensity`/`glowbugDistance`** **1.1**/**5** (full jar **12×** intensity still below one headlamp). Raise **`equippedLightIntensityCap`** default from **80** to **120** so four headlamps plus extra equipped rows are less likely to clip.
+
+### Rationale
+Party-wide **sum** needs a clear top item and predictable “max party” brightness; numeric anchor matches design target (four headlamps ≈ **60** / **90**).
+
+### Consequences
+Stronger default dungeon read when lit; **`playerLight.test.ts`** remains keyed to **`DEFAULT_RENDER`**; update **`DESIGN.md`** header; local **`debug-settings.json`** overrides unchanged unless refreshed.
+
+---
+
+## ADR-0478 — F2 per-hat portrait band X/Y offsets
+Date: 2026-04-12
+
+### Decision
+Add **`render.portraitHatOffsetXPctByDefId`** and **`render.portraitHatOffsetYPctByDefId`** (partial maps over the same **equippable hat** defs as band height), clamped **−40..40** % of portrait width/height, applied in **`PortraitPanel`** as **`left: calc(8% + X)`** and **`top: Y`** vs the default hat band box. Expose two F2 **Portrait** sliders per hat; persist via **`debug-settings.json`** / **`pickRenderTuningForPersistence`**. Dispatch **`render/portraitHatOffset`** with **`axis: 'x' | 'y'`**.
+
+### Rationale
+Band height alone cannot nudge misaligned hat emoji or PNG art horizontally/vertically per item; offsets match the existing per-def hat tuning workflow.
+
+### Consequences
+**`debug-settings.json`** gains two render keys (Vitest parity); **`PortraitPanel`** inline styles override **`equipHat`** **`left`/`top`** when offsets are set.
+
+---
+
+## ADR-0479 — SporeGrub and SunGrub (tinted grub NPC variants)
+Date: 2026-04-12
+
+### Decision
+Add **`SporeGrub`** and **`SunGrub`** to **`NpcKind`**. Both use the same **`npc_grub`** / **`npc_grub_idle`** assets as **`Grub`**. **`NPC_SPRITE_TINT_HEX`** in **`npcDefs.ts`** drives per-kind **Lambert `color`** (after **`npcSpriteBoost`**) in **`WorldRenderer.syncLitBillboardEmissive`**. **`WorldRenderer`** deduplicates **TextureLoader** instances by **sprite URL** so shared PNGs load once. **Combat**: **SporeGrub** inflicts **Spored** on hit (weaker than **Bulba**); **SunGrub** is slightly faster/tougher with **Parasitized**. **Loot**: **SporeGrub** biases **Fungus**/**Moss**; **SunGrub** biases **Sweetroot**/**Foodroot**. **Procgen**: **Infested** **SporeMist** subdivides the former **Grub** band (**[0.22,0.42)**) into **SporeGrub** then **Grub** without an extra **`rng.next()`**; **Jungle**/**LivingBio** default weights add **SunGrub**. **`forceHostile`** includes both kinds.
+
+### Rationale
+More biome read and combat variety without new texture work.
+
+### Consequences
+Multiply tint is not CSS **hue-rotate**; tune **`NPC_SPRITE_TINT_HEX`** for silhouette. **`debug-settings.json`** **`npcBillboard`** gains rows for both kinds.
+
+---
+
+## ADR-0480 — Compositor portrait overlays match tent recruit hue
+Date: 2026-04-12
+
+### Decision
+When **`tentReplacementPortraitHueDeg`** is set, **`DitheredFrameRoot`** builds **mouth** and **eyes-inspect** compositor textures by drawing the base PNG through **`tentReplacementPortraitFilterCss`** into a cached **`CanvasTexture`** (same color chain as the portrait stack, **without** the stack **drop-shadow**).
+
+### Rationale
+The captured portrait stack is tent-tinted (CSS or baked **`<canvas>`**), but compositor overlays were still **raw species PNGs**, so the mouth looked like it sat on a different hue (especially visible with **Afonso** closed/open mouth swaps and flicker).
+
+### Consequences
+Small **CPU** cost and extra **GPU** textures keyed by asset + hue + saturation + alive/dead; cache is cleared on presenter teardown. **`ensureTentTintedPortraitOverlayTexture.ts`** centralizes invalidation when the source **`Texture.version`** changes (async decode).
+
+---
+
+## ADR-0481 — Portrait stack: idle before mouth (Afonso mouth vs idle)
+Date: 2026-04-12
+
+### Decision
+In **`PortraitPanel.tsx`**, render the **idle** `<img>` **before** the **closed** and **open** **mouth** `<img>` layers inside **`tentPortraitSourceStack`**.
+
+### Rationale
+**Afonso** is the only species with **`mouthClosedSrc`**. When **portrait toasts** are active, **`compositorOwnsPortraitMouth`** is false for the **capture** subtree: the **closed mouth** is baked into **`html2canvas`** while the **WebGL** compositor suppresses the mouth overlay (so mouth quads do not cover toast text). The idle `<img>` was **after** the mouth in DOM order, so it **painted on top** and hid the mouth. The same **document order** drives **`paintTentReplacementPortraitStack`** (`querySelectorAll('img')`), so tent-tint capture would composite **idle over mouth** too.
+
+### Consequences
+Mouth stays **visually above** idle whenever both appear in the same bitmap. **Runtime logs** (`debug-343c20`) showed **`closedLayer: true`** with **`captureForPostprocess: true`** and **`portraitToastHudActive: true`** during reproduction.
+
+---
+
+## ADR-0482 — Afonso closed mouth during feed flicker (toast / DOM mouth path)
+Date: 2026-04-12
+
+### Decision
+In **`PortraitPanel.tsx`**, render **`mouthClosedSrc`** whenever **`compositorOwnsPortraitMouth`** is false and either the slot is not in a **mouth-open interaction** (`!mouthOpenActive`) **or** a **feed cue** is active on a **flicker off-tick** (`isMouthCueActive && !cueFlickerOn`), instead of gating closed mouth only on **`!mouthOpenActive`**.
+
+### Rationale
+With **portrait toasts** active, the **WebGL** compositor **suppresses** the mouth overlay so toast text is not covered; the **HUD capture** subtree must carry the mouth. **Feed flicker** toggles **`showMouth`** while **`mouthOpenActive`** stays true for the whole cue, so the old **`!mouthOpenActive`** gate **hid** the closed-mouth layer on every off-tick — **Afonso** flashed **no mouth**. Logs (`debug-aeae55`) showed **`mouthOpenActive: true`**, **`showMouth: false`**, **`cueFlickerOn: false`**, **`portraitToastHudActive: true`**, **`compositorOwnsPortraitMouth: false`**.
+
+### Consequences
+**Open** mouth `<img>` still stacks **after** closed in the DOM so chomp frames paint on top. **Compositor-only** mouth (no toasts) unchanged: DOM mouth layers stay out of capture as before.
+
+---
+
+## ADR-0483 — HUD capture: follow baked mouth flicker + wall-clock mouth burst
+Date: 2026-04-12
+
+### Decision
+1. In **`DitheredFrameRoot`**, drive **`highFpsUi` `mouthActive`** with the rAF **`performance.now()`** (`now`) vs **`ui.portraitMouth.untilMs`**, not **`state.nowMs`**, matching **`feedCharacter`** (mouth timestamps use **`performance.now()`**).
+2. In **`PortraitPanel`** (capture subtree only, when **`compositorOwnsPortraitMouth`** is false), **`bumpPortraitCaptureHudRev()`** whenever **`showMouth`** / **`showClosedMouthSprite`** changes so **`hudKey`’s `pCapIdle`** rev bumps and **`html2canvas`** is not stuck showing one flicker phase while the DOM stack is correct (**ADR-0482** alone could not refresh **`uiTex`** fast enough).
+
+### Rationale
+The **player-visible** portrait is the **dithered `uiTex`**, not the **opacity-0** interactive HUD. Mouth flicker while **toasts** suppress the compositor overlay depends on **capture** picking up both phases; **`hudKey`** did not encode mouth phase, so **`hudDirty`** stayed false across toggles unless **`highFpsUi`** stayed true for the whole burst.
+
+### Consequences
+Slightly more **`html2canvas`** work during short **toast + mouth** overlaps; **`portraitCaptureHudRev`** remains the existing “local HUD pixels changed” escape hatch (same mechanism as idle visibility).
+
+---
+
+## ADR-0484 — Compositor mouth during feed flicker even with portrait toasts
+Date: 2026-04-12
+
+### Decision
+Stop suppressing the **WebGL** portrait **mouth** overlay when **`ui.portraitToasts`** are active. **`PortraitPanel`** sets **`compositorOwnsPortraitMouth`** from **`captureForPostprocess`** alone (no longer `&& !portraitToastHudActive`). **`DitheredFrameRoot`** always uses **`mouthOnForShader = hasClosed ? 1 : isOpen ? 1 : 0`** (no toast gate).
+
+### Rationale
+Runtime logs (`debug-e3fe60`) showed **`portraitToastHudActive: true`** with **`highFpsUi`** bursts while **`captureInFlight`** serialized **`html2canvas`** (~**120–150ms**), so **baked** mouth flicker advanced at capture cadence, not rAF. **`CompositeShader`** only samples mouth inside **`portraitRectPx`**; **`portraitToastStack`** is **`position: absolute`** above the frame (**outside** that rect in screen space), so compositor mouth does not paint over toast text.
+
+### Consequences
+**ADR-0483**’s toast+bake flicker chase is obsolete for mouth; toast motion still depends on **`html2canvas`** bursts (**`highFpsUi`**). If a future layout places toast pixels **inside** the measured portrait rect, revisit z-order or rects.
+
+---
+
+## ADR-0485 — Shipped `debug-settings.json` overrides `localStorage` on load
+Date: 2026-04-12
+
+### Decision
+In **`GameApp.tsx`**, when hydrating F2 / settings tuning from persistence, merge **`elfenstein.debugSettings`** from **`localStorage` first**, then apply the fetched **`/debug-settings.json`** patch so **overlapping keys from the shipped file win**. Document in **`DESIGN.md`**; keep **Clear local overrides** for clearing stale snapshots / sections absent from the file.
+
+### Rationale
+Published builds ship an authoritative **`public/debug-settings.json`**; browsers may still hold an older **`localStorage`** snapshot from a prior session or deploy. Applying the file **after** local ensures deploys take effect without requiring players to clear storage first.
+
+### Consequences
+**localStorage** still mirrors effective state shortly after load (~450 ms debounce), so dev workflows stay the same. **`vite dev`** disk writes unchanged. Supersedes the prior “JSON first, then local overrides” description in **`DESIGN.md`**.
 
 ---

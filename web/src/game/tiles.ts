@@ -23,6 +23,11 @@ export function isOctopusDoorTile(t: Tile): boolean {
 
 export type DoorFxVisual = 'wooden' | 'octopus'
 
+/** Frame step for `door_octopus_opening_*` in `WorldRenderer.syncDoorFx` (ms). */
+export const DOOR_OCTOPUS_OPEN_FRAME_MS = 280
+/** `ui.doorOpenFx` lifetime for octopus doors; covers 3 frames at `DOOR_OCTOPUS_OPEN_FRAME_MS` plus a short hold. */
+export const DOOR_OCTOPUS_OPEN_FX_DURATION_MS = 900
+
 export function doorFxVisualForTile(t: Tile): DoorFxVisual {
   return isOctopusDoorTile(t) ? 'octopus' : 'wooden'
 }

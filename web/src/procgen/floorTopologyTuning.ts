@@ -18,8 +18,17 @@ export type RuinsLayoutTuning = {
   cellSize: number
   stampSkipChance: number
   shrinkRoomChance: number
+  /**
+   * Bernoulli chance for **non-MST** adjacency edges only when `spanningTreeDoorways` is true.
+   * When `spanningTreeDoorways` is false, applies to every edge (legacy behavior).
+   */
   doorwayChance: number
   maxMacroClusters: number
+  /**
+   * When true (default), carve a random spanning **forest** of macro doorways between stamped
+   * cells, then roll `doorwayChance` for remaining edges. Reduces full-grid percolation.
+   */
+  spanningTreeDoorways: boolean
 }
 
 /** Knobs for `runDungeonBspLayout`. */
@@ -65,6 +74,12 @@ export type LayoutScoreWeights = {
   junctionMult: number
   /** Multiplier on `(latticeCells - shortestLen)` when lattice is wider than a spine. */
   branchLatticeMult: number
+  /**
+   * When > 0, penalize “open hall” layouts: subtract `max(0, junctions - ratio * reachablePassage) * penalty`.
+   * Used on Ruins profile to avoid picking blob layouts among rerolls.
+   */
+  junctionAntiBlobStartRatio: number
+  junctionAntiBlobPenaltyPerUnit: number
 }
 
 export type LayoutTopologyTuning = {
@@ -82,6 +97,11 @@ export type LayoutTopologyTuning = {
    * (Dungeon profile only).
    */
   decorativeDoorFrameChance: number
+  /**
+   * Hard cap on decorative closed doors per floor (Dungeon profile only). Candidates are shuffled
+   * before rolling `decorativeDoorFrameChance` so placement spreads across the map.
+   */
+  decorativeDoorsMax: number
   smoothPasses: number
   score: LayoutScoreWeights
 }
@@ -101,10 +121,12 @@ export const LEGACY_CAVE_TUNING: CaveLayoutTuning = {
 
 export const LEGACY_RUINS_TUNING: RuinsLayoutTuning = {
   cellSize: 5,
-  stampSkipChance: 0.08,
+  /** Higher skip rate breaks the stamp lattice so MST + extras rarely merge every cell into one macro room. */
+  stampSkipChance: 0.2,
   shrinkRoomChance: 0.35,
-  doorwayChance: 0.55,
+  doorwayChance: 0.26,
   maxMacroClusters: 10,
+  spanningTreeDoorways: true,
 }
 
 export const LEGACY_BSP_TUNING: BspLayoutTuning = {
@@ -145,6 +167,15 @@ export const LEGACY_SCORE_WEIGHTS: LayoutScoreWeights = {
   pathLenMult: 1,
   junctionMult: 3,
   branchLatticeMult: 2,
+  junctionAntiBlobStartRatio: 0,
+  junctionAntiBlobPenaltyPerUnit: 0,
+}
+
+/** Ruins-profile score nudges: penalize hall-like junction density when comparing rerolls. */
+export const RUINS_LAYOUT_SCORE_WEIGHTS: LayoutScoreWeights = {
+  ...LEGACY_SCORE_WEIGHTS,
+  junctionAntiBlobStartRatio: 0.32,
+  junctionAntiBlobPenaltyPerUnit: 5.5,
 }
 
 export const LEGACY_LOOP_INJECT_TUNING: LoopInjectTuning = {
@@ -167,6 +198,7 @@ function cloneTopology(t: LayoutTopologyTuning): LayoutTopologyTuning {
     junctionMaxRooms: t.junctionMaxRooms,
     doorFramesMax: t.doorFramesMax,
     decorativeDoorFrameChance: t.decorativeDoorFrameChance,
+    decorativeDoorsMax: t.decorativeDoorsMax,
     smoothPasses: t.smoothPasses,
     score: { ...t.score },
   }
@@ -180,8 +212,9 @@ const BASE_DUNGEON: LayoutTopologyTuning = {
   loopInject: { ...LEGACY_LOOP_INJECT_TUNING },
   injectLoopsMax: 2,
   junctionMaxRooms: 6,
-  doorFramesMax: 10,
+  doorFramesMax: 7,
   decorativeDoorFrameChance: 0.75,
+  decorativeDoorsMax: 8,
   smoothPasses: 1,
   score: { ...LEGACY_SCORE_WEIGHTS },
 }
@@ -196,6 +229,7 @@ const BASE_CAVE_TYPE: LayoutTopologyTuning = {
   junctionMaxRooms: 4,
   doorFramesMax: 10,
   decorativeDoorFrameChance: 0.75,
+  decorativeDoorsMax: 8,
   smoothPasses: 1,
   score: { ...LEGACY_SCORE_WEIGHTS },
 }
@@ -206,12 +240,13 @@ const BASE_RUINS_TYPE: LayoutTopologyTuning = {
   bsp: { ...LEGACY_BSP_TUNING },
   shaping: { ...LEGACY_RUINS_SHAPING },
   loopInject: { ...LEGACY_LOOP_INJECT_TUNING },
-  injectLoopsMax: 2,
+  injectLoopsMax: 0,
   junctionMaxRooms: 4,
   doorFramesMax: 10,
   decorativeDoorFrameChance: 0.75,
-  smoothPasses: 1,
-  score: { ...LEGACY_SCORE_WEIGHTS },
+  decorativeDoorsMax: 8,
+  smoothPasses: 0,
+  score: { ...RUINS_LAYOUT_SCORE_WEIGHTS },
 }
 
 /** Per-`FloorType` topology; base three match legacy behavior. */
@@ -255,6 +290,7 @@ export const TOPOLOGY_BY_FLOOR_TYPE: Record<FloorType, LayoutTopologyTuning> = {
     t.shaping.alcovePerRoomChance = 0.12
     t.injectLoopsMax = 1
     t.doorFramesMax = 5
+    t.decorativeDoorsMax = 4
     t.score.deadEndPenalty = 1.35
     return t
   })(),
@@ -269,16 +305,17 @@ export const TOPOLOGY_BY_FLOOR_TYPE: Record<FloorType, LayoutTopologyTuning> = {
     t.shaping.pillarsMaxPerRoom = 4
     t.injectLoopsMax = 3
     t.doorFramesMax = 12
+    t.decorativeDoorsMax = 11
     t.score.junctionMult = 3.25
     return t
   })(),
   Catacombs: (() => {
     const t = cloneTopology(BASE_RUINS_TYPE)
     t.ruins.cellSize = 4
-    t.ruins.stampSkipChance = 0.06
-    t.ruins.doorwayChance = 0.6
+    t.ruins.stampSkipChance = 0.14
+    t.ruins.doorwayChance = 0.3
     t.shaping.jitterStrength = 0.45
-    t.injectLoopsMax = 3
+    t.injectLoopsMax = 1
     t.loopInject.thickCorridorChance = 0.22
     t.score.branchLatticeMult = 2.25
     t.score.junctionMult = 3.15
@@ -287,13 +324,13 @@ export const TOPOLOGY_BY_FLOOR_TYPE: Record<FloorType, LayoutTopologyTuning> = {
   Palace: (() => {
     const t = cloneTopology(BASE_RUINS_TYPE)
     t.ruins.cellSize = 6
-    t.ruins.stampSkipChance = 0.1
-    t.ruins.doorwayChance = 0.5
+    t.ruins.stampSkipChance = 0.18
+    t.ruins.doorwayChance = 0.24
     t.ruins.maxMacroClusters = 12
     t.shaping.pillarsMaxPerRoom = 1
     t.shaping.alcovePerRoomChance = 0.42
     t.shaping.jitterStrength = 0.36
-    t.injectLoopsMax = 2
+    t.injectLoopsMax = 1
     t.loopInject.thickCorridorChance = 0.1
     t.score.junctionMult = 3.4
     return t

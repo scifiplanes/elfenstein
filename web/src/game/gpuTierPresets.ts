@@ -8,8 +8,10 @@ export const TIER_OWNED_RENDER_KEYS = [
   'shadowMapSize',
   'shadowFilter',
   'torchPoiLightMax',
+  'playerLightFloorItemMax',
   'ditherStrength',
   'ditherMatrixSize',
+  'elderShaderQuality',
 ] as const
 
 export type TierOwnedRenderKey = (typeof TIER_OWNED_RENDER_KEYS)[number]
@@ -26,8 +28,10 @@ const GPU_TIER_PRESETS: Record<Exclude<GpuTier, 'custom'>, Partial<RenderTuning>
     shadowMapSize: 128,
     shadowFilter: 0,
     torchPoiLightMax: 1,
+    playerLightFloorItemMax: 0,
     ditherStrength: 0.38,
     ditherMatrixSize: 2,
+    elderShaderQuality: 0,
   },
   balanced: {
     pixelRatioCap: 1.25,
@@ -36,8 +40,10 @@ const GPU_TIER_PRESETS: Record<Exclude<GpuTier, 'custom'>, Partial<RenderTuning>
     shadowMapSize: 256,
     shadowFilter: 1,
     torchPoiLightMax: 2,
+    playerLightFloorItemMax: 1,
     ditherStrength: 0.55,
     ditherMatrixSize: 4,
+    elderShaderQuality: 1,
   },
   high: {
     pixelRatioCap: 1.5,
@@ -46,8 +52,10 @@ const GPU_TIER_PRESETS: Record<Exclude<GpuTier, 'custom'>, Partial<RenderTuning>
     shadowMapSize: 256,
     shadowFilter: 2,
     torchPoiLightMax: 3,
+    playerLightFloorItemMax: 2,
     ditherStrength: 0.55,
     ditherMatrixSize: 4,
+    elderShaderQuality: 2,
   },
 }
 

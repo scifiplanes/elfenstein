@@ -11,6 +11,11 @@ export class SfxFilePlayer {
     return this.ctx
   }
 
+  /** Create/resume context inside a user gesture (e.g. title “tap to start”). */
+  unlock() {
+    this.ensure()
+  }
+
   async load(urls: string[]) {
     const ctx = this.ensure()
     this.buffers = await Promise.all(

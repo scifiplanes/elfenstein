@@ -11,6 +11,7 @@ import {
 } from '../cursor/modalChromeActivate'
 import popup from '../shared/GamePopup.module.css'
 import styles from './PaperdollModal.module.css'
+import { ItemEmoji } from '../item/ItemEmoji'
 
 const SLOT_ORDER: EquipmentSlot[] = ['head', 'handLeft', 'handRight', 'feet', 'clothing', 'accessory']
 
@@ -129,11 +130,11 @@ export function PaperdollModal(props: {
                       }}
                       aria-label={`Equipped: ${def.name}`}
                     >
-                      {def.icon.kind === 'emoji' ? def.icon.value : '□'}
+                      {def.icon.kind === 'emoji' ? <ItemEmoji icon={def.icon} /> : '□'}
                     </button>
                   ) : (
                     <span className={styles.itemBtn} aria-hidden>
-                      {def.icon.kind === 'emoji' ? def.icon.value : '□'}
+                      {def.icon.kind === 'emoji' ? <ItemEmoji icon={def.icon} /> : '□'}
                     </span>
                   )
                 ) : (

@@ -1,3 +1,4 @@
+import { plannedLinearPathNodeIds } from './missionFirst'
 import type { FloorGenOutput, MissionGraph, MissionGraphEdge, MissionGraphNode } from './types'
 import { bfsDistances, shortestPathLatticeStats } from './validate'
 
@@ -41,24 +42,59 @@ export function buildMissionGraph(gen: FloorGenOutput): MissionGraph {
     chainFrom = id
   }
 
-  const locks = gen.doors.filter((d) => d.locked && d.lockId).sort((a, b) => (a.orderOnPath ?? 0) - (b.orderOnPath ?? 0))
-  for (const d of locks) {
-    const lk = `mission_lock_${d.lockId}`
-    nodes.push({ id: lk, role: 'LockGate', pos: { ...d.pos }, lockId: d.lockId })
-    const keyIt = gen.floorItems.find((it) => it.forLockId === d.lockId)
-    if (keyIt) {
-      const ky = `mission_key_${d.lockId}`
-      nodes.push({
-        id: ky,
-        role: 'KeyPickup',
-        pos: { ...keyIt.pos },
-        lockId: d.lockId,
-        itemDefId: keyIt.defId,
-      })
-      edges.push({ fromId: chainFrom, toId: ky, kind: 'path' })
+  const plan = gen.meta.plannedMission
+  const pathIds = plan ? plannedLinearPathNodeIds(plan) : null
+  if (pathIds && plan) {
+    const byId = new Map(plan.nodes.map((n) => [n.id, n]))
+    let pendingKeyGraphId: string | null = null
+    for (const nid of pathIds) {
+      const pn = byId.get(nid)
+      if (!pn || pn.role === 'Entrance' || pn.role === 'Exit') continue
+      if (pn.role === 'KeyPickup' && pn.lockId) {
+        const keyIt = gen.floorItems.find((it) => it.forLockId === pn.lockId)
+        if (!keyIt) continue
+        const ky = `mission_key_${pn.lockId}`
+        nodes.push({
+          id: ky,
+          role: 'KeyPickup',
+          pos: { ...keyIt.pos },
+          lockId: pn.lockId,
+          itemDefId: keyIt.defId,
+        })
+        pendingKeyGraphId = ky
+      } else if (pn.role === 'LockGate' && pn.lockId) {
+        const door = gen.doors.find((d) => d.locked && d.lockId === pn.lockId)
+        if (!door) continue
+        const lk = `mission_lock_${pn.lockId}`
+        nodes.push({ id: lk, role: 'LockGate', pos: { ...door.pos }, lockId: pn.lockId })
+        if (pendingKeyGraphId) {
+          edges.push({ fromId: chainFrom, toId: pendingKeyGraphId, kind: 'path' })
+          pendingKeyGraphId = null
+        }
+        edges.push({ fromId: chainFrom, toId: lk, kind: 'locked', lockId: pn.lockId })
+        chainFrom = lk
+      }
     }
-    edges.push({ fromId: chainFrom, toId: lk, kind: 'locked', lockId: d.lockId })
-    chainFrom = lk
+  } else {
+    const locks = gen.doors.filter((d) => d.locked && d.lockId).sort((a, b) => (a.orderOnPath ?? 0) - (b.orderOnPath ?? 0))
+    for (const d of locks) {
+      const lk = `mission_lock_${d.lockId}`
+      nodes.push({ id: lk, role: 'LockGate', pos: { ...d.pos }, lockId: d.lockId })
+      const keyIt = gen.floorItems.find((it) => it.forLockId === d.lockId)
+      if (keyIt) {
+        const ky = `mission_key_${d.lockId}`
+        nodes.push({
+          id: ky,
+          role: 'KeyPickup',
+          pos: { ...keyIt.pos },
+          lockId: d.lockId,
+          itemDefId: keyIt.defId,
+        })
+        edges.push({ fromId: chainFrom, toId: ky, kind: 'path' })
+      }
+      edges.push({ fromId: chainFrom, toId: lk, kind: 'locked', lockId: d.lockId })
+      chainFrom = lk
+    }
   }
   edges.push({ fromId: chainFrom, toId: 'mission_exit', kind: 'path' })
 

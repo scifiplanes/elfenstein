@@ -1,9 +1,8 @@
 import { forwardRef, useEffect, useLayoutEffect, useRef, useState, type Dispatch, type Ref, type RefObject } from 'react'
 import type { Action } from '../../game/reducer'
 import { clampCampEveryFloors, floorTypeForFloorIndex } from '../../game/state/runFloorSchedule'
-import { layoutProfile } from '../../procgen/floorLayoutProfile'
-import type { FloorType } from '../../procgen/types'
 import type { GameState, HubNormRect } from '../../game/types'
+import { campHubSkinForFloorType } from './campHubSkin'
 import { hubTavernTradeHoverRectRef } from './hubTavernTradeCursorRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './HubViewport.module.css'
@@ -16,14 +15,6 @@ const START_HUB_ART: Record<'village' | 'tavern', string> = {
 }
 
 const CAMP_TAVERN_BG = '/content/camp_tavern_background.png'
-
-/** Camp village art triples follow `layoutProfile` so reskins match their geometry realizer. */
-function campVillageSkinId(floorType: FloorType): 'village' | 'cave' | 'dungeon' {
-  const p = layoutProfile(floorType)
-  if (p === 'Cave') return 'cave'
-  if (p === 'Dungeon') return 'dungeon'
-  return 'village'
-}
 
 const START_VILLAGE_HOVER: Record<'tavern' | 'dungeon', string> = {
   tavern: '/content/village_tavern_hover.png',
@@ -124,11 +115,11 @@ export function HubViewport(props: {
   const camp = state.ui.hubKind === 'camp'
   const campEvery = clampCampEveryFloors(state.render.campEveryFloors)
   const campSkin = camp
-    ? campVillageSkinId(floorTypeForFloorIndex(Math.max(0, state.floor.floorIndex - 1), campEvery))
-    : 'village'
+    ? campHubSkinForFloorType(floorTypeForFloorIndex(Math.max(0, state.floor.floorIndex - 1), campEvery))
+    : null
   const mainArtSrc =
     scene === 'village'
-      ? camp
+      ? camp && campSkin
         ? `/content/camp_${campSkin}.png`
         : START_HUB_ART.village
       : camp
@@ -173,7 +164,7 @@ export function HubViewport(props: {
 
   const villageHoverSrc =
     scene === 'village' && variant === 'interactive' && villageHover
-      ? camp
+      ? camp && campSkin
         ? `/content/camp_${campSkin}_${villageHover === 'tavern' ? 'tavern' : 'dungeon'}_hover.png`
         : START_VILLAGE_HOVER[villageHover]
       : null
@@ -201,6 +192,12 @@ export function HubViewport(props: {
             onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/enterDungeon' }) : undefined}
             onPointerEnter={variant === 'interactive' ? () => setVillageHover('dungeon') : undefined}
             onPointerLeave={variant === 'interactive' ? () => setVillageHover(null) : undefined}
+          />
+          <HotspotBox
+            rect={hs.village.tent}
+            variant={variant}
+            dataTestId="hub-hotspot-tent"
+            onActivate={variant === 'interactive' ? () => dispatch({ type: 'hub/recruitAtTent' }) : undefined}
           />
         </>
       ) : (

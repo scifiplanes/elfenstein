@@ -64,6 +64,13 @@ export function scoreLayout(
   const cap = Math.max(0, weights.pathLenCap)
   const pathTerm = Math.min(cap, pathLen) * weights.pathLenMult
 
+  const blobRatio = Math.max(0, weights.junctionAntiBlobStartRatio)
+  const blobPen = Math.max(0, weights.junctionAntiBlobPenaltyPerUnit)
+  const antiBlob =
+    blobRatio > 0 && blobPen > 0 && reachablePassage > 0
+      ? Math.max(0, junctions - blobRatio * reachablePassage) * blobPen
+      : 0
+
   // Weighted score (tuned for relative comparison only).
   return (
     reachablePassage * weights.reachableMult -
@@ -72,6 +79,7 @@ export function scoreLayout(
     junctions * weights.junctionMult +
     branchBonus +
     lockLoopBonus +
-    lockPresenceBonus
+    lockPresenceBonus -
+    antiBlob
   )
 }

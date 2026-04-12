@@ -4,6 +4,7 @@ import type {
   CharacterId,
   DragPayload,
   DragTarget,
+  ElderDistortionTuning,
   EquipmentSlot,
   GameState,
   GpuTier,
@@ -21,17 +22,31 @@ import { mergeHubHotspotConfig, type HubHotspotPatch } from './hubHotspotDefault
 import { applyGpuTierToRender, isTierOwnedRenderKey } from './gpuTierPresets'
 import { DEFAULT_RENDER } from './tuningDefaults'
 import { clampNpcSpawnCountRange } from './npcSpawnTuning'
+import { clampPortraitHatOffsetPctByDefId, clampPortraitHatSlotHeightPctByDefId } from './content/equippableHats'
 import {
   LEGACY_NPC_FLAT_KEYS,
   buildNpcBillboardFromInput,
   clampNpcBillboardRows,
   type LegacyNpcRenderFlat,
 } from './npcBillboardTuning'
+import { DEFAULT_ELDER_DISTORTION, clampElderDistortion } from './elderDistortionTuning'
 import { BOBR_INTRO_TOTAL_MS } from './bobrIntroMs'
 import { makeInitialState } from './state/initialState'
 import { applyStatusDecay } from './state/status'
+import { applyItemDurabilityWear, inventoryItemFromDef } from './state/itemDurability'
 import { consumeItem, dropItemToFloor, moveItemToInventorySlot, swapInventorySlots } from './state/inventory'
-import { feedCharacter, inspectCharacter } from './state/interactions'
+import { applyBandageStrip, feedCharacter, inspectCharacter, prunePortraitBandageDecals } from './state/interactions'
+import { debugReplaceAllPartyWithTentTemplates, recruitAtTent, regenerateTentPortraitHues } from './state/recruitAtTent'
+import {
+  applyCharacterStaminaCost,
+  applyPartyStaminaCost,
+  canCharacterPayStamina,
+  canPartyPayStamina,
+  pickCraftStaminaPayer,
+} from './state/partyStamina'
+import { effectiveStaminaMoveEveryN, nextStaminaMovePace } from './state/staminaMovePacing'
+import { prunePortraitToasts, pushPortraitToast } from './state/portraitToasts'
+import { applyLowVitalPortraitWarnings } from './state/vitalPortraitWarnings'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import {
   clearEquippedSlotIfMatched,
@@ -47,18 +62,40 @@ import type { FloorProperty, FloorType } from '../procgen/types'
 import { normalizeFloorGenDifficulty } from '../procgen/types'
 import { makeDropJitter } from './state/dropJitter'
 import { hydrateGenFloorItems, snapViewToGrid } from './state/procgenHydrate'
+import { bossDefinitionsEnabled, getBossDefinitionByTraitId } from './content/npcBosses'
 import { npcKindHpMax } from './content/npcCombat'
 import { hydrateFloorNpcs, npcsWithDefaultStatuses } from './state/npcHydrate'
 import { pickupFloorItem } from './state/floorItems'
 import { pickNpcLootDefId } from './content/npcLoot'
-import { isAnyDoorTile, isOpenDoorTile, isPassableOpenDoorTile, tileAfterDoorOpens } from './tiles'
-import { findRecipe } from './content/recipes'
+import {
+  DOOR_OCTOPUS_OPEN_FX_DURATION_MS,
+  doorFxVisualForTile,
+  isAnyDoorTile,
+  isOpenDoorTile,
+  isPassableOpenDoorTile,
+  tileAfterDoorOpens,
+} from './tiles'
+import { findRecipe, GLOWBUG_JAR_MAX_GLOWBUGS, isGlowbugJarEnrichPair } from './content/recipes'
 import { maybeFinishCrafting, startCrafting } from './state/crafting'
 import { pruneExpiredActivityLog, pushActivityLog } from './state/activityLog'
+import {
+  composeCombatLogLine,
+  pcAttackNpcLegacyHit,
+  pcAttackNpcLegacyMiss,
+  pcAttackNpcThematicHit,
+  pcAttackNpcThematicMiss,
+} from './state/combatActivityLog'
 import { descendToNextFloor } from './state/floorProgression'
 import { FLOOR_TYPE_ORDER } from './state/runFloorSchedule'
 import { nearestFloorCellWithoutPoi, pickPlayerSpawnCell, poiOccupiesCell } from './state/playerFloorCell'
-import { applyXp } from './state/runProgression'
+import { canItemBreakOpenDoor } from './state/openDoorDestroy'
+import {
+  applyXp,
+  applyXpWithActivityLog,
+  combatVictoryXp,
+  staminaMax,
+  XP_DOOR_UNLOCK,
+} from './state/runProgression'
 import {
   advanceTurnIndex,
   applyCombatFireshield,
@@ -68,11 +105,13 @@ import {
   computePcAttackDamage,
   currentTurn,
   defend,
+  effectiveCombatAttackStaminaCost,
   endCombat,
   enterCombat,
-  npcCombatTuning,
+  resolveNpcCombatTuning,
   npcTakeTurn,
   pruneCombatTurnQueue,
+  skipPcTurn,
 } from './state/combat'
 import { roomForCell } from './state/roomGeometry'
 import {
@@ -169,12 +208,19 @@ export type Action =
   | { type: 'player/strafe'; side: -1 | 1 }
   | { type: 'poi/use'; poiId: string }
   | { type: 'floor/pickup'; itemId: ItemId }
-  | { type: 'drag/drop'; payload: DragPayload; target: DragTarget; nowMs?: number }
+  | {
+      type: 'drag/drop'
+      payload: DragPayload
+      target: DragTarget
+      nowMs?: number
+      /** Pointer release normalized to the target portrait `.portrait` rect (body drops). */
+      portraitDropNorm?: { u: number; v: number }
+    }
   | { type: 'equip/unequip'; characterId: string; slot: EquipmentSlot }
   | { type: 'floor/regen'; seed?: number }
   | { type: 'floor/descend' }
   /** Debug: spawn an NPC of the given kind one cell in front of the player. */
-  | { type: 'debug/spawnNpc'; kind: NpcKind }
+  | { type: 'debug/spawnNpc'; kind: NpcKind; variant?: 'boss'; bossTraitId?: string }
   /** Debug: spawn a POI of the given kind one cell in front of the player. */
   | { type: 'debug/spawnPoi'; kind: PoiKind }
   /** Debug: spawn a floor item of the given def one cell in front of the player (floor tile only). */
@@ -192,11 +238,21 @@ export type Action =
   | { type: 'ui/triggerDebugBgSfx'; index: number }
   | {
       type: 'render/set'
-      key: Exclude<keyof GameState['render'], 'npcBillboard' | 'gpuTier'>
+      key: Exclude<
+        keyof GameState['render'],
+        | 'npcBillboard'
+        | 'gpuTier'
+        | 'portraitHatSlotHeightPctByDefId'
+        | 'portraitHatOffsetXPctByDefId'
+        | 'portraitHatOffsetYPctByDefId'
+      >
       value: number
     }
   | { type: 'render/setGpuTier'; tier: Exclude<GpuTier, 'custom'> }
   | { type: 'render/npcBillboard'; kind: NpcKind; field: 'groundY' | 'size' | 'sizeRand'; value: number }
+  | { type: 'render/elderDistortion'; field: keyof ElderDistortionTuning; value: number }
+  | { type: 'render/portraitHatHeight'; defId: ItemDefId; value: number }
+  | { type: 'render/portraitHatOffset'; defId: ItemDefId; axis: 'x' | 'y'; value: number }
   | { type: 'debug/loadTuning'; render?: Partial<RenderTuning>; audio?: Partial<GameState['audio']> }
   | { type: 'debug/loadHubHotspots'; patch?: HubHotspotPatch }
   | { type: 'debug/loadPersistedUi'; patch?: DebugUiPersist }
@@ -204,13 +260,14 @@ export type Action =
   | { type: 'debug/setRoomTelegraphStrength'; strength: number }
   | {
       type: 'hubHotspot/setAxis'
-      spot: 'village.tavern' | 'village.cave' | 'tavern.innkeeper' | 'tavern.innkeeperTrade'
+      spot: 'village.tavern' | 'village.cave' | 'village.tent' | 'tavern.innkeeper' | 'tavern.innkeeperTrade'
       key: 'x' | 'y' | 'w' | 'h'
       value: number
     }
   | { type: 'hub/goTavern' }
   | { type: 'hub/goVillage' }
   | { type: 'hub/enterDungeon' }
+  | { type: 'hub/recruitAtTent' }
   | { type: 'hub/openTavernTrade' }
   | { type: 'hub/closeTavernTrade' }
   | { type: 'trade/openNpc'; npcId: string }
@@ -224,6 +281,10 @@ export type Action =
   | { type: 'debug/setShowNpcDialogPopupPreview'; show: boolean }
   /** F2: preview the death modal without killing the party. */
   | { type: 'debug/setShowDeathPopupPreview'; show: boolean }
+  /** F2: re-roll `tentReplacementPortraitHueDeg` + `tentReplacementPortraitSaturateMult` for all tent-replaced party members. */
+  | { type: 'debug/regenerateTentPortraitHues' }
+  /** F2: strip gear and replace every party slot with tent-style templates (debug). */
+  | { type: 'debug/replaceAllPartyWithTentTemplates' }
   | { type: 'floor/toggleChest'; poiId: string }
   | { type: 'npc/attack'; npcId: string; itemId: ItemId; actorId?: string }
   | { type: 'npc/give'; npcId: string; itemId: ItemId }
@@ -233,6 +294,7 @@ export type Action =
   | { type: 'combat/end' }
   | { type: 'combat/fleeAttempt' }
   | { type: 'combat/defend' }
+  | { type: 'combat/skip' }
   | { type: 'combat/clickAttack'; npcId: string }
   | { type: 'run/new'; playBobrIntro?: boolean }
   | { type: 'run/reloadCheckpoint' }
@@ -275,6 +337,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'render/setGpuTier':
       case 'render/npcBillboard':
+      case 'render/elderDistortion':
+      case 'render/portraitHatHeight':
+      case 'render/portraitHatOffset':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -282,6 +347,8 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
+      case 'debug/regenerateTentPortraitHues':
+      case 'debug/replaceAllPartyWithTentTemplates':
       case 'audio/set':
       case 'hubHotspot/setAxis':
       case 'ui/dismissBobrIntro':
@@ -308,6 +375,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'render/setGpuTier':
       case 'render/npcBillboard':
+      case 'render/elderDistortion':
+      case 'render/portraitHatHeight':
+      case 'render/portraitHatOffset':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -315,6 +385,8 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
+      case 'debug/regenerateTentPortraitHues':
+      case 'debug/replaceAllPartyWithTentTemplates':
       case 'audio/set':
       case 'hubHotspot/setAxis':
       case 'ui/dismissBobrIntro':
@@ -341,6 +413,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'render/setGpuTier':
       case 'render/npcBillboard':
+      case 'render/elderDistortion':
+      case 'render/portraitHatHeight':
+      case 'render/portraitHatOffset':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -353,6 +428,7 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'hub/goTavern':
       case 'hub/goVillage':
       case 'hub/enterDungeon':
+      case 'hub/recruitAtTent':
       case 'hub/openTavernTrade':
       case 'hub/closeTavernTrade':
       case 'trade/openNpc':
@@ -361,10 +437,14 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'trade/clearAsk':
       case 'trade/selectStock':
       case 'trade/stageOfferFromInventory':
+      case 'debug/regenerateTentPortraitHues':
+      case 'debug/replaceAllPartyWithTentTemplates':
       case 'drag/drop':
       case 'ui/sfx':
       case 'ui/shake':
       case 'ui/toast':
+      case 'ui/portraitFrameTap':
+      case 'ui/portraitIdleCancel':
       case 'ui/dismissBobrIntro':
         break
       default:
@@ -389,6 +469,9 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'render/set':
       case 'render/setGpuTier':
       case 'render/npcBillboard':
+      case 'render/elderDistortion':
+      case 'render/portraitHatHeight':
+      case 'render/portraitHatOffset':
       case 'debug/loadTuning':
       case 'debug/loadHubHotspots':
       case 'debug/loadPersistedUi':
@@ -396,6 +479,8 @@ export function reduce(state: GameState, action: Action): GameState {
       case 'debug/setRoomTelegraphStrength':
       case 'debug/setShowNpcDialogPopupPreview':
       case 'debug/setShowDeathPopupPreview':
+      case 'debug/regenerateTentPortraitHues':
+      case 'debug/replaceAllPartyWithTentTemplates':
       case 'audio/set':
       case 'hubHotspot/setAxis':
       case 'ui/dismissBobrIntro':
@@ -495,6 +580,7 @@ export function reduce(state: GameState, action: Action): GameState {
           shake: undefined,
           doorOpenFx: undefined,
           portraitMouth: undefined,
+          portraitBandageDecals: undefined,
           portraitShake: undefined,
           portraitIdlePulse: undefined,
           crafting: undefined,
@@ -543,6 +629,9 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'hub/enterDungeon': {
       if (state.ui.screen !== 'hub') return state
+      if (!state.party.chars.some((c) => c.hp > 0)) {
+        return reduce(pushActivityLog(state, 'You need a living party member to enter the dungeon.'), { type: 'ui/sfx', kind: 'reject' })
+      }
       const f = state.floor
       return {
         ...state,
@@ -559,6 +648,14 @@ export function reduce(state: GameState, action: Action): GameState {
         // Rebuild 3D mesh after hub used a different viewport rect for the same floor (avoids stale/off-by-one feel).
         floor: { ...f, floorGeomRevision: f.floorGeomRevision + 1 },
       }
+    }
+    case 'hub/recruitAtTent': {
+      if (state.ui.screen !== 'hub' || state.ui.hubScene !== 'village') return state
+      const next = recruitAtTent(state, CONTENT)
+      if (next === state) {
+        return reduce(pushActivityLog(state, 'No fallen heroes need replacing.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      return reduce(next, { type: 'ui/sfx', kind: 'ui' })
     }
     case 'hub/openTavernTrade': {
       const next = openHubInnkeeperTrade(state)
@@ -692,6 +789,8 @@ export function reduce(state: GameState, action: Action): GameState {
         next = { ...h, village: { ...h.village, tavern: { ...h.village.tavern, [key]: value } } }
       } else if (spot === 'village.cave') {
         next = { ...h, village: { ...h.village, cave: { ...h.village.cave, [key]: value } } }
+      } else if (spot === 'village.tent') {
+        next = { ...h, village: { ...h.village, tent: { ...h.village.tent, [key]: value } } }
       } else if (spot === 'tavern.innkeeper') {
         next = { ...h, tavern: { ...h.tavern, innkeeper: { ...h.tavern.innkeeper, [key]: value } } }
       } else if (spot === 'tavern.innkeeperTrade') {
@@ -732,13 +831,42 @@ export function reduce(state: GameState, action: Action): GameState {
       const span = Math.max(0, max - min)
       const ms = Math.round(min + Math.random() * span)
       const nowMs = performance.now()
-      return {
+      const r = state.render
+      const gain = Math.max(0, Math.round(Number(r.portraitRestStaminaGain ?? 0)))
+      const hunCost = Math.max(0, Math.round(Number(r.portraitRestHungerCost ?? 0)))
+      const thrCost = Math.max(0, Math.round(Number(r.portraitRestThirstCost ?? 0)))
+      const cd = Math.max(0, Math.round(Number(r.portraitRestCooldownMs ?? 0)))
+      const coolUntil = state.ui.portraitRestCooldownUntil?.[action.characterId] ?? 0
+      let next: GameState = {
         ...state,
         ui: {
           ...state.ui,
           portraitIdlePulse: { characterId: action.characterId, untilMs: nowMs + ms },
         },
       }
+      if (nowMs < coolUntil) return next
+      const idx = next.party.chars.findIndex((c) => c.id === action.characterId)
+      if (idx < 0) return next
+      const c = next.party.chars[idx]!
+      if (c.hp <= 0) return next
+      if (hunCost > 0 && c.hunger < hunCost) return next
+      if (thrCost > 0 && c.thirst < thrCost) return next
+      if (gain <= 0 && hunCost <= 0 && thrCost <= 0) return next
+      const sm = staminaMax(next)
+      const newSta = Math.min(sm, c.stamina + gain)
+      const staAdded = newSta - c.stamina
+      const newHun = Math.max(0, c.hunger - hunCost)
+      const newThr = Math.max(0, c.thirst - thrCost)
+      const chars = next.party.chars.slice()
+      chars[idx] = { ...c, stamina: newSta, hunger: newHun, thirst: newThr }
+      next = { ...next, party: { ...next.party, chars } }
+      const coolMap = { ...(next.ui.portraitRestCooldownUntil ?? {}), [action.characterId]: nowMs + cd }
+      next = { ...next, ui: { ...next.ui, portraitRestCooldownUntil: coolMap } }
+      const ttl = Math.max(400, Math.round(Number(r.portraitToastTtlMs ?? 1600)))
+      if (staAdded > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `+${staAdded} STA`, ttlMs: ttl })
+      if (hunCost > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `−${hunCost} hunger`, ttlMs: ttl })
+      if (thrCost > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `−${thrCost} thirst`, ttlMs: ttl })
+      return next
     }
     case 'ui/portraitIdleCancel': {
       const p = state.ui.portraitIdlePulse
@@ -785,14 +913,25 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'audio/set':
       return { ...state, audio: { ...state.audio, [action.key]: action.value } }
     case 'time/tick': {
+      const finishTickCombat = (s: GameState) => maybeEndCombat(s)
       const tickNow = action.nowMs
       let tickState = state
       if (state.ui.bobrIntroUntilMs != null && tickNow >= state.ui.bobrIntroUntilMs) {
         tickState = { ...state, ui: { ...state.ui, bobrIntroUntilMs: undefined } }
       }
-      const next: GameState = pruneExpiredActivityLog({ ...tickState, nowMs: tickNow })
+      let next: GameState = pruneExpiredActivityLog({ ...tickState, nowMs: tickNow })
+      next = prunePortraitToasts(next, tickNow)
+      next = prunePortraitBandageDecals(next, tickNow)
       const withDecay = applyStatusDecay(next)
-      const withCrafting = maybeFinishCrafting(withDecay)
+      let withCrafting = maybeFinishCrafting(withDecay)
+      const doorOpenFxPruned = (withCrafting.ui.doorOpenFx ?? []).filter((f) => f.untilMs > action.nowMs)
+      withCrafting = {
+        ...withCrafting,
+        ui: {
+          ...withCrafting.ui,
+          doorOpenFx: doorOpenFxPruned.length ? doorOpenFxPruned : undefined,
+        },
+      }
       let withAnim = tickViewAnimation(withCrafting)
 
       // Invariant: when not turning, camera yaw must match the canonical facing.
@@ -823,10 +962,11 @@ export function reduce(state: GameState, action: Action): GameState {
         clearedQueue !== sfxQueue ||
         withAnim.view !== withCrafting.view
       ) {
-        const updated = {
+        let updated: GameState = {
           ...withAnim,
           ui: { ...withAnim.ui, shake, portraitMouth, portraitShake, portraitIdlePulse, sfxQueue: clearedQueue },
         }
+        updated = applyLowVitalPortraitWarnings(updated)
         const wiped = updated.party.chars.length > 0 && updated.party.chars.every((c) => c.hp <= 0)
         if (wiped && !updated.ui.death) {
           const dead = {
@@ -837,23 +977,24 @@ export function reduce(state: GameState, action: Action): GameState {
               debugShowDeathPopup: false,
             },
           }
-          return pushActivityLog(dead, 'The party has fallen.')
+          return finishTickCombat(pushActivityLog(dead, 'The party has fallen.'))
         }
-        return updated
+        return finishTickCombat(updated)
       }
-      const wiped = withAnim.party.chars.length > 0 && withAnim.party.chars.every((c) => c.hp <= 0)
-      if (wiped && !withAnim.ui.death) {
+      const withLowVital = applyLowVitalPortraitWarnings(withAnim)
+      const wiped = withLowVital.party.chars.length > 0 && withLowVital.party.chars.every((c) => c.hp <= 0)
+      if (wiped && !withLowVital.ui.death) {
         const dead = {
-          ...withAnim,
+          ...withLowVital,
           ui: {
-            ...withAnim.ui,
-            death: { atMs: withAnim.nowMs, runId: withAnim.run.runId, floorIndex: withAnim.floor.floorIndex, level: withAnim.run.level },
+            ...withLowVital.ui,
+            death: { atMs: withLowVital.nowMs, runId: withLowVital.run.runId, floorIndex: withLowVital.floor.floorIndex, level: withLowVital.run.level },
             debugShowDeathPopup: false,
           },
         }
-        return pushActivityLog(dead, 'The party has fallen.')
+        return finishTickCombat(pushActivityLog(dead, 'The party has fallen.'))
       }
-      return withAnim
+      return finishTickCombat(withLowVital)
     }
     case 'render/set': {
       const tierPatch: Partial<RenderTuning> = isTierOwnedRenderKey(action.key) ? { gpuTier: 'custom' } : {}
@@ -874,6 +1015,26 @@ export function reduce(state: GameState, action: Action): GameState {
       const row = { ...cur, [action.field]: action.value }
       const npcBillboard = { ...state.render.npcBillboard, [action.kind]: row }
       const render = clampRenderTuning({ ...state.render, npcBillboard })
+      return { ...state, render }
+    }
+    case 'render/elderDistortion': {
+      const elderDistortion = { ...state.render.elderDistortion, [action.field]: action.value }
+      const render = clampRenderTuning({ ...state.render, elderDistortion })
+      return { ...state, render }
+    }
+    case 'render/portraitHatHeight': {
+      const portraitHatSlotHeightPctByDefId = {
+        ...state.render.portraitHatSlotHeightPctByDefId,
+        [action.defId]: action.value,
+      }
+      const render = clampRenderTuning({ ...state.render, portraitHatSlotHeightPctByDefId })
+      return { ...state, render }
+    }
+    case 'render/portraitHatOffset': {
+      const key =
+        action.axis === 'x' ? ('portraitHatOffsetXPctByDefId' as const) : ('portraitHatOffsetYPctByDefId' as const)
+      const patch = { ...state.render[key], [action.defId]: action.value }
+      const render = clampRenderTuning({ ...state.render, [key]: patch })
       return { ...state, render }
     }
     case 'debug/loadTuning': {
@@ -897,6 +1058,13 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'debug/setShowDeathPopupPreview': {
       return { ...state, ui: { ...state.ui, debugShowDeathPopup: action.show } }
     }
+    case 'debug/regenerateTentPortraitHues': {
+      return regenerateTentPortraitHues(state)
+    }
+    case 'debug/replaceAllPartyWithTentTemplates': {
+      if (state.combat) return rejectNotWhileInCombat(state)
+      return debugReplaceAllPartyWithTentTemplates(state, CONTENT)
+    }
     case 'floor/toggleChest': {
       const poi = state.floor.pois.find((p) => p.id === action.poiId)
       if (!poi || poi.kind !== 'Chest') return state
@@ -906,7 +1074,18 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'debug/spawnNpc': {
       const dv = dirVec(state.floor.playerDir)
       const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
-      const hpMax = npcKindHpMax(action.kind)
+      let hpMax = npcKindHpMax(action.kind)
+      let variant: 'boss' | undefined
+      let bossTraitId: string | undefined
+      if (action.variant === 'boss') {
+        const def =
+          action.bossTraitId != null
+            ? getBossDefinitionByTraitId(action.bossTraitId)
+            : bossDefinitionsEnabled().find((d) => d.kind === action.kind)
+        variant = 'boss'
+        bossTraitId = def?.bossTraitId ?? `debug_boss_${action.kind}`
+        hpMax = Math.max(1, Math.round(npcKindHpMax(action.kind) * (def?.hpMul ?? 1.25)))
+      }
       const base = {
         id: `debug_npc_${state.nowMs}`,
         kind: action.kind,
@@ -916,27 +1095,35 @@ export function reduce(state: GameState, action: Action): GameState {
         hpMax,
         language: 'DeepGnome' as const,
         statuses: [] as GameState['floor']['npcs'][number]['statuses'],
+        ...(variant ? { variant, bossTraitId } : {}),
       }
       const npc: GameState['floor']['npcs'][number] =
-        action.kind === 'Bobr'
-          ? {
-              ...base,
-              status: 'friendly' as const,
-              trade: {
-                stock: [
-                  { defId: 'Mushrooms' as const, qty: 3 },
-                  { defId: 'Flourball' as const, qty: 1 },
-                ],
-                wants: ['Stone' as const, 'Stick' as const],
-              },
-            }
-          : { ...base, status: 'neutral' as const }
+        action.variant === 'boss'
+          ? { ...base, status: 'hostile' as const }
+          : action.kind === 'Bobr'
+            ? {
+                ...base,
+                status: 'friendly' as const,
+                trade: {
+                  stock: [
+                    { defId: 'Mushrooms' as const, qty: 3 },
+                    { defId: 'Flourball' as const, qty: 1 },
+                  ],
+                  wants: ['Stone' as const, 'Stick' as const],
+                },
+              }
+            : { ...base, status: 'neutral' as const }
       return { ...state, floor: { ...state.floor, npcs: [...state.floor.npcs, npc], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
     case 'debug/spawnPoi': {
       const dv = dirVec(state.floor.playerDir)
       const pos = { x: state.floor.playerPos.x + dv.x, y: state.floor.playerPos.y + dv.y }
-      const poi = { id: `debug_poi_${state.nowMs}`, kind: action.kind, pos }
+      const poi =
+        action.kind === 'Campfire'
+          ? { id: `debug_poi_${state.nowMs}`, kind: 'Campfire' as const, pos, cookUsesLeft: 6 }
+          : action.kind === 'KuratkoNest'
+            ? { id: `debug_poi_${state.nowMs}`, kind: 'KuratkoNest' as const, pos, eggsLeft: 3, opened: false }
+            : { id: `debug_poi_${state.nowMs}`, kind: action.kind, pos }
       return { ...state, floor: { ...state.floor, pois: [...state.floor.pois, poi], floorGeomRevision: state.floor.floorGeomRevision + 1 } }
     }
     case 'debug/spawnItem': {
@@ -962,7 +1149,7 @@ export function reduce(state: GameState, action: Action): GameState {
         ...state,
         party: {
           ...state.party,
-          items: { ...state.party.items, [newId]: { id: newId, defId: action.defId, qty: 1 } },
+          items: { ...state.party.items, [newId]: inventoryItemFromDef(CONTENT, action.defId, newId, 1) },
         },
         floor: {
           ...state.floor,
@@ -1037,6 +1224,8 @@ export function reduce(state: GameState, action: Action): GameState {
           playerPos,
           playerDir,
           roomHazardAppliedForRoomId: undefined,
+          staminaStepPaceByChar: {},
+          staminaStrafePaceByChar: {},
         },
         party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
         view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
@@ -1049,13 +1238,18 @@ export function reduce(state: GameState, action: Action): GameState {
     case 'player/turn': {
       const stateAfterDialog = dismissNpcDialogOnMovement(state)
       if (stateAfterDialog.view.anim) return stateAfterDialog
+      const turnCost = Math.max(0, Math.round(Number(stateAfterDialog.render.staminaCostTurn ?? 0)))
+      if (turnCost > 0 && !canPartyPayStamina(stateAfterDialog, turnCost)) {
+        const withMsg = pushActivityLog(stateAfterDialog, 'Too exhausted to turn around.')
+        return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+      }
       const dir = (((stateAfterDialog.floor.playerDir + action.dir) % 4) + 4) % 4
       const fromYaw = stateAfterDialog.view.camYaw
       const baseToYaw = (dir * Math.PI) / 2
       const toYaw = nearestEquivalentAngle(fromYaw, baseToYaw)
       const startedAtMs = stateAfterDialog.nowMs
       const endsAtMs = startedAtMs + 90
-      return {
+      let turned: GameState = {
         ...stateAfterDialog,
         floor: { ...stateAfterDialog.floor, playerDir: dir as any },
         view: {
@@ -1071,6 +1265,8 @@ export function reduce(state: GameState, action: Action): GameState {
           },
         },
       }
+      if (turnCost > 0) turned = applyPartyStaminaCost(turned, turnCost)
+      return turned
     }
     case 'player/step': {
       const s0 = dismissNpcDialogOnMovement(state)
@@ -1084,7 +1280,7 @@ export function reduce(state: GameState, action: Action): GameState {
       const v = dirVec(playerDir)
       const nx = playerPos.x + v.x * step
       const ny = playerPos.y + v.y * step
-      return attemptMoveTo(s0, nx, ny)
+      return attemptMoveTo(s0, nx, ny, 'step')
     }
     case 'player/strafe': {
       const s0 = dismissNpcDialogOnMovement(state)
@@ -1097,15 +1293,34 @@ export function reduce(state: GameState, action: Action): GameState {
       const v = strafeVec(playerDir, action.side)
       const nx = playerPos.x + v.x
       const ny = playerPos.y + v.y
-      return attemptMoveTo(s0, nx, ny)
+      return attemptMoveTo(s0, nx, ny, 'strafe')
     }
     case 'poi/use': {
       if (state.combat) return rejectNotWhileInCombat(state)
-      return applySpawnRoomHazardIfNeeded(applyPoiUse(state, CONTENT, action.poiId))
+      const before = state
+      const used = applyPoiUse(before, CONTENT, action.poiId)
+      if (used === before) return applySpawnRoomHazardIfNeeded(used)
+      const poiCost = Math.max(0, Math.round(Number(before.render.staminaCostPoiUse ?? 0)))
+      if (poiCost > 0 && !canPartyPayStamina(before, poiCost)) {
+        const withMsg = pushActivityLog(before, 'Too exhausted.')
+        return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+      }
+      const paid = poiCost > 0 ? applyPartyStaminaCost(used, poiCost) : used
+      return applySpawnRoomHazardIfNeeded(paid)
     }
     case 'floor/pickup':
       if (state.combat) return rejectNotWhileInCombat(state)
-      return pickupFloorItem(state, action.itemId)
+      {
+        const before = state
+        const pickCost = Math.max(0, Math.round(Number(before.render.staminaCostPickup ?? 0)))
+        if (pickCost > 0 && !canPartyPayStamina(before, pickCost)) {
+          const withMsg = pushActivityLog(before, 'Too exhausted to pick up.')
+          return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+        }
+        const picked = pickupFloorItem(before, action.itemId)
+        if (picked.floor.itemsOnFloor.length === before.floor.itemsOnFloor.length) return picked
+        return pickCost > 0 ? applyPartyStaminaCost(picked, pickCost) : picked
+      }
     case 'drag/drop': {
       const stateAtAction = action.nowMs != null ? { ...state, nowMs: action.nowMs } : state
       const { payload, target } = action
@@ -1132,6 +1347,10 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'stowEquipped') {
         if (payload.source.kind !== 'equipmentSlot') return stateAtAction
+        const srcPc = stateAtAction.party.chars.find((x) => x.id === payload.source.characterId)
+        if (!srcPc || srcPc.hp <= 0) {
+          return reduce(pushActivityLog(stateAtAction, 'Cannot adjust gear right now.'), { type: 'ui/sfx', kind: 'reject' })
+        }
         return unequipItem(stateAtAction, payload.source.characterId, payload.source.slot)
       }
 
@@ -1146,14 +1365,31 @@ export function reduce(state: GameState, action: Action): GameState {
           if (srcItem && dstItem) {
             const recipe = findRecipe(srcItem.defId, dstItem.defId)
             if (recipe) {
+              if (isGlowbugJarEnrichPair(srcItem.defId, dstItem.defId)) {
+                const jarItem = srcItem.defId === 'GlowbugJar' ? srcItem : dstItem
+                if ((jarItem.glowbugs ?? 1) >= GLOWBUG_JAR_MAX_GLOWBUGS) {
+                  return reduce(pushActivityLog(stateAtAction, 'The jar is full.'), { type: 'ui/sfx', kind: 'reject' })
+                }
+              }
               if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
-              const withStart = startCrafting(stateAtAction, srcItem.id, dstItem.id, recipe, { dstSlotIndex: dst })
+              const craftCost = Math.max(0, Math.round(Number(stateAtAction.render.staminaCostCraft ?? 0)))
+              const craftPayerId = craftCost > 0 ? pickCraftStaminaPayer(stateAtAction, craftCost, recipe.skill) : null
+              if (craftCost > 0 && !craftPayerId) {
+                const withMsg = pushActivityLog(stateAtAction, 'Too exhausted to craft.')
+                return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+              }
+              let withStart = startCrafting(stateAtAction, srcItem.id, dstItem.id, recipe, { dstSlotIndex: dst })
+              if (craftCost > 0 && craftPayerId) withStart = applyCharacterStaminaCost(withStart, craftPayerId, craftCost)
               return reduce(reduce(withStart, { type: 'ui/sfx', kind: 'ui' }), { type: 'ui/shake', magnitude: 0.2, ms: 90 })
             }
           }
           return swapInventorySlots(stateAtAction, src, dst)
         }
         if (payload.source.kind === 'equipmentSlot') {
+          const srcEq = stateAtAction.party.chars.find((x) => x.id === payload.source.characterId)
+          if (!srcEq || srcEq.hp <= 0) {
+            return reduce(pushActivityLog(stateAtAction, 'Cannot adjust gear right now.'), { type: 'ui/sfx', kind: 'reject' })
+          }
           return moveEquippedItemToInventorySlot(
             stateAtAction,
             payload.source.characterId,
@@ -1179,6 +1415,43 @@ export function reduce(state: GameState, action: Action): GameState {
         }
 
         const item = st.party.items[itemId]
+        if (item?.defId === 'CampfireKit') {
+          if (st.combat) {
+            return reduce(pushActivityLog(st, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          const pos = target.dropPos ?? st.floor.playerPos
+          const { w, h, tiles, playerPos } = st.floor
+          const range = Math.max(0, Math.round(Number(st.render.dropRangeCells ?? 0)))
+          const md = Math.abs(pos.x - playerPos.x) + Math.abs(pos.y - playerPos.y)
+          if (pos.x < 0 || pos.y < 0 || pos.x >= w || pos.y >= h || tiles[pos.x + pos.y * w] !== 'floor') {
+            return reduce(pushActivityLog(st, 'Cannot place campfire there.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          if (md > range) {
+            return reduce(pushActivityLog(st, 'Too far to place.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          if (poiOccupiesCell(st.floor.pois, pos.x, pos.y)) {
+            return reduce(pushActivityLog(st, 'Something is already here.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          const floorItemHere = st.floor.itemsOnFloor.some((it) => it.pos.x === pos.x && it.pos.y === pos.y)
+          if (floorItemHere) {
+            return reduce(pushActivityLog(st, 'Clear the ground first.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          const seedCf = hashStr(`${st.floor.seed}:campfire:${pos.x},${pos.y}:${itemId}`)
+          const poiId = `poi_campfire_${st.floor.seed}_${(seedCf >>> 0).toString(16)}`
+          const cookUsesLeft = 6
+          let nextCf = consumeItem(st, itemId)
+          nextCf = {
+            ...nextCf,
+            floor: {
+              ...nextCf.floor,
+              pois: nextCf.floor.pois.concat([{ id: poiId, kind: 'Campfire' as const, pos: { ...pos }, cookUsesLeft }]),
+              floorGeomRevision: nextCf.floor.floorGeomRevision + 1,
+            },
+          }
+          nextCf = pushActivityLog(nextCf, 'You set a campfire.')
+          nextCf = reduce(nextCf, { type: 'ui/sfx', kind: 'pickup' })
+          return reduce(nextCf, { type: 'ui/shake', magnitude: 0.22, ms: 120 })
+        }
         if (item?.defId === 'Hive' && st.combat) {
           return reduce(pushActivityLog(st, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
         }
@@ -1236,9 +1509,79 @@ export function reduce(state: GameState, action: Action): GameState {
         return pickupFloorItem(stateAtAction, target.itemId)
       }
 
+      if (target.kind === 'openDoor') {
+        if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
+        let st = stateAtAction
+        if (payload.source.kind === 'equipmentSlot') {
+          const cleared = clearEquippedSlotIfMatched(
+            st,
+            payload.source.characterId,
+            payload.source.slot,
+            itemId,
+          )
+          if (!cleared) return stateAtAction
+          st = cleared
+        }
+        const item = st.party.items[itemId]
+        if (!item) return stateAtAction
+        if (!canItemBreakOpenDoor(CONTENT, item.defId)) {
+          return reduce(pushActivityLog(st, 'That is not the right tool for this.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+        const { x, y } = target
+        const { w, h, tiles, playerPos } = st.floor
+        if (x < 0 || y < 0 || x >= w || y >= h) return stateAtAction
+        const idx = x + y * w
+        if (!isPassableOpenDoorTile(tiles[idx]!)) return stateAtAction
+        const range = Math.max(0, Math.round(Number(st.render.dropRangeCells ?? 0)))
+        const md = Math.abs(x - playerPos.x) + Math.abs(y - playerPos.y)
+        if (md > range) {
+          return reduce(pushActivityLog(st, 'Too far to reach.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+        const nextTiles = tiles.slice()
+        nextTiles[idx] = 'floor'
+        let nextFloor: GameState['floor'] = {
+          ...st.floor,
+          tiles: nextTiles,
+          floorGeomRevision: st.floor.floorGeomRevision + 1,
+        }
+        if (st.floor.gen) {
+          const prevDoors = st.floor.gen.doors
+          const doors = prevDoors.filter((d) => !(d.pos.x === x && d.pos.y === y))
+          if (doors.length !== prevDoors.length) {
+            nextFloor = { ...nextFloor, gen: { ...st.floor.gen, doors } }
+          }
+        }
+        let next: GameState = { ...st, floor: nextFloor }
+        next = pushActivityLog(next, 'The doorframe splinters away.')
+        next = reduce(next, { type: 'ui/sfx', kind: 'bones' })
+        next = reduce(next, { type: 'ui/shake', magnitude: 0.28, ms: 150 })
+        const doorWearHint = payload.source.kind === 'equipmentSlot' ? payload.source.characterId : undefined
+        return applyItemDurabilityWear(next, CONTENT, itemId, 'toolUse', doorWearHint)
+      }
+
       if (target.kind === 'portrait') {
-        if (target.target === 'eyes') return inspectCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+        const portraitPc = stateAtAction.party.chars.find((x) => x.id === target.characterId)
+        if (!portraitPc || portraitPc.hp <= 0) {
+          return reduce(pushActivityLog(stateAtAction, 'They cannot respond.'), { type: 'ui/sfx', kind: 'reject' })
+        }
+        if (target.target === 'eyes') {
+          const inspCost = Math.max(0, Math.round(Number(stateAtAction.render.staminaCostInspect ?? 0)))
+          if (inspCost > 0 && !canCharacterPayStamina(stateAtAction, target.characterId, inspCost)) {
+            const withMsg = pushActivityLog(stateAtAction, 'Too exhausted to inspect.')
+            return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+          }
+          const afterInsp = inspectCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+          if (afterInsp === stateAtAction) return afterInsp
+          return inspCost > 0 ? applyCharacterStaminaCost(afterInsp, target.characterId, inspCost) : afterInsp
+        }
         if (target.target === 'mouth') return feedCharacter(stateAtAction, CONTENT, target.characterId, itemId)
+        if (target.target === 'body') {
+          const dragged = stateAtAction.party.items[itemId]
+          if (!dragged || dragged.defId !== 'BandageStrip') {
+            return reduce(pushActivityLog(stateAtAction, 'Nothing happens.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          return applyBandageStrip(stateAtAction, CONTENT, target.characterId, itemId, action.portraitDropNorm)
+        }
         if (target.target === 'hat') {
           const before = stateAtAction
           const next = equipHatFromPortrait(before, CONTENT, target.characterId, itemId)
@@ -1261,8 +1604,14 @@ export function reduce(state: GameState, action: Action): GameState {
             }
             const idx = stateAtAction.party.chars.findIndex((c) => c.id === target.characterId)
             const chars = stateAtAction.party.chars.slice()
-            chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - shieldDef.staminaCost) }
+            const sc = shieldDef.staminaCost
+            chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - sc) }
             let next: GameState = { ...stateAtAction, party: { ...stateAtAction.party, chars } }
+            next = pushPortraitToast(next, {
+              characterId: target.characterId as CharacterId,
+              kind: 'statDelta',
+              text: `−${sc} STA`,
+            })
             next = applyCombatFireshield(next, target.characterId as CharacterId, {
               fireResistBonusPct: shieldDef.fireResistBonusPct,
               shieldTurns: shieldDef.shieldTurns,
@@ -1270,6 +1619,23 @@ export function reduce(state: GameState, action: Action): GameState {
             const name = next.party.chars.find((c) => c.id === target.characterId)?.name ?? 'PC'
             next = pushActivityLog(next, `${name} raises a fire ward (${shieldDef.shieldTurns} turns).`)
             next = consumeItem(next, itemId)
+            {
+              const c = next.combat
+              if (c) {
+                next = {
+                  ...next,
+                  combat: {
+                    ...c,
+                    lastAction: {
+                      actorKind: 'pc',
+                      actorId: target.characterId,
+                      action: 'skip',
+                      atMs: next.nowMs,
+                    },
+                  },
+                }
+              }
+            }
             next = reduce(next, { type: 'ui/sfx', kind: 'ui' })
             return reduce(next, { type: 'combat/advanceTurn' })
           }
@@ -1285,10 +1651,15 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'poi') {
         if (stateAtAction.combat) return rejectNotWhileInCombat(stateAtAction)
-        return applyItemOnPoi(stateAtAction, CONTENT, itemId, target.poiId)
+        const poiWearHint = payload.source.kind === 'equipmentSlot' ? payload.source.characterId : undefined
+        return applyItemOnPoi(stateAtAction, CONTENT, itemId, target.poiId, { durabilityCharacterHint: poiWearHint })
       }
 
       if (target.kind === 'equipmentSlot') {
+        const dstPc = stateAtAction.party.chars.find((x) => x.id === target.characterId)
+        if (!dstPc || dstPc.hp <= 0) {
+          return reduce(pushActivityLog(stateAtAction, 'They cannot wear that now.'), { type: 'ui/sfx', kind: 'reject' })
+        }
         let st = stateAtAction
         if (payload.source.kind === 'equipmentSlot') {
           // Equipped items are not in `inventory.slots`, so `equipItem` → `removeItemFromInventory`
@@ -1351,8 +1722,10 @@ export function reduce(state: GameState, action: Action): GameState {
           const dmg = 18 + ((seed >>> 8) % 8) // 18..25
           const hp = Math.max(0, npc.hp - dmg)
           const npcs = stateAtAction.floor.npcs.slice()
-          npcs[npcIdx] = { ...npc, hp }
           const died = hp === 0
+          const provokedHostile =
+            !died && dmg > 0 && (npc.status === 'neutral' || npc.status === 'friendly')
+          npcs[npcIdx] = provokedHostile ? { ...npc, hp, status: 'hostile' } : { ...npc, hp }
           let next: GameState = {
             ...stateAtAction,
             floor: {
@@ -1363,8 +1736,64 @@ export function reduce(state: GameState, action: Action): GameState {
           }
           next = consumeItem(next, itemId)
           next = pushActivityLog(next, died ? `${npc.name} is torn apart.` : `${npc.name} takes ${dmg} dmg.`)
+          if (provokedHostile) {
+            next = pushActivityLog(next, `${npc.name} becomes hostile!`)
+          }
           next = reduce(next, { type: 'ui/sfx', kind: 'hit' })
-          return reduce(next, { type: 'ui/shake', magnitude: died ? 0.75 : 0.5, ms: died ? 240 : 160 })
+          let out = reduce(next, { type: 'ui/shake', magnitude: died ? 0.75 : 0.5, ms: died ? 240 : 160 })
+          if (!died && dmg > 0 && collectEncounterNpcIds(next, npc.id).length > 0) {
+            out = reduce(out, { type: 'combat/enter', npcId: npc.id })
+          }
+          return out
+        }
+
+        // Slime phial captures a Wurglepup (parallel to Swarm basket).
+        if (item.defId === 'SlimePhial' && npc.kind === 'Wurglepup') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          let next = consumeItem(stateAtAction, itemId)
+          next = {
+            ...next,
+            floor: { ...next.floor, npcs: next.floor.npcs.filter((n) => n.id !== npc.id), floorGeomRevision: next.floor.floorGeomRevision + 1 },
+          }
+          next = mintItemToInventoryOrFloor(next, 'CapturedSlime', `captured_slime_${npc.id}`, npc.pos)
+          next = pushActivityLog(next, 'Captured the slime creature.')
+          next = reduce(next, { type: 'ui/sfx', kind: 'pickup' })
+          return reduce(next, { type: 'ui/shake', magnitude: 0.25, ms: 140 })
+        }
+
+        if (item.defId === 'CapturedSlime' && npc.kind !== 'Wurglepup') {
+          if (stateAtAction.combat) {
+            return reduce(pushActivityLog(stateAtAction, 'Not while in combat.'), { type: 'ui/sfx', kind: 'reject' })
+          }
+          const seed = hashStr(`${stateAtAction.floor.seed}:releaseSlime:${npc.id}:${itemId}`)
+          const dmg = 12 + ((seed >>> 8) % 8) // 12..19
+          const hp = Math.max(0, npc.hp - dmg)
+          const npcs = stateAtAction.floor.npcs.slice()
+          const died = hp === 0
+          const provokedHostile =
+            !died && dmg > 0 && (npc.status === 'neutral' || npc.status === 'friendly')
+          npcs[npcIdx] = provokedHostile ? { ...npc, hp, status: 'hostile' } : { ...npc, hp }
+          let next: GameState = {
+            ...stateAtAction,
+            floor: {
+              ...stateAtAction.floor,
+              npcs: died ? npcs.filter((n) => n.id !== npc.id) : npcs,
+              floorGeomRevision: stateAtAction.floor.floorGeomRevision + 1,
+            },
+          }
+          next = consumeItem(next, itemId)
+          next = pushActivityLog(next, died ? `${npc.name} dissolves under the slime.` : `${npc.name} takes ${dmg} dmg.`)
+          if (provokedHostile) {
+            next = pushActivityLog(next, `${npc.name} becomes hostile!`)
+          }
+          next = reduce(next, { type: 'ui/sfx', kind: 'hit' })
+          let out = reduce(next, { type: 'ui/shake', magnitude: died ? 0.65 : 0.45, ms: died ? 220 : 150 })
+          if (!died && dmg > 0 && collectEncounterNpcIds(next, npc.id).length > 0) {
+            out = reduce(out, { type: 'combat/enter', npcId: npc.id })
+          }
+          return out
         }
 
         const isWeapon = CONTENT.item(item.defId).tags.includes('weapon')
@@ -1402,7 +1831,9 @@ export function reduce(state: GameState, action: Action): GameState {
     }
     case 'combat/fleeAttempt': {
       if (!state.combat) return state
-      const { state: afterFlee, advanceTurn } = attemptFlee(state)
+      let pre = maybeEndCombat(state)
+      if (!pre.combat) return pre
+      const { state: afterFlee, advanceTurn } = attemptFlee(pre)
       let next = ensureDeath(afterFlee)
       if (advanceTurn && next.combat) {
         next = reduce(next, { type: 'combat/advanceTurn' })
@@ -1417,6 +1848,15 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       const withDef = defend(state, turn.id)
       return reduce(withDef, { type: 'combat/advanceTurn' })
+    }
+    case 'combat/skip': {
+      if (!state.combat) return state
+      const turn = currentTurn(state)
+      if (!turn || turn.kind !== 'pc') {
+        return reduce(pushActivityLog(state, 'Not your turn.'), { type: 'ui/sfx', kind: 'reject' })
+      }
+      const withSkip = skipPcTurn(state, turn.id)
+      return reduce(withSkip, { type: 'combat/advanceTurn' })
     }
     case 'combat/clickAttack': {
       if (!state.combat) return state
@@ -1462,16 +1902,16 @@ export function reduce(state: GameState, action: Action): GameState {
       if (!weapon) {
         return reduce(pushActivityLog(state, 'That does not work as a weapon.'), { type: 'ui/sfx', kind: 'reject' })
       }
+      const actorId = state.combat ? ((currentTurn(state)?.kind === 'pc' ? currentTurn(state)!.id : action.actorId) as any) : (action.actorId as any)
       if (state.combat) {
-        const actor = state.party.chars.find((c) => c.id === (action.actorId as any))
-        const cost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        const actor = state.party.chars.find((c) => c.id === actorId)
+        const cost = actor ? effectiveCombatAttackStaminaCost(actor, weapon) : Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
         if (actor && actor.stamina < cost) {
           const withMsg = pushActivityLog(state, 'Too exhausted to attack.')
           const withSfx = reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
           return reduce(withSfx, { type: 'combat/advanceTurn' })
         }
       }
-      const actorId = state.combat ? ((currentTurn(state)?.kind === 'pc' ? currentTurn(state)!.id : action.actorId) as any) : (action.actorId as any)
       const out =
         actorId != null
           ? computePcAttackDamage({
@@ -1485,12 +1925,18 @@ export function reduce(state: GameState, action: Action): GameState {
             })
           : { hit: true, crit: false, finalDmg: weapon.baseDamage }
       if (state.combat) {
-        const atkCost = Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
+        const attackerRow = state.party.chars.find((c) => c.id === actorId)
+        const atkCost = attackerRow ? effectiveCombatAttackStaminaCost(attackerRow, weapon) : Math.max(0, Math.round(Number(weapon.staminaCost ?? 0)))
         const idx = state.party.chars.findIndex((c) => c.id === actorId)
         if (idx >= 0 && atkCost > 0) {
           const chars = state.party.chars.slice()
           chars[idx] = { ...chars[idx]!, stamina: Math.max(0, chars[idx]!.stamina - atkCost) }
           state = { ...state, party: { ...state.party, chars } }
+          state = pushPortraitToast(state, {
+            characterId: actorId as CharacterId,
+            kind: 'statDelta',
+            text: `−${atkCost} STA`,
+          })
         }
       }
       if (state.combat && !out.hit) {
@@ -1500,11 +1946,21 @@ export function reduce(state: GameState, action: Action): GameState {
         if (attacker && r) {
           const p = attacker.stats.perception
           const ag = attacker.stats.agility
-          const spd = npcCombatTuning(npc.kind).speed
-          const acStr = `10+Spd ${spd}=${r.defense}`
+          const spd = resolveNpcCombatTuning(npc).speed
+          const thematic = pcAttackNpcThematicMiss({ attackerName: attacker.name, npcName: npc.name })
+          const legacy = pcAttackNpcLegacyMiss({
+            attackerName: attacker.name,
+            npcName: npc.name,
+            d20: r.d20,
+            perception: p,
+            agility: ag,
+            toHit: r.toHit,
+            npcSpeed: spd,
+            defense: r.defense,
+          })
           withMsg = pushActivityLog(
             state,
-            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — miss.`,
+            composeCombatLogLine({ debugOpen: state.ui.debugOpen, thematic, legacy }),
           )
         } else {
           withMsg = pushActivityLog(state, 'Miss.')
@@ -1514,19 +1970,29 @@ export function reduce(state: GameState, action: Action): GameState {
       }
       const finalDmg = out.finalDmg
       const hp = Math.max(0, npc.hp - finalDmg)
-      npcs[npcIdx] = { ...npc, hp }
       const died = hp === 0
+      const provokedHostile =
+        !died && finalDmg > 0 && (npc.status === 'neutral' || npc.status === 'friendly')
+      npcs[npcIdx] = provokedHostile ? { ...npc, hp, status: 'hostile' } : { ...npc, hp }
       let nextState: GameState = { ...state, floor: { ...state.floor, npcs: died ? npcs.filter((n) => n.id !== npc.id) : npcs } }
       if (nextState !== state) {
         nextState = { ...nextState, floor: { ...nextState.floor, floorGeomRevision: nextState.floor.floorGeomRevision + 1 } }
       }
+
+      nextState = applyItemDurabilityWear(
+        nextState,
+        CONTENT,
+        action.itemId,
+        'weaponHit',
+        actorId != null ? (actorId as CharacterId) : undefined,
+      )
 
       // Spell-like items are consumed on use.
       if (weapon.consumesOnUse) nextState = consumeItem(nextState, action.itemId)
 
       // On death, sometimes drop loot to the floor.
       if (died) {
-        const lootDef = pickNpcLootDefId(nextState, npc.kind, npc.id)
+        const lootDef = pickNpcLootDefId(nextState, npc)
         if (lootDef) {
           const lootId = `i_${lootDef}_${nextState.floor.seed}_${npc.id}`
           const jitter = makeDropJitter({
@@ -1537,7 +2003,10 @@ export function reduce(state: GameState, action: Action): GameState {
           })
           nextState = {
             ...nextState,
-            party: { ...nextState.party, items: { ...nextState.party.items, [lootId]: { id: lootId, defId: lootDef, qty: 1 } } },
+            party: {
+              ...nextState.party,
+              items: { ...nextState.party.items, [lootId]: inventoryItemFromDef(CONTENT, lootDef, lootId, 1) },
+            },
             floor: {
               ...nextState.floor,
               itemsOnFloor: nextState.floor.itemsOnFloor.concat([{ id: lootId, pos: { ...npc.pos }, jitter }]),
@@ -1556,21 +2025,47 @@ export function reduce(state: GameState, action: Action): GameState {
         if (attacker) {
           const p = attacker.stats.perception
           const ag = attacker.stats.agility
-          const spd = npcCombatTuning(npc.kind).speed
-          const acStr = `10+Spd ${spd}=${r.defense}`
-          const line =
-            `${attacker.name} → ${npc.name}: d20+Per+Agi ${r.d20}+${p}+${ag}=${r.toHit} vs ${acStr} — hit${out.crit ? ' (nat 20)' : ''}, ${finalDmg} dmg.` +
-            (died ? ` ${npc.name} dies.` : '')
-          withMsg = pushActivityLog(nextState, line)
+          const spd = resolveNpcCombatTuning(npc).speed
+          const thematic = pcAttackNpcThematicHit({
+            attackerName: attacker.name,
+            npcName: npc.name,
+            crit: out.crit,
+            finalDmg,
+            died,
+          })
+          const legacy = pcAttackNpcLegacyHit({
+            attackerName: attacker.name,
+            npcName: npc.name,
+            d20: r.d20,
+            perception: p,
+            agility: ag,
+            toHit: r.toHit,
+            npcSpeed: spd,
+            defense: r.defense,
+            crit: out.crit,
+            finalDmg,
+            died,
+          })
+          withMsg = pushActivityLog(
+            nextState,
+            composeCombatLogLine({ debugOpen: state.ui.debugOpen, thematic, legacy }),
+          )
         } else {
           withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
         }
       } else {
         withMsg = pushActivityLog(nextState, died ? `${npc.name} dies.` : `${npc.name} takes ${finalDmg} dmg.`)
       }
+      if (provokedHostile) {
+        withMsg = pushActivityLog(withMsg, `${npc.name} becomes hostile!`)
+      }
       const withHit = reduce(withMsg, { type: 'ui/sfx', kind: 'hit' })
-      const withShake = reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
-      return state.combat ? reduce(withShake, { type: 'combat/advanceTurn' }) : withShake
+      let withShake = reduce(withHit, { type: 'ui/shake', magnitude: died ? 0.7 : 0.4, ms: died ? 220 : 140 })
+      if (state.combat) return reduce(withShake, { type: 'combat/advanceTurn' })
+      if (finalDmg > 0 && !died && collectEncounterNpcIds(withShake, npc.id).length > 0) {
+        withShake = reduce(withShake, { type: 'combat/enter', npcId: npc.id })
+      }
+      return withShake
     }
     case 'npc/give': {
       const npcIdx = state.floor.npcs.findIndex((n) => n.id === action.npcId)
@@ -1631,7 +2126,7 @@ function partyHasItemDef(state: GameState, defId: string) {
 
 function mintItemToInventoryOrFloor(state: GameState, defId: import('./types').ItemDefId, stableId: string, pos: { x: number; y: number }): GameState {
   const newId = (`i_${defId}_${state.floor.seed}_${stableId}` as unknown) as import('./types').ItemId
-  const items = { ...state.party.items, [newId]: { id: newId, defId, qty: 1 } }
+  const items = { ...state.party.items, [newId]: inventoryItemFromDef(CONTENT, defId, newId, 1) }
   const inv = state.party.inventory
   const free = inv.slots.findIndex((s) => s == null)
   if (free >= 0) {
@@ -1665,9 +2160,21 @@ function clampShadowMapSize(n: number): RenderTuning['shadowMapSize'] {
 
 function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Record<string, unknown>): RenderTuning {
   const src = { ...DEFAULT_RENDER, ...r } as RenderTuning & LegacyNpcRenderFlat & Record<string, unknown>
+  const portraitHatSlotHeightPctByDefId = clampPortraitHatSlotHeightPctByDefId(src.portraitHatSlotHeightPctByDefId)
+  delete (src as Record<string, unknown>).portraitHatSlotHeightPctByDefId
+  const portraitHatOffsetXPctByDefId = clampPortraitHatOffsetPctByDefId(src.portraitHatOffsetXPctByDefId)
+  const portraitHatOffsetYPctByDefId = clampPortraitHatOffsetPctByDefId(src.portraitHatOffsetYPctByDefId)
+  delete (src as Record<string, unknown>).portraitHatOffsetXPctByDefId
+  delete (src as Record<string, unknown>).portraitHatOffsetYPctByDefId
   const npcBillboard = clampNpcBillboardRows(buildNpcBillboardFromInput(src))
   for (const k of LEGACY_NPC_FLAT_KEYS) delete (src as Record<string, unknown>)[k]
   delete (src as Record<string, unknown>).npcBillboard
+
+  const edIn = (src as RenderTuning).elderDistortion
+  const elderDistortion = clampElderDistortion(
+    edIn && typeof edIn === 'object' ? { ...DEFAULT_ELDER_DISTORTION, ...edIn } : DEFAULT_ELDER_DISTORTION,
+  )
+  delete (src as Record<string, unknown>).elderDistortion
 
   const globalIntensity = Math.max(0, Math.min(3, Number(src.globalIntensity ?? 1.0)))
   const clampHue = (v: number) => Math.max(-180, Math.min(180, Number(v)))
@@ -1697,6 +2204,10 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const lanternVerticalOffset = Math.max(-1, Math.min(1, src.lanternVerticalOffset))
   const lanternFlickerAmp = Math.max(0, Math.min(1, src.lanternFlickerAmp))
   const lanternFlickerHz = Math.max(0, Math.min(30, src.lanternFlickerHz))
+  const equippedLightIntensityCap = Math.max(
+    0,
+    Math.min(500, Number(src.equippedLightIntensityCap ?? DEFAULT_RENDER.equippedLightIntensityCap)),
+  )
   const baseEmissive = Math.max(0, Math.min(2, src.baseEmissive))
   const camShakePosAmp = Math.max(0, Math.min(0.25, src.camShakePosAmp))
   const camShakeRollDeg = Math.max(0, Math.min(12, src.camShakeRollDeg))
@@ -1722,6 +2233,7 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const shadowMapSize = clampShadowMapSize(Number(src.shadowMapSize ?? 256))
   const shadowFilter = Math.max(0, Math.min(2, Math.round(Number(src.shadowFilter ?? 2)))) as RenderTuning['shadowFilter']
   const torchPoiLightMax = Math.max(0, Math.min(6, Math.round(Number(src.torchPoiLightMax ?? 3))))
+  const playerLightFloorItemMax = Math.max(0, Math.min(4, Math.round(Number(src.playerLightFloorItemMax ?? 2))))
   const pixelRatioCap = Math.max(1, Math.min(1.5, Number(src.pixelRatioCap ?? 1.5)))
   const rawGpuTier = String(src.gpuTier ?? 'high')
   const gpuTier: GpuTier = (['low', 'balanced', 'high', 'custom'] as const).includes(rawGpuTier as GpuTier)
@@ -1729,6 +2241,7 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     : 'custom'
 
   const npcFootLift = Math.max(-0.2, Math.min(0.5, Number(src.npcFootLift ?? 0.02)))
+  const npcSpriteBoost = Math.max(0, Math.min(3, Number(src.npcSpriteBoost ?? DEFAULT_RENDER.npcSpriteBoost)))
   const clampNpcGroundY = (v: number) => Math.max(-0.75, Math.min(1.25, Number(v)))
   const poiGroundY_Well = clampNpcGroundY(src.poiGroundY_Well ?? 0)
   const poiGroundY_Chest = clampNpcGroundY(src.poiGroundY_Chest ?? 0)
@@ -1738,19 +2251,111 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const poiGroundY_Shrine = clampNpcGroundY(src.poiGroundY_Shrine ?? 0)
   const poiGroundY_CrackedWall = clampNpcGroundY(src.poiGroundY_CrackedWall ?? 0)
   const poiGroundY_Exit = clampNpcGroundY(src.poiGroundY_Exit ?? 0)
+  const poiGroundY_Campfire = clampNpcGroundY(src.poiGroundY_Campfire ?? 0)
+  const poiGroundY_KuratkoNest = clampNpcGroundY(src.poiGroundY_KuratkoNest ?? 0)
+  const poiCampfireSpriteScale = Math.max(
+    0.25,
+    Math.min(3, Number(src.poiCampfireSpriteScale ?? DEFAULT_RENDER.poiCampfireSpriteScale)),
+  )
+  const poiKuratkoNestSpriteScale = Math.max(
+    0.25,
+    Math.min(3, Number(src.poiKuratkoNestSpriteScale ?? DEFAULT_RENDER.poiKuratkoNestSpriteScale)),
+  )
   const poiSpriteBoost = Math.max(0, Math.min(3, Number(src.poiSpriteBoost ?? 1.0)))
+  const clampPoiWellNudge = (v: number) => Math.max(-0.5, Math.min(0.5, Number(v)))
+  const clampPoiWellNudgeX = (v: number) => Math.max(-1, Math.min(0.5, Number(v)))
+  const poiWellGlowNudgeX = clampPoiWellNudgeX(Number(src.poiWellGlowNudgeX ?? DEFAULT_RENDER.poiWellGlowNudgeX))
+  const poiWellGlowNudgeY = clampPoiWellNudge(Number(src.poiWellGlowNudgeY ?? DEFAULT_RENDER.poiWellGlowNudgeY))
+  const poiWellGlowNudgeZ = clampPoiWellNudge(Number(src.poiWellGlowNudgeZ ?? DEFAULT_RENDER.poiWellGlowNudgeZ))
+  const poiWellSparkleNudgeX = clampPoiWellNudgeX(Number(src.poiWellSparkleNudgeX ?? DEFAULT_RENDER.poiWellSparkleNudgeX))
+  const poiWellSparkleNudgeY = clampPoiWellNudge(Number(src.poiWellSparkleNudgeY ?? DEFAULT_RENDER.poiWellSparkleNudgeY))
+  const poiWellSparkleNudgeZ = clampPoiWellNudge(Number(src.poiWellSparkleNudgeZ ?? DEFAULT_RENDER.poiWellSparkleNudgeZ))
   const poiFootLift = Math.max(-0.2, Math.min(0.5, Number(src.poiFootLift ?? 0.02)))
   const hubInnkeeperSpriteScale = Math.max(0.25, Math.min(3, Number(src.hubInnkeeperSpriteScale ?? 1)))
-  const doorSpriteHeight = Math.max(0.05, Math.min(3, Number(src.doorSpriteHeight ?? 1)))
-  const doorSpriteCenterY = Math.max(0, Math.min(2, Number(src.doorSpriteCenterY ?? 0.55)))
-  const doorSpriteNudgeX = Math.max(-0.5, Math.min(0.5, Number(src.doorSpriteNudgeX ?? 0)))
-  const doorSpriteNudgeZ = Math.max(-0.5, Math.min(0.5, Number(src.doorSpriteNudgeZ ?? 0)))
+  const rPatch = r as Record<string, unknown>
+  const hasPatch = (key: string) => Object.prototype.hasOwnProperty.call(r, key)
+  const legDoorH = rPatch.doorSpriteHeight
+  const legDoorCy = rPatch.doorSpriteCenterY
+  const legDoorNx = rPatch.doorSpriteNudgeX
+  const legDoorNz = rPatch.doorSpriteNudgeZ
+  const clampDoorH = (v: number) => Math.max(0.05, Math.min(3, v))
+  const clampDoorCy = (v: number) => Math.max(0, Math.min(2, v))
+  const clampDoorNudge = (v: number) => Math.max(-0.5, Math.min(0.5, v))
+  const legacyH = typeof legDoorH === 'number' && !Number.isNaN(legDoorH) ? clampDoorH(legDoorH) : undefined
+  const legacyCy = typeof legDoorCy === 'number' && !Number.isNaN(legDoorCy) ? clampDoorCy(legDoorCy) : undefined
+  const legacyNx = typeof legDoorNx === 'number' && !Number.isNaN(legDoorNx) ? clampDoorNudge(legDoorNx) : undefined
+  const legacyNz = typeof legDoorNz === 'number' && !Number.isNaN(legDoorNz) ? clampDoorNudge(legDoorNz) : undefined
+
+  const doorWoodenSpriteHeight = hasPatch('doorWoodenSpriteHeight')
+    ? clampDoorH(Number(src.doorWoodenSpriteHeight))
+    : legacyH ?? clampDoorH(Number(DEFAULT_RENDER.doorWoodenSpriteHeight))
+  const doorWoodenSpriteCenterY = hasPatch('doorWoodenSpriteCenterY')
+    ? clampDoorCy(Number(src.doorWoodenSpriteCenterY))
+    : legacyCy ?? clampDoorCy(Number(DEFAULT_RENDER.doorWoodenSpriteCenterY))
+  const doorWoodenSpriteNudgeX = hasPatch('doorWoodenSpriteNudgeX')
+    ? clampDoorNudge(Number(src.doorWoodenSpriteNudgeX))
+    : legacyNx ?? clampDoorNudge(Number(DEFAULT_RENDER.doorWoodenSpriteNudgeX))
+  const doorWoodenSpriteNudgeZ = hasPatch('doorWoodenSpriteNudgeZ')
+    ? clampDoorNudge(Number(src.doorWoodenSpriteNudgeZ))
+    : legacyNz ?? clampDoorNudge(Number(DEFAULT_RENDER.doorWoodenSpriteNudgeZ))
+
+  const doorOctopusSpriteHeight = hasPatch('doorOctopusSpriteHeight')
+    ? clampDoorH(Number(src.doorOctopusSpriteHeight))
+    : legacyH ?? doorWoodenSpriteHeight
+  const doorOctopusSpriteCenterY = hasPatch('doorOctopusSpriteCenterY')
+    ? clampDoorCy(Number(src.doorOctopusSpriteCenterY))
+    : legacyCy ?? doorWoodenSpriteCenterY
+  const doorOctopusSpriteNudgeX = hasPatch('doorOctopusSpriteNudgeX')
+    ? clampDoorNudge(Number(src.doorOctopusSpriteNudgeX))
+    : legacyNx ?? doorWoodenSpriteNudgeX
+  const doorOctopusSpriteNudgeZ = hasPatch('doorOctopusSpriteNudgeZ')
+    ? clampDoorNudge(Number(src.doorOctopusSpriteNudgeZ))
+    : legacyNz ?? doorWoodenSpriteNudgeZ
+
+  const floorItemSpriteHeight = clampDoorH(Number(src.floorItemSpriteHeight ?? DEFAULT_RENDER.floorItemSpriteHeight))
+  const floorItemSpriteNudgeX = clampDoorNudge(Number(src.floorItemSpriteNudgeX ?? DEFAULT_RENDER.floorItemSpriteNudgeX))
+  const floorItemSpriteNudgeY = clampDoorNudge(Number(src.floorItemSpriteNudgeY ?? DEFAULT_RENDER.floorItemSpriteNudgeY))
+  const floorItemSpriteNudgeZ = clampDoorNudge(Number(src.floorItemSpriteNudgeZ ?? DEFAULT_RENDER.floorItemSpriteNudgeZ))
+
+  for (const k of ['doorSpriteHeight', 'doorSpriteCenterY', 'doorSpriteNudgeX', 'doorSpriteNudgeZ'] as const) {
+    delete (src as Record<string, unknown>)[k]
+  }
   const campEveryFloors = Math.min(99, Math.max(1, Math.round(Number(src.campEveryFloors ?? 10))))
   const { min: npcSpawnCountMin, max: npcSpawnCountMax } = clampNpcSpawnCountRange(
     src.npcSpawnCountMin,
     src.npcSpawnCountMax,
   )
   const combatEncounterJoinChebyshevMax = Math.max(1, Math.min(32, Math.round(Number(src.combatEncounterJoinChebyshevMax ?? 5))))
+  const staminaCostStep = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostStep ?? DEFAULT_RENDER.staminaCostStep))))
+  const staminaCostStepEveryN = Math.max(1, Math.min(30, Math.round(Number(src.staminaCostStepEveryN ?? DEFAULT_RENDER.staminaCostStepEveryN))))
+  const staminaDrainStepMultiplier = Math.max(0, Math.min(5, Number(src.staminaDrainStepMultiplier ?? DEFAULT_RENDER.staminaDrainStepMultiplier)))
+  const staminaCostStrafe = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostStrafe ?? DEFAULT_RENDER.staminaCostStrafe))))
+  const staminaCostStrafeEveryN = Math.max(1, Math.min(30, Math.round(Number(src.staminaCostStrafeEveryN ?? DEFAULT_RENDER.staminaCostStrafeEveryN))))
+  const staminaCostTurn = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostTurn ?? DEFAULT_RENDER.staminaCostTurn))))
+  const staminaCostPickup = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostPickup ?? DEFAULT_RENDER.staminaCostPickup))))
+  const staminaCostPoiUse = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostPoiUse ?? DEFAULT_RENDER.staminaCostPoiUse))))
+  const staminaCostDoorOpen = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostDoorOpen ?? DEFAULT_RENDER.staminaCostDoorOpen))))
+  const staminaCostCraft = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostCraft ?? DEFAULT_RENDER.staminaCostCraft))))
+  const staminaCostInspect = Math.max(0, Math.min(30, Math.round(Number(src.staminaCostInspect ?? DEFAULT_RENDER.staminaCostInspect))))
+  const craftDurationScale = Math.max(0, Math.min(10, Number(src.craftDurationScale ?? DEFAULT_RENDER.craftDurationScale)))
+  const portraitRestStaminaGain = Math.max(0, Math.min(50, Math.round(Number(src.portraitRestStaminaGain ?? DEFAULT_RENDER.portraitRestStaminaGain))))
+  const portraitRestHungerCost = Math.max(0, Math.min(100, Math.round(Number(src.portraitRestHungerCost ?? DEFAULT_RENDER.portraitRestHungerCost))))
+  const portraitRestThirstCost = Math.max(0, Math.min(100, Math.round(Number(src.portraitRestThirstCost ?? DEFAULT_RENDER.portraitRestThirstCost))))
+  const portraitRestCooldownMs = Math.max(0, Math.min(60_000, Math.round(Number(src.portraitRestCooldownMs ?? DEFAULT_RENDER.portraitRestCooldownMs))))
+  const portraitToastTtlMs = Math.max(400, Math.min(8000, Math.round(Number(src.portraitToastTtlMs ?? DEFAULT_RENDER.portraitToastTtlMs))))
+  const portraitToastFontPx = Math.max(8, Math.min(48, Math.round(Number(src.portraitToastFontPx ?? DEFAULT_RENDER.portraitToastFontPx))))
+  const portraitToastAnimMs = Math.max(200, Math.min(8000, Math.round(Number(src.portraitToastAnimMs ?? DEFAULT_RENDER.portraitToastAnimMs))))
+  const portraitToastFloatPx = Math.max(8, Math.min(120, Math.round(Number(src.portraitToastFloatPx ?? DEFAULT_RENDER.portraitToastFloatPx))))
+  const portraitToastOffsetXPx = Math.max(-150, Math.min(150, Math.round(Number(src.portraitToastOffsetXPx ?? DEFAULT_RENDER.portraitToastOffsetXPx))))
+  const portraitToastGapPx = Math.max(-200, Math.min(120, Math.round(Number(src.portraitToastGapPx ?? DEFAULT_RENDER.portraitToastGapPx))))
+  const lowStaminaWarnFrac = Math.max(0, Math.min(1, Number(src.lowStaminaWarnFrac ?? DEFAULT_RENDER.lowStaminaWarnFrac)))
+  const lowHungerWarnFrac = Math.max(0, Math.min(1, Number(src.lowHungerWarnFrac ?? DEFAULT_RENDER.lowHungerWarnFrac)))
+  const lowThirstWarnFrac = Math.max(0, Math.min(1, Number(src.lowThirstWarnFrac ?? DEFAULT_RENDER.lowThirstWarnFrac)))
+  const lowVitalWarnCooldownMs = Math.max(0, Math.min(120_000, Math.round(Number(src.lowVitalWarnCooldownMs ?? DEFAULT_RENDER.lowVitalWarnCooldownMs))))
+  const itemDurabilityEnabled = Number(src.itemDurabilityEnabled ?? DEFAULT_RENDER.itemDurabilityEnabled) > 0 ? 1 : 0
+  const itemDurabilityToolUseCost = Math.max(0, Math.min(50, Math.round(Number(src.itemDurabilityToolUseCost ?? DEFAULT_RENDER.itemDurabilityToolUseCost))))
+  const itemDurabilityWeaponHitCost = Math.max(0, Math.min(50, Math.round(Number(src.itemDurabilityWeaponHitCost ?? DEFAULT_RENDER.itemDurabilityWeaponHitCost))))
+  const elderShaderQuality = Math.max(0, Math.min(2, Math.round(Number(src.elderShaderQuality ?? DEFAULT_RENDER.elderShaderQuality))))
   return {
     ...src,
     globalIntensity,
@@ -1778,6 +2383,7 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     lanternVerticalOffset,
     lanternFlickerAmp,
     lanternFlickerHz,
+    equippedLightIntensityCap,
     baseEmissive,
     camShakePosAmp,
     camShakeRollDeg,
@@ -1801,11 +2407,13 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     shadowMapSize,
     shadowFilter,
     torchPoiLightMax,
+    playerLightFloorItemMax,
     pixelRatioCap,
     gpuTier,
 
     npcFootLift,
     npcBillboard,
+    npcSpriteBoost,
     poiGroundY_Well,
     poiGroundY_Chest,
     poiGroundY_Barrel,
@@ -1814,17 +2422,69 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     poiGroundY_Shrine,
     poiGroundY_CrackedWall,
     poiGroundY_Exit,
+    poiGroundY_Campfire,
+    poiGroundY_KuratkoNest,
+    poiCampfireSpriteScale,
+    poiKuratkoNestSpriteScale,
     poiSpriteBoost,
+    poiWellGlowNudgeX,
+    poiWellGlowNudgeY,
+    poiWellGlowNudgeZ,
+    poiWellSparkleNudgeX,
+    poiWellSparkleNudgeY,
+    poiWellSparkleNudgeZ,
     poiFootLift,
     hubInnkeeperSpriteScale,
-    doorSpriteHeight,
-    doorSpriteCenterY,
-    doorSpriteNudgeX,
-    doorSpriteNudgeZ,
+    doorWoodenSpriteHeight,
+    doorWoodenSpriteCenterY,
+    doorWoodenSpriteNudgeX,
+    doorWoodenSpriteNudgeZ,
+    doorOctopusSpriteHeight,
+    doorOctopusSpriteCenterY,
+    doorOctopusSpriteNudgeX,
+    doorOctopusSpriteNudgeZ,
+    floorItemSpriteHeight,
+    floorItemSpriteNudgeX,
+    floorItemSpriteNudgeY,
+    floorItemSpriteNudgeZ,
     campEveryFloors,
     npcSpawnCountMin,
     npcSpawnCountMax,
     combatEncounterJoinChebyshevMax,
+    staminaCostStep,
+    staminaCostStepEveryN,
+    staminaDrainStepMultiplier,
+    staminaCostStrafe,
+    staminaCostStrafeEveryN,
+    staminaCostTurn,
+    staminaCostPickup,
+    staminaCostPoiUse,
+    staminaCostDoorOpen,
+    staminaCostCraft,
+    staminaCostInspect,
+    craftDurationScale,
+    portraitRestStaminaGain,
+    portraitRestHungerCost,
+    portraitRestThirstCost,
+    portraitRestCooldownMs,
+    portraitToastTtlMs,
+    portraitToastFontPx,
+    portraitToastAnimMs,
+    portraitToastFloatPx,
+    portraitToastOffsetXPx,
+    portraitToastGapPx,
+    lowStaminaWarnFrac,
+    lowHungerWarnFrac,
+    lowThirstWarnFrac,
+    lowVitalWarnCooldownMs,
+    itemDurabilityEnabled,
+    itemDurabilityToolUseCost,
+    itemDurabilityWeaponHitCost,
+    portraitHatOffsetXPctByDefId,
+    portraitHatOffsetYPctByDefId,
+    portraitHatSlotHeightPctByDefId,
+    elderDistortion,
+    elderShaderQuality,
   }
 }
 
@@ -1867,7 +2527,13 @@ function addStatusToChar(state: GameState, characterId: string, statusId: Status
   const defDur = CONTENT.status(statusId).defaultDurationMs
   const untilMs = state.nowMs + Math.max(250, durMs ?? defDur ?? 12_000)
   chars[idx] = { ...c, statuses: c.statuses.concat([{ id: statusId, untilMs }]) }
-  return { ...state, party: { ...state.party, chars } }
+  let next: GameState = { ...state, party: { ...state.party, chars } }
+  next = pushPortraitToast(next, {
+    characterId,
+    kind: 'status',
+    text: `+${CONTENT.status(statusId).name}`,
+  })
+  return next
 }
 
 /** Run hazard gameplay once per visit to a tagged procgen room (not on every tile inside the room). */
@@ -2040,11 +2706,12 @@ function maybeEndCombat(state: GameState): GameState {
   const combat = pruneCombatTurnQueue(state, state.combat)
   const aliveNpc = combat.participants.npcs.some((id) => state.floor.npcs.some((n) => n.id === id && n.hp > 0))
   if (!aliveNpc) {
-    const enemyCount = Math.max(1, combat.participants.npcs.length)
-    const xp = 10 * enemyCount
-    const { state: withXp, leveledUp, gainedLevels } = applyXp({ ...state, combat: undefined }, xp)
-    const msg = leveledUp ? `Encounter won. +${xp} XP (level +${gainedLevels}).` : `Encounter won. +${xp} XP.`
-    return pushActivityLog(withXp, msg)
+    const cleared = { ...state, combat: undefined }
+    const xp = combatVictoryXp(state, combat)
+    const xpRes = applyXp(cleared, xp)
+    const msg =
+      xpRes.leveledUp ? `Encounter won. +${xp} XP (level +${xpRes.gainedLevels}).` : `Encounter won. +${xp} XP.`
+    return pushActivityLog(xpRes.state, msg)
   }
   return { ...state, combat }
 }
@@ -2070,7 +2737,7 @@ function autoResolveNpcTurns(state: GameState): GameState {
   return st
 }
 
-function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
+function attemptMoveTo(state: GameState, nx: number, ny: number, moveKind: 'step' | 'strafe'): GameState {
   if (state.view.anim) return state
   const { w, tiles } = state.floor
   const idx = nx + ny * w
@@ -2090,13 +2757,42 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
     return bump(state, 'Something is in the way.')
   }
 
+  const r = state.render
+  const rawTickCost =
+    moveKind === 'step'
+      ? Math.max(0, Math.round(Number(r.staminaCostStep)))
+      : Math.max(0, Math.round(Number(r.staminaCostStrafe)))
+  const baseCost =
+    moveKind === 'step'
+      ? Math.max(0, Math.min(150, Math.round(rawTickCost * Number(r.staminaDrainStepMultiplier))))
+      : rawTickCost
+  const baseEveryN = moveKind === 'step' ? r.staminaCostStepEveryN : r.staminaCostStrafeEveryN
+  const prevPaceMap =
+    moveKind === 'step' ? state.floor.staminaStepPaceByChar : state.floor.staminaStrafePaceByChar
+  const nextPaceMap: Partial<Record<CharacterId, number>> = { ...prevPaceMap }
+  const chargeCharacterIds: CharacterId[] = []
+  for (const c of state.party.chars) {
+    if (c.hp <= 0) continue
+    const n = effectiveStaminaMoveEveryN(baseEveryN, c.stats.endurance)
+    const pace = nextStaminaMovePace(nextPaceMap[c.id], n, baseCost)
+    if (pace.cost > 0 && c.stamina < pace.cost) {
+      const withMsg = pushActivityLog(state, 'Too exhausted to move.')
+      return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+    }
+    nextPaceMap[c.id] = pace.nextCounter
+    if (pace.cost > 0) chargeCharacterIds.push(c.id)
+  }
+
   const startedAtMs = state.nowMs
   const endsAtMs = startedAtMs + 140
   const toPos = { x: nx - state.floor.w / 2, y: state.render.camEyeHeight, z: ny - state.floor.h / 2 }
 
-  const moved: GameState = {
+  const floorPacePatch =
+    moveKind === 'step' ? { staminaStepPaceByChar: nextPaceMap } : { staminaStrafePaceByChar: nextPaceMap }
+
+  let moved: GameState = {
     ...state,
-    floor: { ...state.floor, playerPos: { x: nx, y: ny } },
+    floor: { ...state.floor, playerPos: { x: nx, y: ny }, ...floorPacePatch },
     view: {
       ...state.view,
       anim: {
@@ -2109,6 +2805,9 @@ function attemptMoveTo(state: GameState, nx: number, ny: number): GameState {
         endsAtMs,
       },
     },
+  }
+  for (const id of chargeCharacterIds) {
+    moved = applyCharacterStaminaCost(moved, id, baseCost)
   }
   const withHazard = applyRoomHazardAfterStep(moved, nx, ny)
   return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
@@ -2138,14 +2837,39 @@ function tickViewAnimation(state: GameState): GameState {
 
 function tryOpenDoor(state: GameState, idx: number, tile: Tile): GameState {
   const openedTile = tileAfterDoorOpens(tile)
+  const doorCost = Math.max(0, Math.round(Number(state.render.staminaCostDoorOpen ?? 0)))
 
   if (isOpenDoorTile(tile)) {
+    if (doorCost > 0 && !canPartyPayStamina(state, doorCost)) {
+      const withMsg = pushActivityLog(state, 'Too exhausted to open the door.')
+      return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+    }
+    const fw = state.floor.w
+    const doorX = idx % fw
+    const doorY = (idx / fw) | 0
     const tiles = state.floor.tiles.slice()
     tiles[idx] = openedTile
-    const next = {
+    const octopusFx =
+      doorFxVisualForTile(tile) === 'octopus'
+        ? {
+            doorOpenFx: [
+              ...(state.ui.doorOpenFx ?? []).filter((f) => f.untilMs > state.nowMs),
+              {
+                id: `doorfx_${state.nowMs}_${doorX}_${doorY}`,
+                pos: { x: doorX, y: doorY },
+                startedAtMs: state.nowMs,
+                untilMs: state.nowMs + DOOR_OCTOPUS_OPEN_FX_DURATION_MS,
+                visual: 'octopus' as const,
+              },
+            ],
+          }
+        : {}
+    let next: GameState = {
       ...state,
       floor: { ...state.floor, tiles, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+      ui: { ...state.ui, ...octopusFx },
     }
+    if (doorCost > 0) next = applyPartyStaminaCost(next, doorCost)
     return reduce(next, { type: 'ui/toast', text: 'The door creaks open.', ms: 900 })
   }
 
@@ -2161,25 +2885,37 @@ function tryOpenDoor(state: GameState, idx: number, tile: Tile): GameState {
     return reduce(withToast, { type: 'ui/sfx', kind: 'reject' })
   }
 
+  if (doorCost > 0 && !canPartyPayStamina(state, doorCost)) {
+    const withMsg = pushActivityLog(state, 'Too exhausted to work the lock.')
+    return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
+  }
+
   const keyId = keyItem.id
   const consumed = keyId ? consumeItem(state, keyId) : state
   const tiles = consumed.floor.tiles.slice()
   tiles[idx] = openedTile
-  const opened = {
+  const octopusFxUnlock =
+    doorFxVisualForTile(tile) === 'octopus'
+      ? {
+          doorOpenFx: [
+            ...(consumed.ui.doorOpenFx ?? []).filter((f) => f.untilMs > consumed.nowMs),
+            {
+              id: `doorfx_${consumed.nowMs}_${doorX}_${doorY}`,
+              pos: { x: doorX, y: doorY },
+              startedAtMs: consumed.nowMs,
+              untilMs: consumed.nowMs + DOOR_OCTOPUS_OPEN_FX_DURATION_MS,
+              visual: 'octopus' as const,
+            },
+          ],
+        }
+      : {}
+  let opened: GameState = {
     ...consumed,
     floor: { ...consumed.floor, tiles, floorGeomRevision: consumed.floor.floorGeomRevision + 1 },
+    ui: { ...consumed.ui, ...octopusFxUnlock },
   }
-  let next: GameState = opened
-  const xpRes = applyXp(next, 18)
-  next = xpRes.state
-  next = pushActivityLog(next, 'Unlocked the door. (+18 XP)')
-  if (xpRes.leveledUp) {
-    for (const perkId of xpRes.perkIds) {
-      const perkLabel = perkId === 'vitals_plus5' ? '+5 max HP/STA' : perkId === 'damage_plus10pct' ? '+10% dmg' : perkId
-      next = pushActivityLog(next, `Reached level ${next.run.level}. (${perkLabel})`)
-    }
-  }
-  next = reduce(next, { type: 'ui/sfx', kind: 'ui' })
-  return next
+  if (doorCost > 0) opened = applyPartyStaminaCost(opened, doorCost)
+  const withXp = applyXpWithActivityLog(opened, XP_DOOR_UNLOCK, `Unlocked the door. (+${XP_DOOR_UNLOCK} XP)`)
+  return reduce(withXp, { type: 'ui/sfx', kind: 'ui' })
 }
 

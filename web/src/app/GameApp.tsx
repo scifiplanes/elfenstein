@@ -14,15 +14,40 @@ import {
   saveDebugSettingsToLocal,
   saveDebugSettingsToProject,
 } from './debugSettingsPersistence'
+import {
+  clearRunCheckpoint,
+  mergePersistedCheckpoint,
+  saveRunCheckpoint,
+} from './runCheckpointPersistence'
 import { DitheredFrameRoot } from '../ui/frame/DitheredFrameRoot'
 import { FixedStageViewport } from './FixedStageViewport'
+import { unlockAudioFromUserGesture } from '../ui/audio/audioUnlockRegistry'
+
+function keyboardEventTargetIsFormField(e: KeyboardEvent): boolean {
+  const t = e.target
+  if (!(t instanceof HTMLElement)) return false
+  if (t.isContentEditable) return true
+  const tag = t.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
 
 export function GameApp() {
   const content = useMemo(() => ContentDB.createDefault(), [])
-  const [state, dispatch] = useReducer(reduce, undefined, () => initialState(content))
+  const [state, dispatch] = useReducer(reduce, undefined, () => mergePersistedCheckpoint(initialState(content)))
   const [debugTuningHydrated, setDebugTuningHydrated] = useState(false)
+  const [titleAudioPrimed, setTitleAudioPrimed] = useState(false)
+  const primeTitleAudio = useCallback(() => {
+    unlockAudioFromUserGesture()
+    setTitleAudioPrimed(true)
+  }, [])
   const stateRef = useRef(state)
   stateRef.current = state
+
+  useEffect(() => {
+    if (state.run.checkpoint) saveRunCheckpoint(state.run.checkpoint)
+    else clearRunCheckpoint()
+  }, [state.run.checkpoint])
+
   const debugTuningHydratedRef = useRef(false)
   debugTuningHydratedRef.current = debugTuningHydrated
   const projectSaveTimerRef = useRef(0)
@@ -45,19 +70,11 @@ export function GameApp() {
     }, 400)
   }, [dispatch])
 
+  // Hydration order: localStorage first, then fetched `debug-settings.json` so shipped builds override stale browser snapshots (ADR-0485).
   useEffect(() => {
     let cancelled = false
     loadDebugSettingsFromProject().then((data) => {
       if (cancelled) return
-      if (data?.render || data?.audio) {
-        dispatch({ type: 'debug/loadTuning', render: data.render, audio: data.audio })
-      }
-      if (data?.hubHotspots) {
-        dispatch({ type: 'debug/loadHubHotspots', patch: data.hubHotspots })
-      }
-      if (data?.debugUi) {
-        dispatch({ type: 'debug/loadPersistedUi', patch: data.debugUi })
-      }
       const local = loadDebugSettingsFromLocal()
       if (local?.render || local?.audio) {
         dispatch({ type: 'debug/loadTuning', render: local.render, audio: local.audio })
@@ -67,6 +84,15 @@ export function GameApp() {
       }
       if (local?.debugUi) {
         dispatch({ type: 'debug/loadPersistedUi', patch: local.debugUi })
+      }
+      if (data?.render || data?.audio) {
+        dispatch({ type: 'debug/loadTuning', render: data.render, audio: data.audio })
+      }
+      if (data?.hubHotspots) {
+        dispatch({ type: 'debug/loadHubHotspots', patch: data.hubHotspots })
+      }
+      if (data?.debugUi) {
+        dispatch({ type: 'debug/loadPersistedUi', patch: data.debugUi })
       }
       setDebugTuningHydrated(true)
     })
@@ -91,6 +117,9 @@ export function GameApp() {
     state.render,
     state.render.npcSpawnCountMin,
     state.render.npcSpawnCountMax,
+    state.render.itemDurabilityEnabled,
+    state.render.itemDurabilityWeaponHitCost,
+    state.render.itemDurabilityToolUseCost,
     state.audio,
     state.hubHotspots,
     state.ui.debugBgTrack,
@@ -123,6 +152,9 @@ export function GameApp() {
     state.render,
     state.render.npcSpawnCountMin,
     state.render.npcSpawnCountMax,
+    state.render.itemDurabilityEnabled,
+    state.render.itemDurabilityWeaponHitCost,
+    state.render.itemDurabilityToolUseCost,
     state.audio,
     state.hubHotspots,
     state.ui.debugBgTrack,
@@ -157,6 +189,9 @@ export function GameApp() {
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Let typing work in debug panel search and other inputs; game binds still eat these keys otherwise.
+      if (keyboardEventTargetIsFormField(e) && e.key !== 'F2') return
+
       if (e.key === 'Escape') {
         const s = stateRef.current
         if (s.ui.settingsOpen) {
@@ -223,6 +258,14 @@ export function GameApp() {
         dispatch({ type: 'combat/defend' })
         return
       }
+      if (e.key === ' ' || e.code === 'Space') {
+        const s = stateRef.current
+        if (s.combat && !s.ui.settingsOpen && s.ui.screen === 'game' && !s.ui.death) {
+          e.preventDefault()
+          dispatch({ type: 'combat/skip' })
+        }
+        return
+      }
       if (e.key === 'F2') {
         e.preventDefault()
         dispatch({ type: 'ui/toggleDebug' })
@@ -246,7 +289,13 @@ export function GameApp() {
     <CursorProvider>
       <Fragment>
         <FixedStageViewport>
-          <DitheredFrameRoot state={state} dispatch={dispatch} content={content} />
+          <DitheredFrameRoot
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            titleAudioPrimed={titleAudioPrimed}
+            onPrimeTitleAudio={primeTitleAudio}
+          />
           <MusicLayer state={state} />
           <SpatialAudioLayer state={state} />
           <FeedbackLayer state={state} dispatch={dispatch} />

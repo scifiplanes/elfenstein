@@ -158,31 +158,53 @@ export function applyDungeonDoorFramesGuarded(args: {
 /**
  * After locks, turn many remaining door-frame throat floors into closed `door` / `doorOctopus`
  * (openable without a key). Skips `occupied` cells. Mutates `tiles` in place.
+ *
+ * Candidates are collected, shuffled (Fisher–Yates), then visited in that order so rolls spread
+ * spatially; at most `decorativeDoorsMax` doors are placed.
  */
 export function applyDecorativeDoorsOnDoorFrames(args: {
   tiles: Tile[]
   w: number
   h: number
-  rng: Pick<Rng, 'next'>
+  rng: Pick<Rng, 'next' | 'int'>
   occupied: Set<string>
   floorProperties?: FloorProperty[]
   /** Per-candidate probability in [0, 1]. */
   chance: number
+  /** Maximum decorative doors to place (0 = none). */
+  decorativeDoorsMax: number
 }): { decorApplied: number } {
   const { tiles, w, h, rng, occupied, floorProperties } = args
   const chance = Math.max(0, Math.min(1, args.chance))
-  if (chance <= 0 || w <= 0 || h <= 0 || tiles.length !== w * h) return { decorApplied: 0 }
+  const maxDoors = Math.max(0, Math.floor(args.decorativeDoorsMax))
+  if (chance <= 0 || maxDoors <= 0 || w <= 0 || h <= 0 || tiles.length !== w * h) return { decorApplied: 0 }
 
-  let decorApplied = 0
+  const candidates: Array<{ x: number; y: number }> = []
   for (let y = 1; y < h - 1; y++) {
     for (let x = 1; x < w - 1; x++) {
       if (occupied.has(`${x},${y}`)) continue
       if (!isDoorFrameCandidate(tiles, w, h, x, y)) continue
-      if (rng.next() >= chance) continue
-      const i = x + y * w
-      tiles[i] = pickDecorativeDoorTile(rng, floorProperties)
-      decorApplied++
+      candidates.push({ x, y })
     }
+  }
+  if (!candidates.length) return { decorApplied: 0 }
+
+  for (let i = candidates.length - 1; i > 0; i--) {
+    const j = rng.int(0, i + 1)
+    const tmp = candidates[i]
+    candidates[i] = candidates[j]!
+    candidates[j] = tmp!
+  }
+
+  let decorApplied = 0
+  for (const c of candidates) {
+    if (decorApplied >= maxDoors) break
+    if (rng.next() >= chance) continue
+    const i = c.x + c.y * w
+    if (occupied.has(`${c.x},${c.y}`)) continue
+    if (!isDoorFrameCandidate(tiles, w, h, c.x, c.y)) continue
+    tiles[i] = pickDecorativeDoorTile(rng, floorProperties)
+    decorApplied++
   }
   return { decorApplied }
 }

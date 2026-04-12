@@ -6,7 +6,7 @@ import { pickPlayerSpawnCell } from './playerFloorCell'
 import { npcsWithDefaultStatuses } from './npcHydrate'
 import { randomFloorSeed } from './randomSeed'
 import { pushActivityLog } from './activityLog'
-import { applyXp } from './runProgression'
+import { applyXp, pushLevelUpActivityLogs, XP_FLOOR_DESCEND } from './runProgression'
 import {
   clampCampEveryFloors,
   difficultyForSegment,
@@ -58,12 +58,15 @@ export function descendToNextFloor(state: GameState): GameState {
       playerDir,
       floorGeomRevision: state.floor.floorGeomRevision + 1,
       roomHazardAppliedForRoomId: undefined,
+      staminaStepPaceByChar: {},
+      staminaStrafePaceByChar: {},
     },
     party: { ...state.party, items: { ...state.party.items, ...spawnedItems } },
     view: snapViewToGrid(w, h, state.render.camEyeHeight, playerPos, playerDir),
   }
 
-  const xpRes = applyXp(next, 12)
+  const beforeXp = next
+  const xpRes = applyXp(next, XP_FLOOR_DESCEND)
   next = xpRes.state
 
   const camp = shouldOpenCampHub(nextFloorIndex, every)
@@ -87,20 +90,15 @@ export function descendToNextFloor(state: GameState): GameState {
     }
     next = pushActivityLog(
       next,
-      `Camp · next expedition is floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+12 XP)`,
+      `Camp · next expedition is floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+${XP_FLOOR_DESCEND} XP)`,
     )
   } else {
     next = pushActivityLog(
       next,
-      `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+12 XP)`,
+      `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+${XP_FLOOR_DESCEND} XP)`,
     )
   }
 
-  if (xpRes.leveledUp) {
-    for (const perkId of xpRes.perkIds) {
-      const perkLabel = perkId === 'vitals_plus5' ? '+5 max HP/STA' : perkId === 'damage_plus10pct' ? '+10% dmg' : perkId
-      next = pushActivityLog(next, `Reached level ${next.run.level}. (${perkLabel})`)
-    }
-  }
+  next = pushLevelUpActivityLogs(beforeXp, next, xpRes)
   return next
 }

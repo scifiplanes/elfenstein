@@ -16,6 +16,7 @@ export async function goToVillageHub(page: Page) {
   await page.goto('/')
   const hud = interactiveHud(page)
   await expect(hud.getByRole('dialog', { name: 'Title screen' })).toBeVisible({ timeout: firstPaintMs })
+  await hud.getByRole('button', { name: /Tap to start/i }).click()
   await hud.getByRole('button', { name: 'Start' }).click()
   await expect(page.getByRole('dialog', { name: 'Title screen' })).toHaveCount(0, { timeout: 20_000 })
   const bobr = page.locator('img[src*="npc_bobr"]')

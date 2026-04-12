@@ -1,9 +1,10 @@
-import { useMemo, useEffect, useRef } from 'react'
+import { useMemo, useEffect, useLayoutEffect, useRef } from 'react'
 import type { Dispatch } from 'react'
 import type { Action } from '../../game/reducer'
 import type { GameState } from '../../game/types'
 import { SfxEngine, type SfxKind } from './SfxEngine'
 import { SfxFilePlayer } from '../audio/SfxFilePlayer'
+import { registerAudioUnlock } from '../audio/audioUnlockRegistry'
 import { shakeTransform } from './shakeTransform'
 import styles from './FeedbackLayer.module.css'
 
@@ -47,9 +48,20 @@ export function FeedbackLayer(props: { state: GameState; dispatch: Dispatch<Acti
     return map
   }, [])
 
+  useLayoutEffect(() => {
+    const unlock = () => {
+      engine.unlock()
+      for (const p of filePlayers.values()) p.unlock()
+    }
+    return registerAudioUnlock(unlock)
+  }, [engine, filePlayers])
+
   useEffect(() => {
     const q = state.ui.sfxQueue ?? []
-    if (!q.length) return
+    if (!q.length) {
+      lastSeen.current.clear()
+      return
+    }
     for (const s of q) {
       if (lastSeen.current.has(s.id)) continue
       lastSeen.current.add(s.id)

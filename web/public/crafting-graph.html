@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Crafting graph — Elfenstein</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Jim+Nightshade&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/vis-network@9.1.9/standalone/umd/vis-network.min.js"></script>
+  <style>
+    :root {
+      --bg0: #0b0c10;
+      --bg1: #10121a;
+      --panel: rgba(18, 20, 28, 0.92);
+      --panelBorder: rgba(171, 136, 107, 0.75);
+      --text0: rgba(255, 255, 255, 0.92);
+      --text1: rgba(255, 255, 255, 0.72);
+      --muted: rgba(255, 255, 255, 0.5);
+      --shadow: rgba(0, 0, 0, 0.55);
+      --hudSlotBorder: rgba(171, 136, 107, 0.75);
+      --hudStaminaFill: #d6bdb5;
+      --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      --sans: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      --title: 'Jim Nightshade', cursive;
+      --titleShadow: 0 1px 3px rgba(0, 0, 0, 0.45), 0 0 12px rgba(0, 0, 0, 0.22);
+      --nodeRawBg: #1a221c;
+      --nodeRawBorder: #4d6048;
+      --nodeBothBg: #161a22;
+      --nodeBothBorder: rgba(171, 136, 107, 0.82);
+      --nodeProductBg: #221a16;
+      --nodeProductBorder: rgba(171, 136, 107, 0.95);
+    }
+    * { box-sizing: border-box; }
+    html, body { height: 100%; margin: 0; }
+    body {
+      display: flex;
+      flex-direction: column;
+      font: 14px/1.35 var(--sans);
+      color: var(--text0);
+      background: var(--bg0);
+      background-image: radial-gradient(ellipse 120% 80% at 50% 0%, var(--bg1) 0%, var(--bg0) 55%);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: geometricPrecision;
+    }
+    #bar {
+      flex: 0 0 auto;
+      margin: 12px 12px 0;
+      padding: 14px 16px 16px;
+      background: var(--panel);
+      border: 2px solid var(--panelBorder);
+      border-radius: 0;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.65);
+    }
+    h1 {
+      margin: 0 0 10px;
+      font-family: var(--title);
+      font-size: clamp(28px, 5vw, 37px);
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.2;
+      color: var(--text0);
+      text-shadow: var(--titleShadow);
+    }
+    .blurb {
+      font-family: var(--title);
+      font-size: 21px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      line-height: 1.45;
+      color: var(--text1);
+      text-shadow: var(--titleShadow);
+      margin: 0 0 12px;
+    }
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px 18px;
+      margin: 0 0 10px;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text1);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 8px; }
+    .dot {
+      width: 11px;
+      height: 11px;
+      border-radius: 0;
+      border: 1px solid var(--hudSlotBorder);
+      flex-shrink: 0;
+    }
+    .dot.raw { background: var(--nodeRawBg); }
+    .dot.both { background: var(--nodeBothBg); }
+    .dot.product { background: var(--nodeProductBg); }
+    .footer {
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+    .footer code {
+      font-size: 11px;
+      padding: 3px 8px;
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      color: var(--text1);
+    }
+    .searchRow {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 10px 12px;
+      margin: 0 0 12px;
+    }
+    .searchRow label {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--text1);
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+    }
+    #itemSearch {
+      flex: 1 1 200px;
+      min-width: 0;
+      max-width: 420px;
+      padding: 10px 12px;
+      font: 14px/1.3 var(--sans);
+      color: var(--text0);
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(171, 136, 107, 0.45);
+      border-radius: 0;
+      outline: none;
+    }
+    #itemSearch::placeholder {
+      color: var(--muted);
+    }
+    #itemSearch:focus {
+      border-color: rgba(214, 189, 181, 0.65);
+      box-shadow: 0 0 0 1px rgba(214, 189, 181, 0.25);
+    }
+    #focusMatches {
+      font-family: var(--mono);
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      text-transform: uppercase;
+      padding: 10px 14px;
+      color: var(--text0);
+      background: rgba(34, 26, 22, 0.95);
+      border: 1px solid rgba(171, 136, 107, 0.65);
+      border-radius: 0;
+      cursor: pointer;
+    }
+    #focusMatches:hover {
+      border-color: rgba(214, 189, 181, 0.85);
+    }
+    #focusMatches:disabled {
+      opacity: 0.45;
+      cursor: not-allowed;
+    }
+    #searchHint {
+      flex: 1 1 100%;
+      margin: 0;
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.45;
+    }
+    #graphWrap {
+      flex: 1 1 auto;
+      min-height: 0;
+      margin: 12px;
+      border: 2px solid var(--panelBorder);
+      border-radius: 0;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.5);
+      background: rgba(12, 14, 18, 0.65);
+    }
+    #graph { width: 100%; height: 100%; min-height: 320px; }
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <h1>Crafting graph</h1>
+    <p class="blurb">Each node is an item (hover for its id). Arrows show <strong style="color:var(--text0)">A → result</strong>; the edge label is slot <strong style="color:var(--text0)">B</strong> — drag source A onto B in the inventory.</p>
+    <div class="legend">
+      <span><i class="dot raw"></i> Raw — never crafted</span>
+      <span><i class="dot both"></i> Intermediate</span>
+      <span><i class="dot product"></i> Product — not an ingredient elsewhere</span>
+    </div>
+    <div class="searchRow">
+      <label for="itemSearch">Find item</label>
+      <input type="search" id="itemSearch" placeholder="Type item id (e.g. Spear, Waterbag)…" autocomplete="off" spellcheck="false" aria-describedby="searchHint" />
+      <button type="button" id="focusMatches" disabled>Focus matches</button>
+      <p id="searchHint">Matches item ids (case-insensitive). Enter or Focus zooms the graph to hits.</p>
+    </div>
+    <p class="footer">Regenerate: <code>node web/scripts/genCraftingRecipesGraph.mjs</code> · Served as <code>/crafting-graph.html</code></p>
+  </div>
+  <div id="graphWrap"><div id="graph"></div></div>
+  <script type="application/json" id="crafting-data">{"nodes":[{"id":"Stick","label":"🪵","title":"Stick","group":"raw"},{"id":"Stone","label":"🪨","title":"Stone","group":"raw"},{"id":"Ash","label":"⚫️","title":"Ash","group":"raw"},{"id":"Sulfur","label":"🟡","title":"Sulfur","group":"raw"},{"id":"Chisel","label":"🪓","title":"Chisel","group":"both"},{"id":"StoneShard","label":"🪨","title":"StoneShard","group":"both"},{"id":"Twine","label":"🪢","title":"Twine","group":"raw"},{"id":"ClothScrap","label":"🧵","title":"ClothScrap","group":"raw"},{"id":"Moss","label":"🌿","title":"Moss","group":"raw"},{"id":"GlassVial","label":"🧴","title":"GlassVial","group":"both"},{"id":"HerbLeaf","label":"🍃","title":"HerbLeaf","group":"both"},{"id":"BitterHerb","label":"🌱","title":"BitterHerb","group":"both"},{"id":"Foodroot","label":"🥕","title":"Foodroot","group":"raw"},{"id":"MortarMeal","label":"🥣","title":"MortarMeal","group":"both"},{"id":"WaterbagFull","label":"💧","title":"WaterbagFull","group":"raw"},{"id":"Mushrooms","label":"🍄","title":"Mushrooms","group":"raw"},{"id":"Glowbug","label":"✨","title":"Glowbug","group":"raw"},{"id":"Torch","label":"🔥","title":"Torch","group":"both"},{"id":"BobrJuice","label":"🧃","title":"BobrJuice","group":"raw"},{"id":"Sweetroot","label":"🍠","title":"Sweetroot","group":"raw"},{"id":"MushedRoot","label":"🥣","title":"MushedRoot","group":"both"},{"id":"Fungus","label":"🍄","title":"Fungus","group":"both"},{"id":"Shroomcake","label":"🎂","title":"Shroomcake","group":"both"},{"id":"Rootsoup","label":"🍲","title":"Rootsoup","group":"both"},{"id":"Salt","label":"🧂","title":"Salt","group":"raw"},{"id":"Grubling","label":"🐛","title":"Grubling","group":"raw"},{"id":"Slime","label":"🫧","title":"Slime","group":"both"},{"id":"Mucus","label":"💧","title":"Mucus","group":"both"},{"id":"Mold","label":"🦠","title":"Mold","group":"both"},{"id":"SporePaste","label":"🫗","title":"SporePaste","group":"both"},{"id":"Gem","label":"💎","title":"Gem","group":"raw"},{"id":"Bone","label":"🦴","title":"Bone","group":"raw"},{"id":"Staff","label":"🪄","title":"Staff","group":"both"},{"id":"Figurine","label":"🗿","title":"Figurine","group":"raw"},{"id":"Club","label":"🏏","title":"Club","group":"both"},{"id":"Claw","label":"🦞","title":"Claw","group":"raw"},{"id":"Tooth","label":"🦷","title":"Tooth","group":"raw"},{"id":"BandageStrip","label":"🩹","title":"BandageStrip","group":"both"},{"id":"Flourball","label":"🍞","title":"Flourball","group":"both"},{"id":"Flint","label":"✳️","title":"Flint","group":"both"},{"id":"IronPot","label":"🍳","title":"IronPot","group":"both"},{"id":"Hive","label":"🪺","title":"Hive","group":"raw"},{"id":"GlowbugJar","label":"🫙","title":"GlowbugJar","group":"both"},{"id":"Snailing","label":"🐌","title":"Snailing","group":"raw"},{"id":"SnailingShell","label":"🐚","title":"SnailingShell","group":"both"},{"id":"KuratkoEgg","label":"🥚","title":"KuratkoEgg","group":"raw"},{"id":"Spear","label":"🗡️","title":"Spear","group":"product"},{"id":"Firebolt","label":"🔥","title":"Firebolt","group":"product"},{"id":"Fireshield","label":"🛡️","title":"Fireshield","group":"product"},{"id":"Bow","label":"🏹","title":"Bow","group":"product"},{"id":"Sling","label":"🪃","title":"Sling","group":"product"},{"id":"Bolas","label":"🪢","title":"Bolas","group":"product"},{"id":"WaterbagEmpty","label":"🫙","title":"WaterbagEmpty","group":"product"},{"id":"WaterskinEmpty","label":"🧴","title":"WaterskinEmpty","group":"product"},{"id":"TravelFlaskEmpty","label":"⚗️","title":"TravelFlaskEmpty","group":"product"},{"id":"HerbPoultice","label":"🌿","title":"HerbPoultice","group":"product"},{"id":"AntitoxinVial","label":"🧪","title":"AntitoxinVial","group":"product"},{"id":"HerbTea","label":"🫖","title":"HerbTea","group":"product"},{"id":"WoolCap","label":"🧢","title":"WoolCap","group":"product"},{"id":"HerbCirclet","label":"🌼","title":"HerbCirclet","group":"product"},{"id":"SporeCap","label":"🍄","title":"SporeCap","group":"product"},{"id":"Headlamp","label":"🏮","title":"Headlamp","group":"product"},{"id":"Lantern","label":"🔦","title":"Lantern","group":"product"},{"id":"Shroompie","label":"🥧","title":"Shroompie","group":"product"},{"id":"RootsoupSalted","label":"🍲","title":"RootsoupSalted","group":"product"},{"id":"PreservedGrub","label":"🥫","title":"PreservedGrub","group":"product"},{"id":"SporeStew","label":"🍜","title":"SporeStew","group":"product"},{"id":"GemCharm","label":"📿","title":"GemCharm","group":"product"},{"id":"MossWrap","label":"🧣","title":"MossWrap","group":"product"},{"id":"MossSandals","label":"🩴","title":"MossSandals","group":"product"},{"id":"BrinedSpore","label":"🥫","title":"BrinedSpore","group":"product"},{"id":"SmolderBundle","label":"🔥","title":"SmolderBundle","group":"product"},{"id":"RiverTonic","label":"🍶","title":"RiverTonic","group":"product"},{"id":"CoolingPoultice","label":"🧊","title":"CoolingPoultice","group":"product"},{"id":"DryWrap","label":"🧻","title":"DryWrap","group":"product"},{"id":"BoneSpike","label":"🦴","title":"BoneSpike","group":"product"},{"id":"AttunedStaff","label":"✴️","title":"AttunedStaff","group":"product"},{"id":"CampfireKit","label":"🪵","title":"CampfireKit","group":"product"},{"id":"Kettle","label":"🫖","title":"Kettle","group":"product"},{"id":"SwarmBasket","label":"🧺","title":"SwarmBasket","group":"product"},{"id":"CapturedSwarm","label":"🫧","title":"CapturedSwarm","group":"product"},{"id":"SlimePhial","label":"🧪","title":"SlimePhial","group":"product"},{"id":"PickledSnailing","label":"🥫","title":"PickledSnailing","group":"product"},{"id":"ShellSpike","label":"🐚","title":"ShellSpike","group":"product"},{"id":"ShellCharm","label":"📿","title":"ShellCharm","group":"product"},{"id":"SnailSlimePaste","label":"🫗","title":"SnailSlimePaste","group":"product"},{"id":"BoiledKuratkoEgg","label":"🥚","title":"BoiledKuratkoEgg","group":"product"},{"id":"HerbKuratkoOmelette","label":"🍳","title":"HerbKuratkoOmelette","group":"product"}],"edges":[{"id":"r0","from":"Stick","to":"Spear","label":"+ 🪨","title":"Stick + Stone → Spear\nBase recipes"},{"id":"r1","from":"Ash","to":"Firebolt","label":"+ 🟡","title":"Ash + Sulfur → Firebolt\nBase recipes"},{"id":"r2","from":"Sulfur","to":"Fireshield","label":"+ ⚫️","title":"Sulfur + Ash → Fireshield\nBase recipes"},{"id":"r3","from":"Stone","to":"StoneShard","label":"+ 🪓","title":"Stone + Chisel → StoneShard\nWeapon / tool assembly"},{"id":"r4","from":"Stick","to":"Spear","label":"+ 🪨","title":"Stick + StoneShard → Spear\nWeapon / tool assembly"},{"id":"r5","from":"Stick","to":"Bow","label":"+ 🪢","title":"Stick + Twine → Bow\nWeapon / tool assembly"},{"id":"r6","from":"Twine","to":"Sling","label":"+ 🪵","title":"Twine + Stick → Sling\nWeapon / tool assembly"},{"id":"r7","from":"Stone","to":"Bolas","label":"+ 🪢","title":"Stone + Twine → Bolas\nWeapon / tool assembly"},{"id":"r8","from":"Stick","to":"WaterbagEmpty","label":"+ 🧵","title":"Stick + ClothScrap → WaterbagEmpty\nRemedies & cooking"},{"id":"r9","from":"Twine","to":"WaterskinEmpty","label":"+ 🌿","title":"Twine + Moss → WaterskinEmpty\nRemedies & cooking"},{"id":"r10","from":"GlassVial","to":"TravelFlaskEmpty","label":"+ 🪢","title":"GlassVial + Twine → TravelFlaskEmpty\nRemedies & cooking"},{"id":"r11","from":"ClothScrap","to":"BandageStrip","label":"+ 🧵","title":"ClothScrap + ClothScrap → BandageStrip\nRemedies & cooking"},{"id":"r12","from":"HerbLeaf","to":"HerbPoultice","label":"+ 🧵","title":"HerbLeaf + ClothScrap → HerbPoultice\nRemedies & cooking"},{"id":"r13","from":"BitterHerb","to":"AntitoxinVial","label":"+ 🧴","title":"BitterHerb + GlassVial → AntitoxinVial\nRemedies & cooking"},{"id":"r14","from":"Foodroot","to":"MortarMeal","label":"+ 🪨","title":"Foodroot + Stone → MortarMeal\nRemedies & cooking"},{"id":"r15","from":"MortarMeal","to":"Flourball","label":"+ 💧","title":"MortarMeal + WaterbagFull → Flourball\nRemedies & cooking"},{"id":"r16","from":"HerbLeaf","to":"HerbTea","label":"+ 💧","title":"HerbLeaf + WaterbagFull → HerbTea\nRemedies & cooking"},{"id":"r17","from":"ClothScrap","to":"WoolCap","label":"+ 🪢","title":"ClothScrap + Twine → WoolCap\nHeadwear"},{"id":"r18","from":"HerbLeaf","to":"HerbCirclet","label":"+ 🪢","title":"HerbLeaf + Twine → HerbCirclet\nHeadwear"},{"id":"r19","from":"Mushrooms","to":"SporeCap","label":"+ 🧵","title":"Mushrooms + ClothScrap → SporeCap\nHeadwear"},{"id":"r20","from":"Mushrooms","to":"BitterHerb","label":"+ ⚫️","title":"Mushrooms + Ash → BitterHerb\nBreadth combos"},{"id":"r21","from":"Ash","to":"HerbLeaf","label":"+ 🍄","title":"Ash + Mushrooms → HerbLeaf\nBreadth combos"},{"id":"r22","from":"StoneShard","to":"Chisel","label":"+ 🪢","title":"StoneShard + Twine → Chisel\nBreadth combos"},{"id":"r23","from":"Twine","to":"GlassVial","label":"+ 🪨","title":"Twine + StoneShard → GlassVial\nBreadth combos"},{"id":"r24","from":"Stick","to":"Torch","label":"+ 🌿","title":"Stick + Moss → Torch\nLight, bio, food, tools"},{"id":"r25","from":"Glowbug","to":"Headlamp","label":"+ 🪢","title":"Glowbug + Twine → Headlamp\nLight, bio, food, tools"},{"id":"r26","from":"Torch","to":"Lantern","label":"+ 🧃","title":"Torch + BobrJuice → Lantern\nLight, bio, food, tools"},{"id":"r27","from":"Sweetroot","to":"MushedRoot","label":"+ 🪨","title":"Sweetroot + Stone → MushedRoot\nLight, bio, food, tools"},{"id":"r28","from":"MushedRoot","to":"Shroomcake","label":"+ 🍄","title":"MushedRoot + Fungus → Shroomcake\nLight, bio, food, tools"},{"id":"r29","from":"Shroomcake","to":"Shroompie","label":"+ 🍠","title":"Shroomcake + Sweetroot → Shroompie\nLight, bio, food, tools"},{"id":"r30","from":"MushedRoot","to":"Rootsoup","label":"+ 💧","title":"MushedRoot + WaterbagFull → Rootsoup\nLight, bio, food, tools"},{"id":"r31","from":"Rootsoup","to":"RootsoupSalted","label":"+ 🧂","title":"Rootsoup + Salt → RootsoupSalted\nLight, bio, food, tools"},{"id":"r32","from":"Grubling","to":"PreservedGrub","label":"+ 🧂","title":"Grubling + Salt → PreservedGrub\nLight, bio, food, tools"},{"id":"r33","from":"Slime","to":"Fungus","label":"+ 🌿","title":"Slime + Moss → Fungus\nLight, bio, food, tools"},{"id":"r34","from":"Mucus","to":"Mold","label":"+ 🍄","title":"Mucus + Fungus → Mold\nLight, bio, food, tools"},{"id":"r35","from":"Fungus","to":"Slime","label":"+ 💧","title":"Fungus + Mucus → Slime\nLight, bio, food, tools"},{"id":"r36","from":"Mold","to":"SporePaste","label":"+ 🍃","title":"Mold + HerbLeaf → SporePaste\nLight, bio, food, tools"},{"id":"r37","from":"Mushrooms","to":"SporePaste","label":"+ 🦠","title":"Mushrooms + Mold → SporePaste\nLight, bio, food, tools"},{"id":"r38","from":"Mold","to":"BitterHerb","label":"+ 🍄","title":"Mold + Mushrooms → BitterHerb\nLight, bio, food, tools"},{"id":"r39","from":"SporePaste","to":"SporeStew","label":"+ 💧","title":"SporePaste + WaterbagFull → SporeStew\nLight, bio, food, tools"},{"id":"r40","from":"Gem","to":"GemCharm","label":"+ 🪢","title":"Gem + Twine → GemCharm\nLight, bio, food, tools"},{"id":"r41","from":"ClothScrap","to":"MossWrap","label":"+ 🌿","title":"ClothScrap + Moss → MossWrap\nLight, bio, food, tools"},{"id":"r42","from":"Moss","to":"MossSandals","label":"+ 🪢","title":"Moss + Twine → MossSandals\nLight, bio, food, tools"},{"id":"r43","from":"SporePaste","to":"BrinedSpore","label":"+ 🧂","title":"SporePaste + Salt → BrinedSpore\nLight, bio, food, tools"},{"id":"r44","from":"Salt","to":"Mold","label":"+ 🫗","title":"Salt + SporePaste → Mold\nLight, bio, food, tools"},{"id":"r45","from":"Ash","to":"SmolderBundle","label":"+ 🪢","title":"Ash + Twine → SmolderBundle\nLight, bio, food, tools"},{"id":"r46","from":"BobrJuice","to":"RiverTonic","label":"+ 🌱","title":"BobrJuice + BitterHerb → RiverTonic\nLight, bio, food, tools"},{"id":"r47","from":"HerbLeaf","to":"CoolingPoultice","label":"+ 🌿","title":"HerbLeaf + Moss → CoolingPoultice\nLight, bio, food, tools"},{"id":"r48","from":"Salt","to":"DryWrap","label":"+ 🧵","title":"Salt + ClothScrap → DryWrap\nLight, bio, food, tools"},{"id":"r49","from":"Bone","to":"BoneSpike","label":"+ 🪨","title":"Bone + StoneShard → BoneSpike\nLight, bio, food, tools"},{"id":"r50","from":"Stick","to":"Staff","label":"+ 💎","title":"Stick + Gem → Staff\nLight, bio, food, tools"},{"id":"r51","from":"Staff","to":"AttunedStaff","label":"+ 🗿","title":"Staff + Figurine → AttunedStaff\nLight, bio, food, tools"},{"id":"r52","from":"Stone","to":"StoneShard","label":"+ 🏏","title":"Stone + Club → StoneShard\nAlternates"},{"id":"r53","from":"Stick","to":"Spear","label":"+ 🦞","title":"Stick + Claw → Spear\nAlternates"},{"id":"r54","from":"Twine","to":"Bolas","label":"+ 🦴","title":"Twine + Bone → Bolas\nAlternates"},{"id":"r55","from":"Twine","to":"Sling","label":"+ 🦞","title":"Twine + Claw → Sling\nAlternates"},{"id":"r56","from":"Claw","to":"Bolas","label":"+ 🪢","title":"Claw + Twine → Bolas\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r57","from":"Tooth","to":"BoneSpike","label":"+ 🪨","title":"Tooth + StoneShard → BoneSpike\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r58","from":"Twine","to":"Bolas","label":"+ 🦷","title":"Twine + Tooth → Bolas\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r59","from":"Bone","to":"BandageStrip","label":"+ 🧵","title":"Bone + ClothScrap → BandageStrip\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r60","from":"Claw","to":"BandageStrip","label":"+ 🧵","title":"Claw + ClothScrap → BandageStrip\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r61","from":"Tooth","to":"BandageStrip","label":"+ 🧵","title":"Tooth + ClothScrap → BandageStrip\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r62","from":"BandageStrip","to":"HerbPoultice","label":"+ 🍃","title":"BandageStrip + HerbLeaf → HerbPoultice\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r63","from":"BandageStrip","to":"AntitoxinVial","label":"+ 🌱","title":"BandageStrip + BitterHerb → AntitoxinVial\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r64","from":"Ash","to":"Torch","label":"+ 🪵","title":"Ash + Stick → Torch\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r65","from":"Foodroot","to":"MortarMeal","label":"+ 🌿","title":"Foodroot + Moss → MortarMeal\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r66","from":"MortarMeal","to":"Shroomcake","label":"+ 🍄","title":"MortarMeal + Mushrooms → Shroomcake\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r67","from":"Flourball","to":"Shroomcake","label":"+ 🍄","title":"Flourball + Mushrooms → Shroomcake\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r68","from":"Grubling","to":"PreservedGrub","label":"+ 🌿","title":"Grubling + Moss → PreservedGrub\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r69","from":"StoneShard","to":"Chisel","label":"+ 🦴","title":"StoneShard + Bone → Chisel\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r70","from":"StoneShard","to":"Chisel","label":"+ 🦞","title":"StoneShard + Claw → Chisel\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r71","from":"StoneShard","to":"Chisel","label":"+ 🦷","title":"StoneShard + Tooth → Chisel\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r72","from":"Claw","to":"BoneSpike","label":"+ 🪨","title":"Claw + StoneShard → BoneSpike\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r73","from":"Bone","to":"Staff","label":"+ 💎","title":"Bone + Gem → Staff\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r74","from":"Claw","to":"Staff","label":"+ 💎","title":"Claw + Gem → Staff\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r75","from":"Tooth","to":"Staff","label":"+ 💎","title":"Tooth + Gem → Staff\nClaw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning)"},{"id":"r76","from":"Bone","to":"Club","label":"+ 🪵","title":"Bone + Stick → Club\nOrder-sensitive pairs"},{"id":"r77","from":"Stick","to":"Spear","label":"+ 🦴","title":"Stick + Bone → Spear\nOrder-sensitive pairs"},{"id":"r78","from":"Foodroot","to":"Flourball","label":"+ 💧","title":"Foodroot + WaterbagFull → Flourball\nOrder-sensitive pairs"},{"id":"r79","from":"WaterbagFull","to":"MortarMeal","label":"+ 🥕","title":"WaterbagFull + Foodroot → MortarMeal\nOrder-sensitive pairs"},{"id":"r80","from":"Salt","to":"Mold","label":"+ 🍲","title":"Salt + Rootsoup → Mold\nOrder-sensitive pairs"},{"id":"r81","from":"ClothScrap","to":"HerbLeaf","label":"+ 🍄","title":"ClothScrap + Mushrooms → HerbLeaf\nOrder-sensitive pairs"},{"id":"r82","from":"Slime","to":"Mold","label":"+ 🍄","title":"Slime + Fungus → Mold\nOrder-sensitive pairs"},{"id":"r83","from":"Fungus","to":"Mucus","label":"+ 🫧","title":"Fungus + Slime → Mucus\nOrder-sensitive pairs"},{"id":"r84","from":"WaterbagFull","to":"SporeStew","label":"+ 🫗","title":"WaterbagFull + SporePaste → SporeStew\nOrder-sensitive pairs"},{"id":"r85","from":"ClothScrap","to":"DryWrap","label":"+ 🧂","title":"ClothScrap + Salt → DryWrap\nOrder-sensitive pairs"},{"id":"r86","from":"Stick","to":"CampfireKit","label":"+ ✳️","title":"Stick + Flint → CampfireKit\nCampfire kit (Flint is slot B: preserved) + station tools"},{"id":"r87","from":"StoneShard","to":"Flint","label":"+ 🪨","title":"StoneShard + Stone → Flint\nCampfire kit (Flint is slot B: preserved) + station tools"},{"id":"r88","from":"Twine","to":"IronPot","label":"+ 🪨","title":"Twine + Stone → IronPot\nCampfire kit (Flint is slot B: preserved) + station tools"},{"id":"r89","from":"IronPot","to":"Kettle","label":"+ 🪢","title":"IronPot + Twine → Kettle\nCampfire kit (Flint is slot B: preserved) + station tools"},{"id":"r90","from":"Twine","to":"SwarmBasket","label":"+ 🪺","title":"Twine + Hive → SwarmBasket\nSwarm tools"},{"id":"r91","from":"Hive","to":"CapturedSwarm","label":"+ 🐛","title":"Hive + Grubling → CapturedSwarm\nSwarm tools"},{"id":"r92","from":"Hive","to":"CapturedSwarm","label":"+ 🍄","title":"Hive + Mushrooms → CapturedSwarm\nSwarm tools"},{"id":"r93","from":"GlassVial","to":"SlimePhial","label":"+ 🫧","title":"GlassVial + Slime → SlimePhial\nSlime phial (inventory craft; world capture onto Wurglepup remains separate)"},{"id":"r94","from":"GlassVial","to":"SlimePhial","label":"+ 💧","title":"GlassVial + Mucus → SlimePhial\nSlime phial (inventory craft; world capture onto Wurglepup remains separate)"},{"id":"r95","from":"GlassVial","to":"GlowbugJar","label":"+ ✨","title":"GlassVial + Glowbug → GlowbugJar\nGlowbug jar (dim hand light + Shrine offering; vial-first only, parallel to Slime phial)"},{"id":"r96","from":"Glowbug","to":"GlowbugJar","label":"+ 🫙","title":"Glowbug + GlowbugJar → GlowbugJar\nAdd glowbugs to an existing jar (order-sensitive both ways; cap 12 on the jar row)"},{"id":"r97","from":"GlowbugJar","to":"GlowbugJar","label":"+ ✨","title":"GlowbugJar + Glowbug → GlowbugJar\nAdd glowbugs to an existing jar (order-sensitive both ways; cap 12 on the jar row)"},{"id":"r98","from":"Snailing","to":"SnailingShell","label":"+ 🪓","title":"Snailing + Chisel → SnailingShell\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r99","from":"Snailing","to":"PickledSnailing","label":"+ 🧂","title":"Snailing + Salt → PickledSnailing\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r100","from":"Snailing","to":"PickledSnailing","label":"+ 🌿","title":"Snailing + Moss → PickledSnailing\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r101","from":"SnailingShell","to":"ShellSpike","label":"+ 🪨","title":"SnailingShell + StoneShard → ShellSpike\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r102","from":"SnailingShell","to":"ShellCharm","label":"+ 🪢","title":"SnailingShell + Twine → ShellCharm\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r103","from":"Snailing","to":"SnailSlimePaste","label":"+ 🫧","title":"Snailing + Slime → SnailSlimePaste\nSnailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist)"},{"id":"r104","from":"KuratkoEgg","to":"BoiledKuratkoEgg","label":"+ 💧","title":"KuratkoEgg + WaterbagFull → BoiledKuratkoEgg\nKuratko nest eggs (`findRecipe` maps any full water vessel to `WaterbagFull` for matching)"},{"id":"r105","from":"KuratkoEgg","to":"HerbKuratkoOmelette","label":"+ 🍃","title":"KuratkoEgg + HerbLeaf → HerbKuratkoOmelette\nKuratko nest eggs (`findRecipe` maps any full water vessel to `WaterbagFull` for matching)"}]}</script>
+  <script>
+    (function () {
+      var data = JSON.parse(document.getElementById('crafting-data').textContent)
+      var container = document.getElementById('graph')
+      var nodes = new vis.DataSet(data.nodes)
+      var edges = new vis.DataSet(data.edges)
+      var searchInput = document.getElementById('itemSearch')
+      var focusBtn = document.getElementById('focusMatches')
+      var searchHint = document.getElementById('searchHint')
+      var groupBg = { raw: '#1a221c', both: '#161a22', product: '#221a16' }
+      var groupBorder = { raw: '#5a6e54', both: 'rgba(171, 136, 107, 0.82)', product: 'rgba(171, 136, 107, 0.95)' }
+      var matchBorder = 'rgba(255, 220, 180, 0.95)'
+      var borderHi = 'rgba(255, 200, 200, 0.45)'
+      var net = new vis.Network(
+        container,
+        { nodes: nodes, edges: edges },
+        {
+          nodes: {
+            shape: 'box',
+            shapeProperties: { borderRadius: 0 },
+            margin: 12,
+            borderWidth: 2,
+            font: { size: 24, color: 'rgba(255, 248, 240, 0.96)' },
+            color: { highlight: { border: borderHi } },
+          },
+          edges: {
+            arrows: { to: { enabled: true, scaleFactor: 0.55 } },
+            font: {
+              size: 12,
+              color: 'rgba(255, 255, 255, 0.48)',
+              strokeWidth: 0,
+              align: 'middle',
+              face: 'ui-monospace, Menlo, Monaco, Consolas, monospace',
+            },
+            smooth: { type: 'continuous', roundness: 0.35 },
+            color: { color: 'rgba(171, 136, 107, 0.42)', highlight: 'rgba(214, 189, 181, 0.75)' },
+          },
+          groups: {
+            raw: {
+              color: { background: '#1a221c', border: '#5a6e54' },
+            },
+            both: {
+              color: { background: '#161a22', border: 'rgba(171, 136, 107, 0.82)' },
+            },
+            product: {
+              color: { background: '#221a16', border: 'rgba(171, 136, 107, 0.95)' },
+            },
+          },
+          physics: {
+            enabled: true,
+            barnesHut: { gravitationalConstant: -2600, centralGravity: 0.11, springLength: 145, springConstant: 0.032 },
+            stabilization: { iterations: 220, updateInterval: 25 },
+          },
+          interaction: { hover: true, tooltipDelay: 120, zoomView: true, dragView: true },
+        }
+      )
+      net.once('stabilizationIterationsDone', function () {
+        net.setOptions({ physics: false })
+      })
+
+      function matchIdsForQuery(q) {
+        var qq = (q || '').trim().toLowerCase()
+        if (!qq) return []
+        var out = []
+        for (var i = 0; i < data.nodes.length; i++) {
+          var n = data.nodes[i]
+          if (n.id.toLowerCase().indexOf(qq) !== -1) out.push(n.id)
+        }
+        return out
+      }
+
+      function applySearchVisual(q) {
+        var qq = (q || '').trim().toLowerCase()
+        var upd = []
+        if (!qq) {
+          for (var i = 0; i < data.nodes.length; i++) {
+            var bn = data.nodes[i]
+            var bg0 = groupBg[bn.group] || groupBg.both
+            var br0 = groupBorder[bn.group] || groupBorder.both
+            upd.push({
+              id: bn.id,
+              label: bn.label,
+              title: bn.title,
+              group: bn.group,
+              opacity: 1,
+              borderWidth: 2,
+              color: { background: bg0, border: br0 },
+            })
+          }
+          nodes.update(upd)
+          return
+        }
+        for (var j = 0; j < data.nodes.length; j++) {
+          var n = data.nodes[j]
+          var hit = n.id.toLowerCase().indexOf(qq) !== -1
+          var bg = groupBg[n.group] || groupBg.both
+          var br = groupBorder[n.group] || groupBorder.both
+          upd.push({
+            id: n.id,
+            label: n.label,
+            title: n.title,
+            group: n.group,
+            opacity: hit ? 1 : 0.22,
+            borderWidth: hit ? 3 : 2,
+            color: { background: bg, border: hit ? matchBorder : br },
+          })
+        }
+        nodes.update(upd)
+      }
+
+      function refreshSearchUi() {
+        var q = searchInput.value
+        var mids = matchIdsForQuery(q)
+        var hasQ = q.trim().length > 0
+        focusBtn.disabled = !hasQ || mids.length === 0
+        if (!hasQ) {
+          searchHint.textContent = 'Matches item ids (case-insensitive). Enter or Focus zooms the graph to hits.'
+        } else if (mids.length === 0) {
+          searchHint.textContent = 'No item ids contain “' + q.trim() + '”.'
+        } else {
+          searchHint.textContent = mids.length + ' match' + (mids.length === 1 ? '' : 'es') + ' · Enter or Focus to zoom'
+        }
+      }
+
+      function focusMatches() {
+        var mids = matchIdsForQuery(searchInput.value)
+        if (mids.length === 0) return
+        net.fit({
+          nodes: mids,
+          animation: { duration: 350, easingFunction: 'easeInOutQuad' },
+        })
+      }
+
+      searchInput.addEventListener('input', function () {
+        applySearchVisual(searchInput.value)
+        refreshSearchUi()
+      })
+      searchInput.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault()
+          focusMatches()
+        }
+      })
+      focusBtn.addEventListener('click', focusMatches)
+      refreshSearchUi()
+    })()
+  </script>
+</body>
+</html>

@@ -7,6 +7,8 @@ import type { ItemDefId } from '../game/types'
  */
 export const ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN: readonly ItemDefId[] = [
   'WaterbagFull', // Well transform from WaterbagEmpty
+  'WaterskinFull',
+  'TravelFlaskFull',
   'Spear',
   'Firebolt',
   'Fireshield',
@@ -15,6 +17,9 @@ export const ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN: readonly ItemDefId[] = [
   'SwarmQueen',
   'SwarmBasket',
   'CapturedSwarm',
+  'SlimePhial',
+  'CapturedSlime',
+  'GlowbugJar',
   // Craft / transform outputs (not rolled by `pickFloorItemDefFromTable`).
   'Torch',
   'Headlamp',
@@ -40,4 +45,24 @@ export const ITEM_DEF_IDS_INTENTIONALLY_NON_PROCGEN: readonly ItemDefId[] = [
   'DryWrap',
   'Claw',
   'Tooth',
+  'Flint',
+  'CampfireKit',
+  'IronPot',
+  'Kettle',
+  'RoastMushrooms',
+  'RoastFoodroot',
+  'RoastGrub',
+  'RoastFungus',
+  'KuratkoEgg',
+  'RoastKuratkoEgg',
+  'BoiledKuratkoEgg',
+  'HerbKuratkoOmelette',
+  // Snailord npcLoot bases + snail crafts / campfire output (not floor spawn / POI loot).
+  'Snailing',
+  'SnailingShell',
+  'PickledSnailing',
+  'RoastSnailing',
+  'ShellSpike',
+  'ShellCharm',
+  'SnailSlimePaste',
 ]

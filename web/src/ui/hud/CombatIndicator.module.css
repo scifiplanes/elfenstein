@@ -1,8 +1,9 @@
-.wrap {
+.cornerWrap {
   text-align: right;
   color: var(--buttonTitleColor);
   text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
   font-family: var(--buttonTitleFontFamily);
+  pointer-events: none;
 }
 
 .title {
@@ -53,58 +54,149 @@
   transition: width 0.12s ease-out;
 }
 
-.turn {
-  margin-top: 2px;
-  font-size: calc(var(--buttonTitleFontSize) - 6px);
-  line-height: 1.05;
-  opacity: 0.95;
-}
-
-.nextTurn {
-  margin-top: 1px;
-  font-size: calc(var(--buttonTitleFontSize) - 8px);
-  line-height: 1.05;
-  opacity: 0.82;
-}
-
-.actions {
+/* Full-bleed over `.panel.game`; only the menu card receives hits.
+   Cluster anchored low in the game cell. */
+.centerOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  align-items: center;
   justify-content: flex-end;
-  gap: 6px;
-  margin-top: 8px;
+  padding: 0 6px 6px;
+}
+
+.centerCluster {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  max-width: min(96%, 520px);
   pointer-events: auto;
 }
 
-.actionBtn {
+.actionMenuCard {
+  pointer-events: auto;
+  cursor: none;
+  min-width: min(220px, 78vw);
+  padding: 10px 12px 12px;
+  background: rgba(12, 14, 22, 0.78);
+  border: 1px solid rgba(171, 136, 107, 0.75);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  font-family: var(--buttonTitleFontFamily);
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+}
+
+.menuTitle {
+  font-size: calc(var(--buttonTitleFontSize) - 6px);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: #e04545;
+  margin-bottom: 8px;
+  text-align: center;
+}
+
+.menuRow {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 6px;
+  min-height: 28px;
+}
+
+.menuRowAction {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.menuRowLabel,
+.menuRowCost {
+  font-size: calc(var(--buttonTitleFontSize) - 7px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e04545;
+}
+
+.menuRowKey {
+  font-size: calc(var(--buttonTitleFontSize) - 9px);
+  letter-spacing: 0.04em;
+  text-transform: none;
+  color: rgba(255, 210, 210, 0.88);
+  font-weight: 400;
+  white-space: nowrap;
+}
+
+.menuRowCost {
+  flex-shrink: 0;
+  min-width: 2ch;
+  text-align: right;
+  opacity: 0.95;
+}
+
+.menuRowBtn {
   appearance: none;
   margin: 0;
-  padding: 4px 10px;
-  font-family: var(--buttonTitleFontFamily);
-  font-size: calc(var(--buttonTitleFontSize) - 8px);
-  line-height: var(--buttonTitleLineHeight);
-  letter-spacing: var(--buttonTitleLetterSpacing);
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: none;
+  font-family: inherit;
+  text-shadow: inherit;
+  text-align: left;
+  flex: 1;
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 0;
+}
+
+.menuRowBtn:hover:not(:disabled) {
+  filter: brightness(1.12);
+}
+
+.menuRowBtn:disabled {
+  opacity: 0.42;
+  cursor: none;
+}
+
+.menuRowStatic {
+  flex: 1;
+  text-align: left;
+  opacity: 0.88;
+  font-size: calc(var(--buttonTitleFontSize) - 7px);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #e04545;
+}
+
+.turnAside {
+  text-align: left;
   color: var(--buttonTitleColor);
-  text-shadow: var(--buttonTitleTextShadow);
-  background: rgba(18, 20, 28, 0.88);
-  border: 2px solid rgba(171, 136, 107, 0.75);
-  border-radius: 0;
-  cursor: pointer;
-}
-
-.actionBtn:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-
-.actionBtn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
-}
-
-.captureHint {
-  margin-top: 6px;
-  font-size: calc(var(--buttonTitleFontSize) - 9px);
-  opacity: 0.85;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.9);
+  font-family: var(--buttonTitleFontFamily);
+  font-size: calc(var(--buttonTitleFontSize) - 6px);
+  line-height: 1.2;
+  max-width: min(200px, 40vw);
   pointer-events: none;
+}
+
+.turnAsideLine {
+  opacity: 0.95;
+}
+
+.turnAsideNext {
+  margin-top: 4px;
+  font-size: calc(var(--buttonTitleFontSize) - 8px);
+  opacity: 0.82;
 }
 

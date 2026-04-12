@@ -1,10 +1,17 @@
-import { useEffect, useMemo } from 'react'
+import { useEffect, useLayoutEffect, useMemo } from 'react'
 import type { GameState } from '../../game/types'
 import { SpatialAudio } from './SpatialAudio'
+import { registerAudioUnlock } from './audioUnlockRegistry'
 
 export function SpatialAudioLayer(props: { state: GameState }) {
   const { state } = props
   const engine = useMemo(() => new SpatialAudio(), [])
+
+  useLayoutEffect(() => {
+    return registerAudioUnlock(() => {
+      engine.ensure()
+    })
+  }, [engine])
 
   useEffect(() => {
     const emitters = [

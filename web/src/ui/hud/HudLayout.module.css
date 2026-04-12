@@ -148,6 +148,19 @@
   pointer-events: auto;
 }
 
+/* NPC dialog hits: same padded box as `.npcCaptureLayer` / death; below trade (6) so floor trade stacks above. */
+.npcDialogInteractiveLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  box-sizing: border-box;
+  padding: 10px 6px 0;
+  pointer-events: auto;
+}
+
 /* Title / paperdoll (interactive): invisible hit tree over entire HUD grid; matches `fullHudCaptureLayer` footprint. */
 .fullHudInteractiveLayer {
   position: absolute;

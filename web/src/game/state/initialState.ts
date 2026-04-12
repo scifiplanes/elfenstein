@@ -6,6 +6,7 @@ import { generateDungeon } from '../../procgen/generateDungeon'
 import { hydrateGenFloorItems, snapViewToGrid } from './procgenHydrate'
 import { pickPlayerSpawnCell } from './playerFloorCell'
 import { npcsWithDefaultStatuses } from './npcHydrate'
+import { inventoryItemFromDef } from './itemDurability'
 import { randomFloorSeed } from './randomSeed'
 import {
   clampCampEveryFloors,
@@ -26,9 +27,13 @@ function place(inv: InventoryGrid, itemId: ItemId, idx: number) {
 const DEFAULT_FLOOR_W = 31
 const DEFAULT_FLOOR_H = 31
 
-export function makeInitialState(_content: ContentDB): GameState {
+export function makeInitialState(
+  _content: ContentDB,
+  opts?: { /** Deterministic procgen for tests (default: random). */
+    floorSeed?: number },
+): GameState {
   const nowMs = performance.now()
-  const floorSeed = randomFloorSeed()
+  const floorSeed = opts?.floorSeed ?? randomFloorSeed()
   const defaultCamEyeHeight = DEFAULT_RENDER.camEyeHeight
 
   const cols = 10
@@ -37,15 +42,15 @@ export function makeInitialState(_content: ContentDB): GameState {
   const items: GameState['party']['items'] = {
     i_mush: { id: 'i_mush', defId: 'Mushrooms', qty: 1 },
     i_root: { id: 'i_root', defId: 'Foodroot', qty: 1 },
-    i_wbe: { id: 'i_wbe', defId: 'WaterbagEmpty', qty: 1 },
-    i_stone: { id: 'i_stone', defId: 'Stone', qty: 1 },
-    i_stick: { id: 'i_stick', defId: 'Stick', qty: 1 },
-    i_club: { id: 'i_club', defId: 'Club', qty: 1 },
+    i_wbe: { id: 'i_wbe', defId: 'WaterbagFull', qty: 4 },
+    i_stone: { id: 'i_stone', defId: 'Stone', qty: 5 },
+    i_stick: { id: 'i_stick', defId: 'Stick', qty: 5 },
+    i_club: inventoryItemFromDef(_content, 'Club', 'i_club', 1),
     i_key: { id: 'i_key', defId: 'IronKey', qty: 1 },
     i_band: { id: 'i_band', defId: 'BandageStrip', qty: 1 },
     i_anti: { id: 'i_anti', defId: 'AntitoxinVial', qty: 1 },
     i_poul: { id: 'i_poul', defId: 'HerbPoultice', qty: 1 },
-    i_chisel: { id: 'i_chisel', defId: 'Chisel', qty: 1 },
+    i_chisel: inventoryItemFromDef(_content, 'Chisel', 'i_chisel', 1),
   }
   place(inv, 'i_mush', 0)
   place(inv, 'i_root', 1)
@@ -100,6 +105,7 @@ export function makeInitialState(_content: ContentDB): GameState {
       village: {
         tavern: { ...DEFAULT_HUB_HOTSPOTS.village.tavern },
         cave: { ...DEFAULT_HUB_HOTSPOTS.village.cave },
+        tent: { ...DEFAULT_HUB_HOTSPOTS.village.tent },
       },
       tavern: {
         innkeeper: { ...DEFAULT_HUB_HOTSPOTS.tavern.innkeeper },
@@ -131,6 +137,8 @@ export function makeInitialState(_content: ContentDB): GameState {
       pois: gen.pois,
       itemsOnFloor: spawnedOnFloor,
       floorGeomRevision: 1,
+      staminaStepPaceByChar: {},
+      staminaStrafePaceByChar: {},
       npcs: npcsWithDefaultStatuses(gen.npcs),
     },
     party: {

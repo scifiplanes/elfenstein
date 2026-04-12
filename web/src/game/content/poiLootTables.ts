@@ -7,6 +7,10 @@ const LOOT_BASELINE: ItemDefId[] = [
   'Stone',
   'Mushrooms',
   'Foodroot',
+  'Mushrooms',
+  'Foodroot',
+  'Mushrooms',
+  'Foodroot',
   'BandageStrip',
   'AntitoxinVial',
   'HerbPoultice',
@@ -66,7 +70,7 @@ export const STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR: Record<FloorType, readonly ItemD
     'Chisel',
     'StoneShard',
     'Sulfur',
-  ]),
+  ]).concat(['Mushrooms', 'Foodroot', 'Mushrooms', 'Foodroot']),
   Ruins: uniq([
     'Stone',
     'StoneShard',
@@ -113,7 +117,7 @@ export const STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR: Record<FloorType, readonly ItemD
     'Sweetroot',
     'BandageStrip',
     'AntitoxinVial',
-  ]),
+  ]).concat(['Mushrooms', 'Foodroot', 'Mushrooms', 'Foodroot']),
   LivingBio: uniq([
     'Mushrooms',
     'Fungus',
@@ -137,7 +141,7 @@ export const STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR: Record<FloorType, readonly ItemD
     'HerbTea',
     'BobrJuice',
     'Glowbug',
-  ]),
+  ]).concat(['Mushrooms', 'Foodroot', 'Mushrooms', 'Foodroot']),
   Bunker: uniq([
     'Salt',
     'MortarMeal',

@@ -115,6 +115,11 @@ export function equipItem(
     return equipOneHandToSlot(state, characterId, slot, itemId)
   }
 
+  if (slot === 'head') {
+    if (!def.tags.includes('hat')) return state
+    if (def.equipSlots?.length && !def.equipSlots.includes('head')) return state
+  }
+
   const chars = state.party.chars.slice()
   const c = chars[cIdx]
   const prev = c.equipment[slot]

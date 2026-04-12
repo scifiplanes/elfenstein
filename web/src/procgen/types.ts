@@ -1,4 +1,14 @@
-import type { FloorPoi, ItemDefId, NpcKind, NpcLanguage, StatusEffectId, Tile, Vec2 } from '../game/types'
+import type {
+  FloorPoi,
+  ItemDefId,
+  NpcKind,
+  NpcLanguage,
+  NpcTrade,
+  NpcVariant,
+  StatusEffectId,
+  Tile,
+  Vec2,
+} from '../game/types'
 
 export type FloorType =
   | 'Dungeon'
@@ -106,6 +116,39 @@ export type MissionGraph = {
   hasAlternateEntranceExitRoute?: boolean
 }
 
+/** Palace v1 abstract mission templates (`planMissionBeforeGeometry`). */
+export type PalacePlannedMissionTemplateId = 'palace_spine' | 'palace_seal_a' | 'palace_seal_ab'
+
+export type PlannedMissionNodeRole =
+  | 'Entrance'
+  | 'Exit'
+  | 'LockGate'
+  | 'KeyPickup'
+  | 'Well'
+  | 'Bed'
+  | 'Chest'
+  | 'Wildcard'
+
+export type PlannedMissionNode = {
+  id: string
+  role: PlannedMissionNodeRole
+  /** For `LockGate` / `KeyPickup` pairs. */
+  lockId?: string
+}
+
+export type PlannedMissionEdge = {
+  fromId: string
+  toId: string
+  kind: 'walk' | 'gated'
+  lockId?: string
+}
+
+export type PlannedMission = {
+  templateId: PalacePlannedMissionTemplateId
+  nodes: PlannedMissionNode[]
+  edges: PlannedMissionEdge[]
+}
+
 /** Procgen theme for dungeon materials (tints base textures in the renderer). */
 export type FloorGenTheme = {
   id: string
@@ -157,6 +200,10 @@ export type FloorGenMeta = {
     /** Closed `door` / `doorOctopus` placed on unused frame throats after locks (Dungeon only). */
     decorativeDoorsApplied?: number
   }
+  /**
+   * Abstract mission DAG before geometry (Palace v1+). Present when `genVersion >= 7` for Palace floors.
+   */
+  plannedMission?: PlannedMission
 }
 
 export type GenFloorItem = {
@@ -178,8 +225,12 @@ export type GenNpc = {
   hpMax?: number
   language: NpcLanguage
   quest?: { wants: ItemDefId; hated: ItemDefId[] }
+  /** Floor merchants: set by procgen for friendly NPCs of merchant-eligible kinds (`population.ts`). */
+  trade?: NpcTrade
   /** Runtime combat/status debuffs; omitted in older gen JSON. */
   statuses?: Array<{ id: StatusEffectId; untilMs?: number }>
+  variant?: NpcVariant
+  bossTraitId?: string
 }
 
 export type FloorGenOutput = {

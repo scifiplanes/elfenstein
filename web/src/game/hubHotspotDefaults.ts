@@ -1,7 +1,7 @@
 import type { HubHotspotConfig, HubNormRect } from './types'
 
 export type HubHotspotPatch = {
-  village?: { tavern?: Partial<HubNormRect>; cave?: Partial<HubNormRect> }
+  village?: { tavern?: Partial<HubNormRect>; cave?: Partial<HubNormRect>; tent?: Partial<HubNormRect> }
   tavern?: { innkeeper?: Partial<HubNormRect>; innkeeperTrade?: Partial<HubNormRect> }
 }
 
@@ -11,6 +11,7 @@ export function mergeHubHotspotConfig(base: HubHotspotConfig, patch: HubHotspotP
     village: {
       tavern: { ...base.village.tavern, ...patch.village?.tavern },
       cave: { ...base.village.cave, ...patch.village?.cave },
+      tent: { ...base.village.tent, ...patch.village?.tent },
     },
     tavern: {
       innkeeper: { ...base.tavern.innkeeper, ...patch.tavern?.innkeeper },
@@ -24,6 +25,7 @@ export const DEFAULT_HUB_HOTSPOTS: HubHotspotConfig = {
   village: {
     tavern: { x: 0.12, y: 0.55, w: 0.22, h: 0.18 },
     cave: { x: 0.68, y: 0.52, w: 0.2, h: 0.2 },
+    tent: { x: 0.38, y: 0.62, w: 0.18, h: 0.16 },
   },
   tavern: {
     innkeeper: { x: 0.38, y: 0.35, w: 0.24, h: 0.28 },

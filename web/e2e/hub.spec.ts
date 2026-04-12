@@ -2,6 +2,15 @@ import { expect, test } from '@playwright/test'
 import { firstPaintMs, goToVillageHub, interactiveHud } from './helpers'
 
 test.describe('hub', () => {
+  test('village tent hotspot is present (recruit when a hero is dead)', async ({ page }) => {
+    await goToVillageHub(page)
+    const hud = interactiveHud(page)
+    const tent = hud.getByTestId('hub-hotspot-tent')
+    await expect(tent).toBeVisible({ timeout: 15_000 })
+    await tent.click()
+    await expect(hud.locator('img[src="/content/village.png"]')).toBeVisible({ timeout: 15_000 })
+  })
+
   test('village cave enters dungeon and enables movement controls', async ({ page }) => {
     await goToVillageHub(page)
     const hud = interactiveHud(page)

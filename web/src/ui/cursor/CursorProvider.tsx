@@ -1,6 +1,7 @@
 import { type PropsWithChildren, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { DragPayload, DragTarget } from '../../game/types'
 import { CursorContext, type CursorApi, type CursorState } from './CursorContext'
+import { COMBAT_ACTION_CHROME_SELECTOR } from './combatActionChromeAttr'
 import { MODAL_CHROME_HIT_ATTR } from './modalChromeActivate'
 import { hubTavernTradeHoverRectRef } from '../hub/hubTavernTradeCursorRect'
 
@@ -18,7 +19,7 @@ function parseTargetFromEl(el: Element | null): DragTarget | null {
   if (kind === 'portrait') {
     const raw = String(node.dataset.dropPortraitTarget ?? 'eyes')
     const target =
-      raw === 'eyes' || raw === 'mouth' || raw === 'hat' || raw === 'hands' ? raw : 'eyes'
+      raw === 'eyes' || raw === 'mouth' || raw === 'hat' || raw === 'hands' || raw === 'body' ? raw : 'eyes'
     return { kind: 'portrait', characterId: String(node.dataset.dropCharacterId ?? ''), target }
   }
   if (kind === 'equipmentSlot') return { kind: 'equipmentSlot', characterId: String(node.dataset.dropCharacterId ?? ''), slot: String(node.dataset.dropEquipSlot ?? '') as any }
@@ -36,6 +37,7 @@ function hitTestDropTargetAtPoint(
 ): { target: DragTarget; rect: { left: number; top: number; right: number; bottom: number } } | null {
   if (typeof document === 'undefined' || !document.elementsFromPoint) return null
   for (const raw of document.elementsFromPoint(x, y)) {
+    if (raw instanceof Element && raw.closest(COMBAT_ACTION_CHROME_SELECTOR)) return null
     const node = raw instanceof Element ? (raw.closest('[data-drop-kind]') as HTMLElement | null) : null
     if (!node) continue
     const target = parseTargetFromEl(node)
@@ -58,6 +60,7 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
     case 'portrait':
       if (target.target === 'eyes') return { icon: '👁', label: 'Inspect' }
       if (target.target === 'mouth') return { icon: '👄', label: 'Feed' }
+      if (target.target === 'body') return { icon: '🩹', label: 'Apply' }
       if (target.target === 'hat') return { icon: '🎩', label: 'Equip hat' }
       if (target.target === 'hands') return { icon: '🤲', label: 'Equip hands' }
       return { icon: '👁', label: 'Inspect' }
@@ -65,6 +68,8 @@ function affordanceForTarget(target: DragTarget | null): CursorState['affordance
       return { icon: '✦', label: 'Use' }
     case 'npc':
       return { icon: '⚔', label: 'Use' }
+    case 'openDoor':
+      return { icon: '⚒', label: 'Break' }
     case 'equipmentSlot':
       return { icon: '⛭', label: 'Equip' }
     case 'stowEquipped':

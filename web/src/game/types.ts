@@ -28,6 +28,8 @@ export type StatusEffectId =
   | 'Spored'
   | 'Parasitized'
 export type NpcLanguage = 'DeepGnome' | 'Zalgo' | 'Mojibake'
+/** Procgen / combat: floor NPC boss variant (same `NpcKind`, scaled rules). */
+export type NpcVariant = 'boss'
 export type NpcKind =
   | 'Wurglepup'
   | 'Bobr'
@@ -36,6 +38,8 @@ export type NpcKind =
   | 'Swarm'
   | 'Chumbo'
   | 'Grub'
+  | 'SporeGrub'
+  | 'SunGrub'
   | 'Kuratko'
   | 'Grechka'
   | 'Snailord'
@@ -51,6 +55,47 @@ export type NpcKind =
 export type NpcBillboardRow = { groundY: number; size: number; sizeRand: number }
 export type NpcBillboardByKind = Record<NpcKind, NpcBillboardRow>
 
+/**
+ * F2 / `debug-settings.json`: **Elder** procedural **3D** billboard shader (`elderDistortionBillboard.ts`).
+ * All fields are unitless shader parameters except **`billboardAspect`** (quad width / height, like NPC texture aspect).
+ */
+export type ElderDistortionTuning = {
+  billboardAspect: number
+  timeScale: number
+  ellipseRx: number
+  ellipseRy: number
+  bodyEdgeStart: number
+  bodyEdgeEnd: number
+  noiseUvScale: number
+  noiseTimeSpeed: number
+  warpSinAmp: number
+  warpCosAmp: number
+  warpNoiseAmp: number
+  warpPhaseX: number
+  warpFreqY: number
+  warpPhaseY: number
+  warpFreqX: number
+  sweepPhase: number
+  sweepFreqY: number
+  sweepFreqX: number
+  pulsePhase: number
+  pulseRadialFreq: number
+  iridPhase: number
+  iridFreqX: number
+  baseTintMin: number
+  baseTintBodyMul: number
+  shimmerLow: number
+  shimmerSweepMul: number
+  shimmerPulseBase: number
+  shimmerPulseAmp: number
+  alphaEdgeStart: number
+  alphaEdgeEnd: number
+  alphaBase: number
+  alphaBodyMul: number
+  alphaSweepMul: number
+  alphaMax: number
+}
+
 export type EquipmentSlot =
   | 'head'
   | 'handLeft'
@@ -59,7 +104,18 @@ export type EquipmentSlot =
   | 'clothing'
   | 'accessory'
 
-export type PortraitDropTarget = 'eyes' | 'mouth' | 'hat' | 'hands'
+export type PortraitDropTarget = 'eyes' | 'mouth' | 'hat' | 'hands' | 'body'
+
+/** Bandage decal on portrait art (normalized to `.portrait` frame). Omit `untilMs` for persistent (whole run). */
+export type PortraitBandageDecal = {
+  id: Id
+  characterId: CharacterId
+  u: number
+  v: number
+  rotateDeg: number
+  /** When set and passed, pruned in `time/tick` (legacy timed decals only). */
+  untilMs?: number
+}
 
 export type Tile =
   | 'wall'
@@ -72,7 +128,17 @@ export type Tile =
   | 'doorOpen'
   | 'doorOpenOctopus'
 
-export type PoiKind = 'Well' | 'Chest' | 'Barrel' | 'Crate' | 'Bed' | 'Shrine' | 'CrackedWall' | 'Exit'
+export type PoiKind =
+  | 'Well'
+  | 'Chest'
+  | 'Barrel'
+  | 'Crate'
+  | 'Bed'
+  | 'Shrine'
+  | 'CrackedWall'
+  | 'Exit'
+  | 'Campfire'
+  | 'KuratkoNest'
 
 export type FloorPoi = {
   id: Id
@@ -82,12 +148,23 @@ export type FloorPoi = {
   opened?: boolean
   /** Well only: no water VFX; base sprite switches to drained art after a successful fill. */
   drained?: boolean
+  /** Campfire: successful cooks decrement; at 0 the POI is removed. */
+  cookUsesLeft?: number
+  /** KuratkoNest: eggs remaining; at 0 the nest is `opened` (empty nest emoji). */
+  eggsLeft?: number
 }
 
 export type InventoryItem = {
   id: ItemId
   defId: ItemDefId
   qty: number
+  /** Remaining durability when `ItemDef.durabilityMax` is set (typically `qty === 1`). */
+  durability?: number
+  /**
+   * **Glowbug jar only**: how many glowbugs are in the jar (1–12). Omitted means 1 (legacy saves).
+   * Kept separate from `qty` so Shrine `consumeOffering` removes the whole jar, not one “stack unit”.
+   */
+  glowbugs?: number
 }
 
 export type InventoryGrid = {
@@ -129,6 +206,13 @@ export type Character = {
   stamina: number
   statuses: Array<{ id: StatusEffectId; untilMs?: number }>
   equipment: Partial<Record<EquipmentSlot, ItemId>>
+  /** Hub tent replacement: deterministic portrait hue (0..359); unset for starters. */
+  tentReplacementPortraitHueDeg?: number
+  /**
+   * Hub tent replacement: CSS `saturate()` multiplier for the alive portrait chain (see `tentReplacementPortraitTint.ts`).
+   * Unset on legacy saves → UI falls back to the pre-range default (1.65).
+   */
+  tentReplacementPortraitSaturateMult?: number
 }
 
 export type ProcgenDebugOverlayMode = 'districts' | 'roomTags' | 'mission'
@@ -146,13 +230,28 @@ export type RoomTelegraphMode =
   | 'Haunted'
   | 'RoyalMiasma'
 
+export type PortraitToastKind = 'statDelta' | 'lowStat' | 'status'
+
+export type PortraitToast = {
+  id: Id
+  characterId: CharacterId
+  kind: PortraitToastKind
+  text: string
+  /**
+   * Wall clock when pushed (same basis as `state.nowMs` / `performance.now()`).
+   * Optional for legacy rows; UI falls back to `untilMs − portraitToastTtlMs`.
+   */
+  startedAtMs?: number
+  untilMs: number
+}
+
 export type UiScreen = 'title' | 'hub' | 'game'
 
 /** Normalized rect (0–1) for hub click regions inside the game viewport. */
 export type HubNormRect = { x: number; y: number; w: number; h: number }
 
 export type HubHotspotConfig = {
-  village: { tavern: HubNormRect; cave: HubNormRect }
+  village: { tavern: HubNormRect; cave: HubNormRect; tent: HubNormRect }
   /** `innkeeper` frames the bartender sprite; `innkeeperTrade` opens trade. Leave tavern via **`HubViewport`** **Leave tavern** button (not a hotspot). */
   tavern: { innkeeper: HubNormRect; innkeeperTrade: HubNormRect }
 }
@@ -232,6 +331,14 @@ export type UiState = {
   portraitShake?: { characterId: CharacterId; untilMs: number; magnitude: number; startedAtMs: number }
   /** Brief idle-overlay visibility after a portrait-frame tap (opens paperdoll). */
   portraitIdlePulse?: { characterId: CharacterId; untilMs: number }
+  /** Floating lines above a portrait (stat deltas, low vitals, status changes); pruned in `time/tick`. */
+  portraitToasts?: PortraitToast[]
+  /** 🩹 decals after applying a bandage strip (persistent for the run unless `untilMs` set). */
+  portraitBandageDecals?: PortraitBandageDecal[]
+  /** Per character: `nowMs` must exceed this before another portrait “rest” tap converts hunger/thirst → stamina. */
+  portraitRestCooldownUntil?: Partial<Record<CharacterId, number>>
+  /** Per character: suppress duplicate low-vital portrait toasts until this time. */
+  vitalLowWarnUntil?: Partial<Record<CharacterId, number>>
   crafting?: {
     startedAtMs: number
     endsAtMs: number
@@ -247,6 +354,8 @@ export type UiState = {
     recipeKey: string
     skill: SkillId
     dc: number
+    preserveA?: boolean
+    preserveB?: boolean
   }
   /** Discovered crafting recipes (order-sensitive). */
   knownRecipes?: Record<string, true>
@@ -278,7 +387,7 @@ export type RunCheckpoint = {
 export type GpuTier = 'low' | 'balanced' | 'high' | 'custom'
 
 export type RenderTuning = {
-  /** Global scalar for 3D scene brightness (lights + 3D sprites). */
+  /** Global scalar for 3D scene brightness (lights + theme tint on lantern; billboards use lit materials + emissive lift). */
   globalIntensity: number
   /** Per-theme hue shift (degrees) applied to 3D light/sprite tint. */
   themeHueShiftDeg_dungeon_warm: number
@@ -296,22 +405,27 @@ export type RenderTuning = {
   themeSaturation_ruins_umber: number
   /** Base emissive lift applied to dungeon materials (multiplied by per-surface factors). */
   baseEmissive: number
-  /** Camera light when `party.chars[0]` has no equipped `playerLight` item. */
+  /** Primary `PointLight` when no party member has equipped `playerLight` (still × theme `lanternIntensityMult`). */
   bareLightIntensity: number
   bareLightDistance: number
-  /** Camera light when equipped Torch wins (not POI torches; those use `torchIntensity`). */
+  /** Per equipped torch instance (hands/head); party contributions **sum** (not POI torches; those use `torchIntensity`). */
   heldTorchIntensity: number
   heldTorchDistance: number
-  /** Camera light when equipped Lantern wins. */
+  /** Per equipped lantern instance; party contributions **sum**. */
   equippedLanternIntensity: number
   equippedLanternDistance: number
-  /** Camera light when equipped Headlamp wins. */
+  /** Per equipped headlamp instance; party contributions **sum**. */
   headlampIntensity: number
   headlampDistance: number
-  /** Camera light when equipped Glowbug wins. */
+  /** Per glowbug row: raw Glowbug ×1, jar × clamped `glowbugs`; party contributions **sum**. */
   glowbugIntensity: number
   glowbugDistance: number
-  /** Offsets the camera PointLight forward/down to avoid “headlamp flattening”. */
+  /** Upper bound on primary equipped light intensity after party sum × `globalIntensity` × flicker (not applied to bare light). */
+  equippedLightIntensityCap: number
+  /**
+   * Primary `playerLight` position tweak: **headlamp** — camera-local forward (−Z) / up; **other kinds** — world XZ
+   * forward along **game yaw** from the player cell, and **world Y** as `view.camPos.y + this` (not camera pitch).
+   */
   lanternForwardOffset: number
   lanternVerticalOffset: number
   /** Small time-based modulation to make lantern read like fire. */
@@ -334,6 +448,11 @@ export type RenderTuning = {
   shadowFilter: 0 | 1 | 2
   /** Max POI torch lights; picks nearest POIs to the player by Manhattan grid distance. 0 disables. */
   torchPoiLightMax: number
+  /**
+   * Max world PointLights for dropped items with `playerLight` (nearest to player by Manhattan grid distance).
+   * 0 disables. No shadows.
+   */
+  playerLightFloorItemMax: number
   /** 0/1: fog is fully disabled unless explicitly enabled (debug). */
   fogEnabled: number
   fogDensity: number
@@ -421,6 +540,20 @@ export type RenderTuning = {
   portraitShakeHz: number
 
   /**
+   * Per **equippable hat** def: portrait hat-band height as **%** of the portrait frame (overrides CSS default **16%** when set).
+   * F2 **Portrait** section + **`debug-settings.json`**; keys restricted to defs with **`hat`** + **`head`** in content.
+   */
+  portraitHatSlotHeightPctByDefId: Partial<Record<ItemDefId, number>>
+  /**
+   * Per **equippable hat** def: additive horizontal offset as **%** of portrait **width** for the hat band (**`calc(8% + offset)`**; **0** = CSS default).
+   */
+  portraitHatOffsetXPctByDefId: Partial<Record<ItemDefId, number>>
+  /**
+   * Per **equippable hat** def: vertical offset as **%** of portrait **height** for the hat band (**0** = CSS default **top: 0**).
+   */
+  portraitHatOffsetYPctByDefId: Partial<Record<ItemDefId, number>>
+
+  /**
    * NPC billboard sizing (world units).
    * Size is interpreted as sprite HEIGHT; width is derived from the sprite texture aspect ratio.
    * Randomization is deterministic per-NPC id as ±% around the base size.
@@ -434,8 +567,28 @@ export type RenderTuning = {
    * Stored per `NpcKind` in `npcBillboard` (see `NpcBillboardRow`).
    */
   npcBillboard: NpcBillboardByKind
+  /**
+   * **Lambert** NPC billboards: multiplies **`emissiveIntensity`** and **`color`** (albedo × lights) each frame; **Elder**: procedural **RGB** only.
+   * F2 **NPCs** + **`debug-settings.json`**; clamped like **`poiSpriteBoost`** (**1** = unchanged).
+   */
+  npcSpriteBoost: number
   /** POI Well billboard ground pivot (same units as `npcBillboard.*.groundY`). */
   poiGroundY_Well: number
+  /**
+   * Filled **Well** only: additive world-space offset for the **glow** `Sprite` vs the main well billboard pivot (same axes as **`door*SpriteNudge*`** / **`floorItemSpriteNudge*`**).
+   * F2 **NPCs** + **`debug-settings.json`**. Clamped **−1..0.5** world units (**Y**/**Z** nudges stay **±0.5**).
+   */
+  poiWellGlowNudgeX: number
+  poiWellGlowNudgeY: number
+  poiWellGlowNudgeZ: number
+  /**
+   * Filled **Well** only: additive world-space offset for the **sparkle** `Sprite` vs the main well billboard pivot.
+   * Default **`poiWellSparkleNudgeY`** **0.02** preserves the legacy vertical lift vs glow.
+   * **X** clamped **−1..0.5**; **Y**/**Z** **±0.5**.
+   */
+  poiWellSparkleNudgeX: number
+  poiWellSparkleNudgeY: number
+  poiWellSparkleNudgeZ: number
   /** POI Chest closed/open billboard ground pivot (`chest_*.png` sit low in frame). */
   poiGroundY_Chest: number
   /** POI Barrel billboard ground pivot (same units as `npcBillboard.*.groundY`). */
@@ -450,7 +603,24 @@ export type RenderTuning = {
   poiGroundY_CrackedWall: number
   /** POI Exit billboard ground pivot. */
   poiGroundY_Exit: number
-  /** Multiplies PoI sprite material brightness (1.0 = unchanged). */
+  /** POI Campfire billboard ground pivot (player-placed). */
+  poiGroundY_Campfire: number
+  /** POI KuratkoNest billboard ground pivot. */
+  poiGroundY_KuratkoNest: number
+  /**
+   * Multiplies **Campfire** (**🔥**) emoji POI billboard height vs the default **0.55** world-unit POI base (**1** = same as other non-Exit POIs).
+   * F2 **Viewport** + **`debug-settings.json`**.
+   */
+  poiCampfireSpriteScale: number
+  /**
+   * Multiplies **Kuratko nest** emoji POI billboard height vs the default **0.55** world-unit POI base (**1** = same as other non-Exit POIs).
+   * F2 **Viewport** + **`debug-settings.json`**.
+   */
+  poiKuratkoNestSpriteScale: number
+  /**
+   * **Lambert** POI billboards: multiplies **`emissiveIntensity`** and **`color`** (albedo × lights) each frame (**1** = unchanged).
+   * Filled **Well** **glow**/**sparkle** **`SpriteMaterial.color`** uses the same multiplier so POI brightness tuning matches the NPC boost “whole prop” read.
+   */
   poiSpriteBoost: number
   /**
    * World-space Y offset for the POI ground contact point (sprite bottom pivot).
@@ -460,16 +630,35 @@ export type RenderTuning = {
   /** Hub tavern 2D innkeeper/bartender sprite visual scale (1 = default). Does not resize hub hotspot rects. */
   hubInnkeeperSpriteScale: number
   /**
-   * Door billboards (wooden + octopus, closed and **`doorOpen`** / **`doorOpenOctopus`** tiles, plus legacy **`ui.doorOpenFx`**):
-   * height in world units; width = height × texture aspect. F2 debug; persisted in `debug-settings.json`.
+   * Door billboards — **wooden** (`door` / `lockedDoor` / `doorOpen`): height in world units;
+   * width = height × texture aspect. F2 debug; persisted in `debug-settings.json`.
    */
-  doorSpriteHeight: number
-  /** World Y of the door sprite center (pivot). */
-  doorSpriteCenterY: number
-  /** Additive world X offset on the cell center (same units as floor mesh wx). */
-  doorSpriteNudgeX: number
-  /** Additive world Z offset on the cell center (same units as floor mesh wz). */
-  doorSpriteNudgeZ: number
+  doorWoodenSpriteHeight: number
+  /** World Y of the wooden door sprite center (pivot). */
+  doorWoodenSpriteCenterY: number
+  /** Additive world X offset on the cell center (wooden doors). */
+  doorWoodenSpriteNudgeX: number
+  /** Additive world Z offset on the cell center (wooden doors). */
+  doorWoodenSpriteNudgeZ: number
+  /**
+   * Door billboards — **octopus** (`doorOctopus` / `lockedDoorOctopus` / `doorOpenOctopus`):
+   * same units as wooden; tune separately when art frames differ.
+   */
+  doorOctopusSpriteHeight: number
+  doorOctopusSpriteCenterY: number
+  doorOctopusSpriteNudgeX: number
+  doorOctopusSpriteNudgeZ: number
+  /**
+   * Dropped **floor-item** billboards in the 3D view: height in world units;
+   * width = height × texture aspect (emoji icons use a square canvas). F2 debug; `debug-settings.json`.
+   */
+  floorItemSpriteHeight: number
+  /** Additive world **X** offset on the item’s cell+jitter position (floor pickup billboards). F2; `debug-settings.json`. */
+  floorItemSpriteNudgeX: number
+  /** Additive world **Y** offset on the sprite pivot (added to the baked center height). F2; `debug-settings.json`. */
+  floorItemSpriteNudgeY: number
+  /** Additive world **Z** offset on the item’s cell+jitter position. F2; `debug-settings.json`. */
+  floorItemSpriteNudgeZ: number
   /** Dungeon floors per segment before a camp hub (1–99; default 10). */
   campEveryFloors: number
   /**
@@ -484,6 +673,85 @@ export type RenderTuning = {
    * F2 / `debug-settings.json`; default 5.
    */
   combatEncounterJoinChebyshevMax: number
+
+  /** Integer STA a character pays on a step when their personal move tick fires (see `staminaMovePacing.ts`). */
+  staminaCostStep: number
+  /**
+   * Base N for step pacing: per living PC, effective N scales with `stats.endurance` (see `staminaMovePacing.ts`).
+   * Floor-scoped counters in `floor.staminaStepPaceByChar`.
+   */
+  staminaCostStepEveryN: number
+  /**
+   * Multiplies **`staminaCostStep`** when a step pacing tick fires (F2 / **`debug-settings.json`**; default **1**).
+   * Charged amount is **`round(staminaCostStep × this)`**, clamped **0..150**. **Strafe** ignores this.
+   */
+  staminaDrainStepMultiplier: number
+  /** Integer STA a character pays on a strafe when their personal strafe tick fires. */
+  staminaCostStrafe: number
+  /**
+   * Base N for strafe pacing: per living PC, effective N scales with `stats.endurance`.
+   * Floor-scoped counters in `floor.staminaStrafePaceByChar`.
+   */
+  staminaCostStrafeEveryN: number
+  /** Party stamina per successful in-place turn (0 allowed). */
+  staminaCostTurn: number
+  /** Party stamina on successful floor pickup. */
+  staminaCostPickup: number
+  /** Party stamina when a POI use changes state (not no-op). */
+  staminaCostPoiUse: number
+  /** Party stamina when a door opens (unlocked or key use). */
+  staminaCostDoorOpen: number
+  /** Stamina when crafting starts from inventory (one payer: best recipe.skill among affordable; see pickCraftStaminaPayer). */
+  staminaCostCraft: number
+  /** Single character stamina for inspect (eyes drop). */
+  staminaCostInspect: number
+  /**
+   * Multiplies each recipe’s **`craftMs`** when a craft starts (F2; default **1**).
+   * **0** = instant finish on the next eligible tick; values above **1** lengthen the bar.
+   */
+  craftDurationScale: number
+
+  /** 0/1: lose durability on weapon hits and tool uses (door splinter, Kuratko nest). */
+  itemDurabilityEnabled: number
+  /** Durability lost per door splinter / Kuratko nest tool use (0–50). */
+  itemDurabilityToolUseCost: number
+  /** Durability lost per successful PC weapon hit (0–50; 0 = no loss while enabled). */
+  itemDurabilityWeaponHitCost: number
+
+  /** Stamina gained from one portrait “rest” tap (clamped to max). */
+  portraitRestStaminaGain: number
+  /** Hunger spent per rest tap (fixed bundle). */
+  portraitRestHungerCost: number
+  /** Thirst spent per rest tap. */
+  portraitRestThirstCost: number
+  /** Minimum ms between rest taps per character. */
+  portraitRestCooldownMs: number
+  /** Default lifetime for portrait toast lines (ms); how long each line stays eligible before tick prune. */
+  portraitToastTtlMs: number
+  /** Font size (px) for portrait floating toasts; matches activity-log voice when aligned to defaults. */
+  portraitToastFontPx: number
+  /** Float/fade animation duration (ms) for each portrait toast; lower = snappier. */
+  portraitToastAnimMs: number
+  /** Vertical travel (px) while a toast floats up; higher = faster drift for a given duration. */
+  portraitToastFloatPx: number
+  /** Horizontal offset (px) of the toast stack from portrait-center; positive shifts right. */
+  portraitToastOffsetXPx: number
+  /** Gap (px) between the portrait frame top and the bottom of the toast stack; negative overlaps the frame (debug). */
+  portraitToastGapPx: number
+  /** Warn when stamina/max is below this fraction (0–1). */
+  lowStaminaWarnFrac: number
+  lowHungerWarnFrac: number
+  lowThirstWarnFrac: number
+  /** Min ms between low-vital portrait toasts per character. */
+  lowVitalWarnCooldownMs: number
+
+  /** Elder NPC procedural mesh billboard; F2 **NPCs** → **Elder 3D shader**. */
+  elderDistortion: ElderDistortionTuning
+  /**
+   * Elder procedural shader detail: **0** = simple (fewer ALU), **1** = reduced, **2** = full.
+   * Set from **GPU tier** presets; F2 **render** slider or `render/set` overrides force **custom** tier when changed.
+   */
+  elderShaderQuality: number
 
   /** Player/debug GPU preset; `custom` when shadow, DPR cap, or dither tier knobs diverge via sliders. */
   gpuTier: GpuTier
@@ -531,7 +799,7 @@ export type CombatState = {
   participants: { party: CharacterId[]; npcs: Id[] }
   turnQueue: CombatTurn[]
   turnIndex: number
-  lastAction?: { actorKind: 'pc' | 'npc'; actorId: Id; action: 'attack' | 'defend' | 'flee'; atMs: number }
+  lastAction?: { actorKind: 'pc' | 'npc'; actorId: Id; action: 'attack' | 'defend' | 'flee' | 'skip'; atMs: number }
   /** Active until that PC's next turn begins (cleared in advanceTurnIndex). */
   pcDefense?: Partial<Record<CharacterId, { armorBonus: number; resistBonusPct: number }>>
   /**
@@ -568,6 +836,12 @@ export type GameState = {
     hubInnkeeperTradeStock?: TradeStockRow[]
     /** Successful hub innkeeper barters (offer + request) this run; drives MBA activity-log lines. */
     hubInnkeeperTradesCompleted?: number
+    /** Count of heroes recruited via village/camp Tent (deterministic variety). */
+    tentRecruitsCompleted?: number
+    /** F2 debug: bumped by `debug/regenerateTentPortraitHues` to re-roll tent portrait hue + saturation. */
+    debugTentPortraitHueRevision?: number
+    /** F2 debug: bumped by `debug/replaceAllPartyWithTentTemplates` so hashes re-roll each click. */
+    debugReplaceAllPartyRevision?: number
   }
 
   combat?: CombatState
@@ -608,6 +882,14 @@ export type GameState = {
      * Used to avoid per-frame deep comparisons/serialization in the renderer.
      */
     floorGeomRevision: number
+    /**
+     * Per living PC: 0..N−1 for step stamina pacing (`staminaCostStepEveryN` × endurance); reset when the floor is replaced.
+     */
+    staminaStepPaceByChar?: Partial<Record<CharacterId, number>>
+    /**
+     * Per living PC: 0..N−1 for strafe stamina pacing; reset when the floor is replaced.
+     */
+    staminaStrafePaceByChar?: Partial<Record<CharacterId, number>>
     npcs: Array<{
       id: Id
       kind: NpcKind
@@ -618,6 +900,9 @@ export type GameState = {
       /** Max HP at spawn; used for encounter HUD. Older saves may omit (hydrate fills from kind). */
       hpMax: number
       language: NpcLanguage
+      variant?: NpcVariant
+      /** Content row id in `npcBosses` (stable per boss definition). */
+      bossTraitId?: string
       quest?: { wants: ItemDefId; hated: ItemDefId[] }
       trade?: NpcTrade
       statuses: Array<{ id: StatusEffectId; untilMs?: number }>
@@ -664,6 +949,8 @@ export type DragTarget =
   | { kind: 'portrait'; characterId: CharacterId; target: PortraitDropTarget }
   | { kind: 'poi'; poiId: Id }
   | { kind: 'npc'; npcId: Id }
+  /** Open passable door tile (`doorOpen` / `doorOpenOctopus`): drag a breaking tool/weapon onto the billboard. */
+  | { kind: 'openDoor'; x: number; y: number }
   | { kind: 'equipmentSlot'; characterId: CharacterId; slot: EquipmentSlot }
   /** Portrait-only: drop with no valid target stows to first free inventory slot (via unequip). */
   | { kind: 'stowEquipped' }

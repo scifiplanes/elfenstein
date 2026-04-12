@@ -7,6 +7,50 @@
   min-height: 0;
 }
 
+.portraitToastStack {
+  position: absolute;
+  left: 50%;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column-reverse;
+  align-items: center;
+  gap: 4px;
+  z-index: 30;
+  pointer-events: none;
+  width: max-content;
+  max-width: min(220px, 90vw);
+}
+
+/* Typography matches `ActivityLog.module.css` (`.scroller`); colors per-kind below. */
+.portraitToast {
+  /* Motion is inline in `PortraitPanel` so dithered `html2canvas` captures see each frame. */
+  font-family: var(--buttonTitleFontFamily);
+  font-weight: 400;
+  letter-spacing: var(--buttonTitleLetterSpacing);
+  line-height: var(--buttonTitleLineHeight);
+  color: var(--buttonTitleColor);
+  text-shadow: var(--buttonTitleTextShadow);
+  padding: 4px 8px;
+  border-radius: 0;
+  border: none;
+  background: transparent;
+  text-align: center;
+  word-break: break-word;
+}
+
+.portraitToast_statDelta {
+  color: #c4f5b4;
+}
+
+.portraitToast_lowStat {
+  color: #ffd27a;
+}
+
+.portraitToast_status {
+  color: #b8dcff;
+}
+
 .portrait {
   position: relative;
   /* Shift composed portrait art up vs strict center (mouth keyframes + emoji fallback use the same nudge). */
@@ -16,11 +60,50 @@
   height: auto;
   max-height: 100%;
   aspect-ratio: var(--portrait-ar, 1);
-  border-radius: 12px;
+  border-radius: 0;
   background: radial-gradient(120px 120px at 50% 40%, rgba(255, 255, 255, 0.16), rgba(0, 0, 0, 0.2));
   border: 1px solid rgba(255, 255, 255, 0.12);
   /* `visible` so nudged stats overlay isn’t clipped; sprites clip in `.portraitArtClip`. */
   overflow: visible;
+}
+
+/* Border (not outline): `html2canvas` omits outline on the dithered HUD capture; the player sees the captured bitmap. */
+.portraitCombatActing {
+  border: 3px solid #e62828;
+}
+
+/* Dead (0 HP): art greyed/dimmed; stats stay readable with slight fade. */
+.portraitDead .portraitArtClip:not([data-portrait-dead-filter-on-stack]),
+.portraitDead .equipHat,
+.portraitDead .equipHandsBand {
+  filter: grayscale(0.85) brightness(0.55);
+}
+
+/* Later party slots with the same species: strong hue-shift (ADR-0439). Applied on `.spriteStack` so child `.sprite` drop-shadow does not isolate pixels from hue-rotate (ADR-0455). */
+.portraitDupSpeciesTint:not(.portraitDead) .spriteStack.spriteStackCombinedFilter {
+  filter: hue-rotate(88deg) saturate(1.65) contrast(1.14) brightness(1.06) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+}
+
+.portraitDead.portraitDupSpeciesTint .spriteStack.spriteStackCombinedFilter {
+  filter: hue-rotate(72deg) saturate(1.4) grayscale(0.85) brightness(0.55) drop-shadow(0 8px 18px rgba(0, 0, 0, 0.35));
+}
+
+.spriteStack.spriteStackCombinedFilter .sprite {
+  filter: none;
+}
+
+.portraitDead .statsOverlay {
+  opacity: 0.72;
+}
+
+.portraitDead .layer {
+  opacity: 0.45;
+  filter: grayscale(0.9) brightness(0.5);
+}
+
+.portraitDead .eyes,
+.portraitDead .mouth {
+  pointer-events: none;
 }
 
 .portraitArtClip {
@@ -29,6 +112,7 @@
   border-radius: inherit;
   overflow: hidden;
   z-index: 0;
+  isolation: isolate;
   pointer-events: none;
 }
 
@@ -37,6 +121,28 @@
   inset: 0;
   z-index: 0;
   pointer-events: none;
+}
+
+/* Tent hue: offscreen source imgs for canvas composite (`paintTentReplacementPortraitCanvas.ts`). */
+.tentPortraitSourceStack {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+}
+
+.tentPortraitSourceStackHidden {
+  visibility: hidden;
+}
+
+.tentPortraitTintCanvas {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  image-rendering: pixelated;
 }
 
 .sprite {
@@ -118,7 +224,7 @@
   position: absolute;
   left: 12%;
   width: 76%;
-  border-radius: 10px;
+  border-radius: 0;
   border: none;
   background: transparent;
   z-index: 5;
@@ -133,6 +239,34 @@
 .mouth {
   top: 54%;
   height: 28%;
+}
+
+/* Bandage strip: ephemeral decal + full-frame drop layer (above eyes/mouth while dragging). */
+.bandageDecalLayer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  border-radius: inherit;
+}
+
+.bandageDecal {
+  position: absolute;
+  line-height: 1;
+  filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.55));
+}
+
+.bandageDecalEmoji {
+  font-size: clamp(22px, 6vmin, 44px);
+  display: inline-block;
+}
+
+.bandageBodyDrop {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  border-radius: inherit;
+  background: transparent;
 }
 
 /* Equipped item icons (above portrait art, below eyes/mouth hit targets); mirror strip — non-interactive. */

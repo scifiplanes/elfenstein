@@ -4,6 +4,21 @@ import type { GenRoom } from './types'
 import { LEGACY_RUINS_TUNING, type RuinsLayoutTuning } from './floorTopologyTuning'
 import { carveRect, center, type Rect } from './layoutPasses'
 
+type RuinAdjEdge = { kind: 'h' | 'v'; cx: number; cy: number; ia: number; ib: number }
+
+function shuffleInPlace<T>(arr: T[], rng: Rng) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = rng.int(0, i + 1)
+    const t = arr[i]!
+    arr[i] = arr[j]!
+    arr[j] = t
+  }
+}
+
+function ruinEdgeKey(e: RuinAdjEdge): string {
+  return `${e.kind}:${e.cx},${e.cy}`
+}
+
 function idx(x: number, y: number, w: number): number {
   return x + y * w
 }
@@ -49,20 +64,27 @@ function unionFind(n: number) {
   return { parent, find, union }
 }
 
-function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
-  if (rooms.length <= 2) return rooms
-  const sorted = [...rooms].sort((a, b) => a.id.localeCompare(b.id))
-  const uf = unionFind(sorted.length)
-
-  // Adjacency: within a small rect gap. (Stamps are macro-cell sized, so this approximates macro-cell neighbors.)
-  for (let i = 0; i < sorted.length; i++) {
-    for (let j = i + 1; j < sorted.length; j++) {
-      if (rectDistanceChebyshev(sorted[i]!.rect, sorted[j]!.rect) <= 2) uf.union(i, j)
-    }
+/** Random spanning forest over stamp adjacency graph; returns keys of edges in the forest. */
+function spanningForestEdgeKeys(edges: RuinAdjEdge[], stampCount: number, rng: Rng): Set<string> {
+  if (edges.length === 0 || stampCount <= 0) return new Set()
+  const order = edges.slice()
+  shuffleInPlace(order, rng)
+  const ufMst = unionFind(stampCount)
+  const inForest = new Set<string>()
+  for (const e of order) {
+    if (ufMst.find(e.ia) === ufMst.find(e.ib)) continue
+    ufMst.union(e.ia, e.ib)
+    inForest.add(ruinEdgeKey(e))
   }
+  return inForest
+}
+
+/** Bounding-box macro rooms from stamp indices; may merge smallest components when over cap. */
+function macroRoomsFromStampUnion(stamps: GenRoom[], uf: { find: (x: number) => number }, maxClusters: number): GenRoom[] {
+  if (stamps.length <= 2) return stamps
 
   const groups = new Map<number, number[]>()
-  for (let i = 0; i < sorted.length; i++) {
+  for (let i = 0; i < stamps.length; i++) {
     const r = uf.find(i)
     const g = groups.get(r) ?? []
     g.push(i)
@@ -71,15 +93,14 @@ function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
 
   let comps = Array.from(groups.values()).sort((a, b) => b.length - a.length)
 
-  // If we ended up with too many components, merge the smallest into nearest larger ones by rect distance.
   while (comps.length > maxClusters) {
     const small = comps.pop()
     if (!small?.length) break
     let bestIdx = 0
     let bestD = 1e9
-    const sRoom = sorted[small[0]!]!
+    const sRoom = stamps[small[0]!]!
     for (let i = 0; i < comps.length; i++) {
-      const tgt = sorted[comps[i]![0]!]!
+      const tgt = stamps[comps[i]![0]!]!
       const d = rectDistanceChebyshev(sRoom.rect, tgt.rect)
       if (d < bestD) {
         bestD = d
@@ -96,10 +117,10 @@ function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
       minY = 1e9,
       maxX = -1,
       maxY = -1
-    let bestCenter = sorted[idxs[0]!]!.center
+    let bestCenter = stamps[idxs[0]!]!.center
     let bestArea = -1
     for (const ii of idxs) {
-      const r = sorted[ii]!
+      const r = stamps[ii]!
       minX = Math.min(minX, r.rect.x)
       minY = Math.min(minY, r.rect.y)
       maxX = Math.max(maxX, r.rect.x + r.rect.w - 1)
@@ -114,7 +135,6 @@ function clusterRoomsToMacro(rooms: GenRoom[], maxClusters: number): GenRoom[] {
     macro.push({ id: `r_macro_${gi}`, rect, center: { ...bestCenter }, leafDepth: 0 })
   }
 
-  // Keep stable output ordering.
   macro.sort((a, b) => a.id.localeCompare(b.id))
   return macro
 }
@@ -130,6 +150,7 @@ export function runRuinsLayout(
   const tiles: Tile[] = Array.from({ length: w * h }, () => 'wall')
   const genRooms: GenRoom[] = []
   const stamped = new Set<string>()
+  const stampIndexByCell = new Map<string, number>()
 
   for (let cy = 1; cy + cell < h - 1; cy += cell) {
     for (let cx = 1; cx + cell < w - 1; cx += cell) {
@@ -141,42 +162,91 @@ export function runRuinsLayout(
       const room: Rect = { x: rx, y: ry, w: rw, h: rh }
       if (room.x + room.w >= w - 1 || room.y + room.h >= h - 1) continue
       carveRect(tiles, w, room)
-      genRooms.push({ id: `r_${genRooms.length}`, rect: { ...room }, center: center(room), leafDepth: 1 })
+      const si = genRooms.length
+      stampIndexByCell.set(`${cx},${cy}`, si)
+      genRooms.push({ id: `r_${si}`, rect: { ...room }, center: center(room), leafDepth: 1 })
       stamped.add(`${cx},${cy}`)
     }
   }
 
-  // Doorways between adjacent stamped macro-cells.
-  // This is more legible than random “wall punches” because we only connect where
-  // there is floor mass on both sides of the boundary.
-  for (let cy = 1; cy + cell < h - 1; cy += cell) {
-    for (let cx = 1; cx + cell < w - 1; cx += cell) {
-      if (!stamped.has(`${cx},${cy}`)) continue
+  const maxMacro = Math.max(2, Math.min(24, Math.floor(tuning.maxMacroClusters)))
+  const uf = genRooms.length > 2 ? unionFind(genRooms.length) : null
 
-      // Right neighbor
-      if (stamped.has(`${cx + cell},${cy}`) && rng.next() < tuning.doorwayChance) {
-        const by = cy + 1 + rng.int(0, Math.max(1, cell - 2))
-        const ax = cx + cell - 1
-        const bx = cx + cell
-        const leftMass = floorMassNear(tiles, w, h, ax - 1, by)
-        const rightMass = floorMassNear(tiles, w, h, bx + 1, by)
-        if (leftMass >= 5 && rightMass >= 5) {
-          tiles[idx(ax, by, w)] = 'floor'
-          tiles[idx(bx, by, w)] = 'floor'
+  const useMst = tuning.spanningTreeDoorways !== false
+
+  const collectAdjEdges = (): RuinAdjEdge[] => {
+    const edges: RuinAdjEdge[] = []
+    for (let cy = 1; cy + cell < h - 1; cy += cell) {
+      for (let cx = 1; cx + cell < w - 1; cx += cell) {
+        if (stamped.has(`${cx},${cy}`) && stamped.has(`${cx + cell},${cy}`)) {
+          const ia = stampIndexByCell.get(`${cx},${cy}`)
+          const ib = stampIndexByCell.get(`${cx + cell},${cy}`)
+          if (ia != null && ib != null) edges.push({ kind: 'h', cx, cy, ia, ib })
+        }
+        if (stamped.has(`${cx},${cy}`) && stamped.has(`${cx},${cy + cell}`)) {
+          const ia = stampIndexByCell.get(`${cx},${cy}`)
+          const ib = stampIndexByCell.get(`${cx},${cy + cell}`)
+          if (ia != null && ib != null) edges.push({ kind: 'v', cx, cy, ia, ib })
         }
       }
+    }
+    return edges
+  }
 
-      // Down neighbor
-      if (stamped.has(`${cx},${cy + cell}`) && rng.next() < tuning.doorwayChance) {
-        const bx = cx + 1 + rng.int(0, Math.max(1, cell - 2))
-        const ay = cy + cell - 1
-        const by = cy + cell
-        const upMass = floorMassNear(tiles, w, h, bx, ay - 1)
-        const downMass = floorMassNear(tiles, w, h, bx, by + 1)
-        if (upMass >= 5 && downMass >= 5) {
-          tiles[idx(bx, ay, w)] = 'floor'
-          tiles[idx(bx, by, w)] = 'floor'
-        }
+  const tryCarveHoriz = (cx: number, cy: number): boolean => {
+    const by = cy + 1 + rng.int(0, Math.max(1, cell - 2))
+    const ax = cx + cell - 1
+    const bx = cx + cell
+    const leftMass = floorMassNear(tiles, w, h, ax - 1, by)
+    const rightMass = floorMassNear(tiles, w, h, bx + 1, by)
+    if (leftMass < 5 || rightMass < 5) return false
+    tiles[idx(ax, by, w)] = 'floor'
+    tiles[idx(bx, by, w)] = 'floor'
+    const ia = stampIndexByCell.get(`${cx},${cy}`)
+    const ib = stampIndexByCell.get(`${cx + cell},${cy}`)
+    if (uf && ia != null && ib != null) uf.union(ia, ib)
+    return true
+  }
+
+  const tryCarveVert = (cx: number, cy: number): boolean => {
+    const bx = cx + 1 + rng.int(0, Math.max(1, cell - 2))
+    const ay = cy + cell - 1
+    const by = cy + cell
+    const upMass = floorMassNear(tiles, w, h, bx, ay - 1)
+    const downMass = floorMassNear(tiles, w, h, bx, by + 1)
+    if (upMass < 5 || downMass < 5) return false
+    tiles[idx(bx, ay, w)] = 'floor'
+    tiles[idx(bx, by, w)] = 'floor'
+    const ia = stampIndexByCell.get(`${cx},${cy}`)
+    const ib = stampIndexByCell.get(`${cx},${cy + cell}`)
+    if (uf && ia != null && ib != null) uf.union(ia, ib)
+    return true
+  }
+
+  if (uf && useMst) {
+    const allEdges = collectAdjEdges()
+    const mstKeys = spanningForestEdgeKeys(allEdges, genRooms.length, rng)
+    const mstEdges = allEdges.filter((e) => mstKeys.has(ruinEdgeKey(e)))
+    mstEdges.sort((a, b) => a.cy - b.cy || a.cx - b.cx || a.kind.localeCompare(b.kind))
+    for (const e of mstEdges) {
+      if (e.kind === 'h') tryCarveHoriz(e.cx, e.cy)
+      else tryCarveVert(e.cx, e.cy)
+    }
+    const extras = allEdges.filter((e) => !mstKeys.has(ruinEdgeKey(e)))
+    shuffleInPlace(extras, rng)
+    const pExtra = tuning.doorwayChance
+    for (const e of extras) {
+      if (rng.next() >= pExtra) continue
+      if (e.kind === 'h') tryCarveHoriz(e.cx, e.cy)
+      else tryCarveVert(e.cx, e.cy)
+    }
+  } else if (uf) {
+    // Legacy: independent Bernoulli per adjacency (used when `spanningTreeDoorways` is false).
+    for (let cy = 1; cy + cell < h - 1; cy += cell) {
+      for (let cx = 1; cx + cell < w - 1; cx += cell) {
+        if (!stamped.has(`${cx},${cy}`)) continue
+        if (stamped.has(`${cx + cell},${cy}`) && rng.next() < tuning.doorwayChance) tryCarveHoriz(cx, cy)
+        if (stamped.has(`${cx},${cy + cell}`) && rng.next() < tuning.doorwayChance) tryCarveVert(cx, cy)
       }
     }
   }
@@ -187,7 +257,19 @@ export function runRuinsLayout(
     genRooms.push({ id: 'r_0', rect: { ...room }, center: center(room), leafDepth: 0 })
   }
 
-  const maxMacro = Math.max(2, Math.min(24, Math.floor(tuning.maxMacroClusters)))
-  const macroRooms = clusterRoomsToMacro(genRooms, maxMacro)
+  if (genRooms.length <= 2) {
+    return { tiles, genRooms }
+  }
+
+  // Touching / overlapping stamp rects share walkable contact without going through a carved doorway pair.
+  for (let i = 0; i < genRooms.length; i++) {
+    for (let j = i + 1; j < genRooms.length; j++) {
+      if (rectDistanceChebyshev(genRooms[i]!.rect, genRooms[j]!.rect) === 0) {
+        uf!.union(i, j)
+      }
+    }
+  }
+
+  const macroRooms = macroRoomsFromStampUnion(genRooms, uf!, maxMacro)
   return { tiles, genRooms: macroRooms }
 }

@@ -1,4 +1,5 @@
 import type { GameState, Id, NpcKind } from '../types'
+import { bossLootDropBonusPct } from './npcBosses'
 
 type LootEntry = { defId: string; weight: number }
 
@@ -17,7 +18,7 @@ function hashStr(s: string) {
  */
 const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
   Swarm: [
-    { defId: 'Mushrooms', weight: 5 },
+    { defId: 'Mushrooms', weight: 8 },
     { defId: 'Ash', weight: 3 },
     { defId: 'HerbLeaf', weight: 2 },
     { defId: 'Stick', weight: 2 },
@@ -31,15 +32,16 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
     { defId: 'Tooth', weight: 1 },
   ],
   Catoctopus: [
-    { defId: 'Foodroot', weight: 4 },
-    { defId: 'Mushrooms', weight: 3 },
+    { defId: 'Foodroot', weight: 6 },
+    { defId: 'Mushrooms', weight: 5 },
     { defId: 'GlassVial', weight: 2 },
     { defId: 'Stick', weight: 2 },
     { defId: 'Slime', weight: 2 },
   ],
   Wurglepup: [
-    { defId: 'Mushrooms', weight: 4 },
-    { defId: 'Foodroot', weight: 3 },
+    { defId: 'Mushrooms', weight: 7 },
+    { defId: 'Foodroot', weight: 5 },
+    { defId: 'Slime', weight: 3 },
     { defId: 'Ash', weight: 2 },
     { defId: 'GlassVial', weight: 2 },
     { defId: 'Mucus', weight: 2 },
@@ -47,8 +49,8 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
   Bobr: [
     { defId: 'Stone', weight: 3 },
     { defId: 'Stick', weight: 3 },
-    { defId: 'Mushrooms', weight: 2 },
-    { defId: 'Foodroot', weight: 2 },
+    { defId: 'Mushrooms', weight: 4 },
+    { defId: 'Foodroot', weight: 4 },
     { defId: 'Ash', weight: 2 },
     { defId: 'Sulfur', weight: 2 },
     { defId: 'BobrJuice', weight: 4 },
@@ -64,6 +66,18 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
     { defId: 'Moss', weight: 5 },
     { defId: 'Slime', weight: 2 },
   ],
+  SporeGrub: [
+    { defId: 'Grubling', weight: 4 },
+    { defId: 'Fungus', weight: 4 },
+    { defId: 'Moss', weight: 5 },
+    { defId: 'Slime', weight: 2 },
+  ],
+  SunGrub: [
+    { defId: 'Grubling', weight: 4 },
+    { defId: 'Sweetroot', weight: 3 },
+    { defId: 'Foodroot', weight: 3 },
+    { defId: 'Moss', weight: 3 },
+  ],
   Kuratko: [
     { defId: 'Twine', weight: 3 },
     { defId: 'ClothScrap', weight: 3 },
@@ -72,19 +86,21 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
   ],
   Grechka: [
     { defId: 'Salt', weight: 4 },
-    { defId: 'Foodroot', weight: 3 },
+    { defId: 'Foodroot', weight: 5 },
     { defId: 'MortarMeal', weight: 2 },
     { defId: 'Stone', weight: 2 },
   ],
   Snailord: [
     { defId: 'Mucus', weight: 4 },
     { defId: 'Slime', weight: 3 },
+    { defId: 'SnailingShell', weight: 4 },
+    { defId: 'Snailing', weight: 2 },
     { defId: 'Gem', weight: 1 },
     { defId: 'GlassVial', weight: 2 },
   ],
   Bulba: [
     { defId: 'Fungus', weight: 4 },
-    { defId: 'Mushrooms', weight: 3 },
+    { defId: 'Mushrooms', weight: 5 },
     { defId: 'Moss', weight: 3 },
     { defId: 'SporeCap', weight: 1 },
   ],
@@ -107,7 +123,7 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
     { defId: 'Figurine', weight: 1 },
   ],
   RegularBok: [
-    { defId: 'Foodroot', weight: 3 },
+    { defId: 'Foodroot', weight: 5 },
     { defId: 'Twine', weight: 3 },
     { defId: 'Stone', weight: 2 },
     { defId: 'HerbLeaf', weight: 2 },
@@ -125,16 +141,20 @@ const NPC_LOOT_TABLES: Record<NpcKind, LootEntry[]> = {
   ],
 }
 
-/** Match prior MVP: ~45% of deaths yield one floor drop. */
-const DROP_ROLL_MAX = 45
+/** Target ~58% of deaths yield one floor drop (was ~45%). */
+const DROP_ROLL_MAX = 58
+
+export type NpcLootPickTarget = { kind: NpcKind; id: Id; variant?: 'boss'; bossTraitId?: string }
 
 /**
- * Deterministic loot from `floor.seed` + `npcId` + `kind` only (no wall-clock).
+ * Deterministic loot from `floor.seed` + `npcId` + `kind` (+ boss fields); no wall-clock.
  */
-export function pickNpcLootDefId(state: GameState, kind: NpcKind, npcId: Id): string | null {
-  const base = `${state.floor.seed}:${npcId}`
+export function pickNpcLootDefId(state: GameState, npc: NpcLootPickTarget): string | null {
+  const { kind, id: npcId } = npc
+  const base = `${state.floor.seed}:${npcId}:${kind}:${npc.variant ?? ''}:${npc.bossTraitId ?? ''}`
   const dropRoll = (hashStr(`${base}:drop`) % 100) + 1
-  if (dropRoll > DROP_ROLL_MAX) return null
+  const dropMax = Math.min(100, DROP_ROLL_MAX + bossLootDropBonusPct(npc))
+  if (dropRoll > dropMax) return null
 
   const table = NPC_LOOT_TABLES[kind]
   const total = table.reduce((s, e) => s + e.weight, 0)

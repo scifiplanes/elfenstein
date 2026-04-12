@@ -6,20 +6,24 @@ import styles from './HudLayout.module.css'
 import { HubViewport } from '../hub/HubViewport'
 import { GameViewport } from '../viewport/GameViewport'
 import { InventoryPanel } from '../inventory/InventoryPanel'
+import { portraitDropNormForDragDrop } from '../portraits/portraitDropNorm'
 import { CharacterEquipStrip } from '../portraits/CharacterEquipStrip'
 import { PortraitPanel } from '../portraits/PortraitPanel'
 import { MinimapPanel } from '../minimap/MinimapPanel'
 import { NavigationPanel, type NavPadButtonId } from '../nav/NavigationPanel'
 import { ActivityLog } from './ActivityLog'
-import { CombatIndicator } from './CombatIndicator'
+import { CombatCenterActionMenu, CombatEncounterCorner } from './CombatIndicator'
 import { TradeModal } from '../trade/TradeModal'
 import { InnkeeperTradeSpeechPortal } from '../trade/InnkeeperTradeSpeechPortal'
 import { DeathModal } from '../death/DeathModal'
 import { TitleScreen } from '../title/TitleScreen'
 import { PaperdollModal } from '../paperdoll/PaperdollModal'
+import { NpcDialogModal } from '../npc/NpcDialogModal'
+import { COMBAT_ACTION_CHROME_SELECTOR } from '../cursor/combatActionChromeAttr'
 import { useCursor } from '../cursor/useCursor'
 import { tradeWants } from '../../game/state/trade'
 import type { WorldRenderer } from '../../world/WorldRenderer'
+import { isPassableOpenDoorTile } from '../../game/tiles'
 import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
 
 /**
@@ -51,6 +55,8 @@ export function HudLayout(props: {
   captureNpcOverlay?: ReactNode
   /** Capture HUD only: full-bleed over the whole HUD grid (e.g. title / death / paperdoll). */
   captureFullHudOverlay?: ReactNode
+  titleAudioPrimed?: boolean
+  onPrimeTitleAudio?: () => void
 }) {
   const {
     state,
@@ -66,9 +72,15 @@ export function HudLayout(props: {
     onNavPadVisualPress,
     captureNpcOverlay,
     captureFullHudOverlay,
+    titleAudioPrimed,
+    onPrimeTitleAudio,
   } = props
   const cursor = useCursor()
   const tsTrade = state.ui.tradeSession
+  const npcDialogInteractiveOpen =
+    interactive &&
+    !captureForPostprocess &&
+    (Boolean(state.ui.npcDialogFor) || (state.ui.screen === 'game' && Boolean(state.ui.debugShowNpcDialogPopup)))
   const tradeModalInteractiveOpen =
     interactive &&
     !captureForPostprocess &&
@@ -124,16 +136,42 @@ export function HudLayout(props: {
               if (state.ui.screen === 'game' && world && gameViewportRef?.current) {
                 const rect = gameViewportRef.current.getBoundingClientRect()
                 if (rect && isInsideRect(e.clientX, e.clientY, rect)) {
-                  const pick = world.pickObject(rect, e.clientX, e.clientY)
-                  if (!pick) {
-                    const at = { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }
-                    cursor.setVirtualHover({ kind: 'floorDrop' }, at)
-                  } else {
-                    const at = world.projectWorldToClient(rect, pick.worldPos)
-                    const hoverRect = { left: at.x, right: at.x, top: at.y, bottom: at.y }
-                    if (pick.kind === 'poi') cursor.setVirtualHover({ kind: 'poi', poiId: pick.id }, hoverRect)
-                    if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, hoverRect)
-                    if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, hoverRect)
+                  const overCombatActionChrome =
+                    typeof document !== 'undefined' &&
+                    Boolean(document.elementFromPoint(e.clientX, e.clientY)?.closest(COMBAT_ACTION_CHROME_SELECTOR))
+                  if (!overCombatActionChrome) {
+                    const pick = world.pickObject(state, rect, e.clientX, e.clientY)
+                    if (!pick) {
+                      const at = { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }
+                      cursor.setVirtualHover({ kind: 'floorDrop' }, at)
+                    } else {
+                      const at = world.projectWorldToClient(rect, pick.worldPos)
+                      const hoverRect = { left: at.x, right: at.x, top: at.y, bottom: at.y }
+                      if (pick.kind === 'poi') cursor.setVirtualHover({ kind: 'poi', poiId: pick.id }, hoverRect)
+                      if (pick.kind === 'npc') cursor.setVirtualHover({ kind: 'npc', npcId: pick.id }, hoverRect)
+                      if (pick.kind === 'floorItem') cursor.setVirtualHover({ kind: 'floorItem', itemId: pick.id }, hoverRect)
+                      if (pick.kind === 'door') {
+                        const [xs, ys] = pick.id.split(',')
+                        const gx = Number(xs)
+                        const gy = Number(ys)
+                        const w = state.floor.w
+                        const idx = gx + gy * w
+                        if (
+                          Number.isFinite(gx) &&
+                          Number.isFinite(gy) &&
+                          gx >= 0 &&
+                          gy >= 0 &&
+                          gx < w &&
+                          gy < state.floor.h &&
+                          isPassableOpenDoorTile(state.floor.tiles[idx]!)
+                        ) {
+                          cursor.setVirtualHover({ kind: 'openDoor', x: gx, y: gy }, hoverRect)
+                        } else {
+                          const at = { left: e.clientX, right: e.clientX, top: e.clientY, bottom: e.clientY }
+                          cursor.setVirtualHover({ kind: 'floorDrop' }, at)
+                        }
+                      }
+                    }
                   }
                 }
               }
@@ -206,7 +244,13 @@ export function HudLayout(props: {
                       e.clientY,
                     )
                   : drop.target
-              dispatch({ type: 'drag/drop', payload: drop.payload, target, nowMs })
+              dispatch({
+                type: 'drag/drop',
+                payload: drop.payload,
+                target,
+                nowMs,
+                ...portraitDropNormForDragDrop(target, e.clientX, e.clientY),
+              })
             }
           : undefined
       }
@@ -252,6 +296,11 @@ export function HudLayout(props: {
         ) : (
           <GameViewport state={state} dispatch={dispatch} world={world} viewportRef={gameViewportRef} webglError={webglError} />
         )}
+        {npcDialogInteractiveOpen ? (
+          <div className={styles.npcDialogInteractiveLayer}>
+            <NpcDialogModal state={state} dispatch={dispatch} content={content} />
+          </div>
+        ) : null}
         {tradeModalInteractiveOpen ? (
           <TradeModal state={state} dispatch={dispatch} content={content} variant="interactive" />
         ) : null}
@@ -261,8 +310,16 @@ export function HudLayout(props: {
           }`}
         >
           <ActivityLog entries={state.ui.activityLog ?? []} />
-          <CombatIndicator state={state} dispatch={dispatch} interactive={interactive} />
+          {state.combat ? <CombatEncounterCorner state={state} /> : null}
         </div>
+        {state.combat ? (
+          <CombatCenterActionMenu
+            state={state}
+            dispatch={dispatch}
+            content={content}
+            interactive={interactive}
+          />
+        ) : null}
         <InnkeeperTradeSpeechPortal
           text={innkeeperTradeSpeechLine ?? ''}
           autoHideMs={state.ui.hubInnkeeperSpeechTtlMs}
@@ -388,7 +445,12 @@ export function HudLayout(props: {
 
       {fullHudModalInteractiveOpen ? (
         <div className={styles.fullHudInteractiveLayer}>
-          <TitleScreen state={state} dispatch={dispatch} />
+          <TitleScreen
+            state={state}
+            dispatch={dispatch}
+            titleAudioPrimed={titleAudioPrimed}
+            onPrimeTitleAudio={onPrimeTitleAudio}
+          />
           <PaperdollModal state={state} dispatch={dispatch} content={content} />
         </div>
       ) : null}

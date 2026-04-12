@@ -61,6 +61,7 @@ test.describe('title to hub', () => {
     ).toBeVisible({
       timeout: firstPaintMs,
     })
+    await interactiveHud(page).getByRole('button', { name: /Tap to start/i }).click()
     await interactiveHud(page).getByRole('button', { name: 'Start' }).click()
     await expect(page.getByRole('dialog', { name: 'Title screen' })).toHaveCount(0, {
       timeout: 20_000,

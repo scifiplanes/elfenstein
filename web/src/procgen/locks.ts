@@ -165,6 +165,9 @@ export function pickDecorativeDoorTile(rng: { next(): number }, floorProperties:
  * If that finds no valid slot, falls back to scanning the full grid for a floor cell that
  * still separates exit from entrance (`separatesExit`), preferring door-frame throats in
  * stable near-entrance order. Returns doors + key floor items; mutates `tiles` in place.
+ *
+ * When `targetLockCount` is set (Palace planned mission), placement requires exactly that many
+ * ordered locks; `0` skips placement. Two-lock attempts ignore `allowTwoLock` when `targetLockCount === 2`.
  */
 export function placeLocksOnPath(args: {
   tiles: Tile[]
@@ -176,14 +179,20 @@ export function placeLocksOnPath(args: {
   occupied: Set<string>
   difficulty?: FloorGenDifficulty
   floorProperties?: FloorProperty[]
+  /** When set, require exactly this many procgen locks (or return none). */
+  targetLockCount?: 0 | 1 | 2
 }): { doors: GenDoor[]; floorItems: GenFloorItem[] } {
   const { tiles, w, h, entrance, exit, rng, occupied } = args
   const floorProperties = args.floorProperties
   const difficulty = args.difficulty ?? 1
+  const targetLockCount = args.targetLockCount
   const { minPathAnyLock, minPathTwoLock, allowTwoLock } = lockThresholds(difficulty)
+
+  if (targetLockCount === 0) return { doors: [], floorItems: [] }
 
   const path = shortestPathIndices(tiles, w, h, entrance, exit, rng)
   if (!path || path.length < minPathAnyLock) return { doors: [], floorItems: [] }
+  if (targetLockCount === 2 && path.length < minPathTwoLock) return { doors: [], floorItems: [] }
 
   // Prefer placing locks on “door frame” throats (Dungeon identity).
   const doorFramePathIdxs: number[] = []
@@ -195,8 +204,13 @@ export function placeLocksOnPath(args: {
     if (isDoorFrameCandidate(tiles, w, h, x, y)) doorFramePathIdxs.push(k)
   }
 
+  const tryTwoLock =
+    targetLockCount !== 1 &&
+    path.length >= minPathTwoLock &&
+    (targetLockCount === 2 || (targetLockCount === undefined && allowTwoLock))
+
   // Try two-lock configuration first (longer paths).
-  if (allowTwoLock && path.length >= minPathTwoLock) {
+  if (tryTwoLock) {
     const i2List = doorFramePathIdxs.length ? doorFramePathIdxs : Array.from({ length: path.length }, (_, i) => i)
     for (let t2 = i2List.length - 1; t2 >= 0; t2--) {
       const i2 = i2List[t2]!
@@ -249,6 +263,7 @@ export function placeLocksOnPath(args: {
         }
       }
     }
+    if (targetLockCount === 2) return { doors: [], floorItems: [] }
   }
 
   // Single lock (legacy-style).
@@ -281,7 +296,7 @@ export function placeLocksOnPath(args: {
     }
   }
 
-  return tryArticulationSingleLockFallback({
+  const fallback = tryArticulationSingleLockFallback({
     tiles,
     w,
     h,
@@ -293,6 +308,8 @@ export function placeLocksOnPath(args: {
     minPathAnyLock,
     path,
   })
+  if (targetLockCount === 1 && fallback.doors.length !== 1) return { doors: [], floorItems: [] }
+  return fallback
 }
 
 /**

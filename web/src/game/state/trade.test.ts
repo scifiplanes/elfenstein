@@ -100,8 +100,9 @@ describe('trade', () => {
 
     state = reduce(state, { type: 'trade/execute' })
     if (state.ui.tradeSession?.kind !== 'hub_innkeeper') throw new Error('hub')
-    expect(state.party.items[stoneId]).toBeUndefined()
-    expect(state.ui.tradeSession.offerItemId).toBeNull()
+    expect(state.party.items[stoneId]?.defId).toBe('Stone')
+    expect(state.party.items[stoneId]?.qty).toBe(4)
+    expect(state.ui.tradeSession.offerItemId).toBe(stoneId)
     expect(state.ui.tradeSession.askStockIndex).toBeNull()
     expect(state.ui.tradeSession.stock[0]!.defId).toBe('Flourball')
     expect(state.ui.tradeSession.stock[0]!.qty).toBe(HUB_INNKEEPER_TRADE.stock[0]!.qty - 1)
@@ -133,13 +134,14 @@ describe('trade', () => {
     let state = hubTavernWithTrade()
     const stoneIdx = state.party.inventory.slots.findIndex((id) => id && state.party.items[id]?.defId === 'Stone')
     expect(stoneIdx).toBeGreaterThanOrEqual(0)
+    const stoneId = state.party.inventory.slots[stoneIdx]!
     state = reduce(state, { type: 'trade/stageOfferFromInventory', slotIndex: stoneIdx })
     expect(state.ui.tradeSession?.offerItemId).toBeTruthy()
     state = reduce(state, { type: 'trade/selectStock', stockIndex: 0 })
     expect(state.ui.tradeSession?.askStockIndex).toBe(0)
     state = reduce(state, { type: 'trade/execute' })
     expect(state.run.hubInnkeeperTradesCompleted).toBe(1)
-    expect(state.ui.tradeSession?.offerItemId).toBeNull()
+    expect(state.ui.tradeSession?.offerItemId).toBe(stoneId)
   })
 
   it('innkeeper barter log uses line 11+ after ten trades', () => {
@@ -195,7 +197,8 @@ describe('trade', () => {
     const stockBefore =
       state.ui.tradeSession?.kind === 'hub_innkeeper' ? state.ui.tradeSession.stock.map((r) => ({ ...r })) : []
     state = reduce(state, { type: 'trade/execute' })
-    expect(state.party.items[stoneId]).toBeUndefined()
+    expect(state.party.items[stoneId]?.defId).toBe('Stone')
+    expect(state.party.items[stoneId]?.qty).toBe(4)
     expect(state.ui.tradeSession?.offerItemId).toBeNull()
     expect(state.ui.hubInnkeeperSpeech).toBeTruthy()
     if (state.ui.tradeSession?.kind === 'hub_innkeeper') {

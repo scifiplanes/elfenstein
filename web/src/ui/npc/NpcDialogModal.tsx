@@ -1,6 +1,5 @@
-import type { Dispatch, MouseEvent, RefObject } from 'react'
+import type { Dispatch, MouseEvent } from 'react'
 import { useLayoutEffect, useRef, useState } from 'react'
-import { createPortal } from 'react-dom'
 import type { ContentDB } from '../../game/content/contentDb'
 import { toGibberish } from '../../game/npc/gibberish'
 import { npcQuestGibberishLine, npcQuestGibberishSeed } from '../../game/npc/npcQuestSpeech'
@@ -12,22 +11,10 @@ import {
   modalChromeClickActivate,
   modalChromePointerUpActivate,
 } from '../cursor/modalChromeActivate'
-import { npcCaptureInteractiveRectFromGameViewportEl } from '../hud/npcCaptureInteractiveRect'
 import popup from '../shared/GamePopup.module.css'
 import styles from './NpcDialogModal.module.css'
 
-type GameViewportRect = {
-  left: number
-  top: number
-  width: number
-  height: number
-  /** `position: fixed` **`bottom`** as **%** of the layout viewport height (speech sits `NPC_SPEECH_BOTTOM_INSET_PX` above the game viewport’s bottom edge in client space). */
-  speechBottomPct: number
-}
-
-/** Gap from the top edge of the 3D game viewport to the dialog panel. */
-const NPC_MODAL_TOP_INSET_PX = 10
-/** Gap from the bottom edge of the 3D game viewport up to the speech strip’s bottom edge (includes +15px lift vs the original 10px). */
+/** Gap from the bottom edge of the capture root to the speech strip (same **25px** as `.speechInteractiveInGame` in CSS). */
 const NPC_SPEECH_BOTTOM_INSET_PX = 25
 
 export type NpcDialogModalVariant = 'interactive' | 'capture'
@@ -37,11 +24,8 @@ export function NpcDialogModal(props: {
   dispatch: Dispatch<Action>
   content: ContentDB
   variant?: NpcDialogModalVariant
-  /** Interactive: screen-fixed portal positioning (scaled stage). */
-  gameViewportRef?: RefObject<HTMLDivElement | null>
 }) {
-  const { state, dispatch, content, variant = 'interactive', gameViewportRef } = props
-  const [viewportRect, setViewportRect] = useState<GameViewportRect | null>(null)
+  const { state, dispatch, content, variant = 'interactive' } = props
   const [captureSpeechBottomPct, setCaptureSpeechBottomPct] = useState<number | null>(null)
   const captureRootRef = useRef<HTMLDivElement>(null)
   const suppressTradeClick = useRef(false)
@@ -51,45 +35,6 @@ export function NpcDialogModal(props: {
   const previewNpc =
     Boolean(state.ui.debugShowNpcDialogPopup) && state.ui.screen === 'game' && !dialogNpcId
   const npcId = dialogNpcId ?? (previewNpc ? state.floor.npcs[0]?.id : undefined)
-
-  useLayoutEffect(() => {
-    if (!npcId || variant === 'capture') {
-      setViewportRect(null)
-      return
-    }
-    const el = gameViewportRef?.current
-    if (!el) {
-      setViewportRect(null)
-      return
-    }
-    const sync = () => {
-      const r = npcCaptureInteractiveRectFromGameViewportEl(el)
-      if (!r) {
-        setViewportRect(null)
-        return
-      }
-      const h = typeof window !== 'undefined' ? window.innerHeight : 1
-      const bottom = h - (r.top + r.height) + NPC_SPEECH_BOTTOM_INSET_PX
-      const speechBottomPct = h > 0 ? (bottom / h) * 100 : 0
-      setViewportRect({
-        left: r.left,
-        top: r.top,
-        width: r.width,
-        height: r.height,
-        speechBottomPct,
-      })
-    }
-    sync()
-    const ro = new ResizeObserver(sync)
-    ro.observe(el)
-    window.addEventListener('resize', sync)
-    window.addEventListener('scroll', sync, true)
-    return () => {
-      ro.disconnect()
-      window.removeEventListener('resize', sync)
-      window.removeEventListener('scroll', sync, true)
-    }
-  }, [variant, gameViewportRef, npcId])
 
   useLayoutEffect(() => {
     if (variant !== 'capture' || !npcId) {
@@ -122,7 +67,9 @@ export function NpcDialogModal(props: {
 
   const panelChrome = `${popup.panel} ${popup.panelWidthMd}`
   const topPanelClass =
-    variant === 'capture' ? `${panelChrome} ${styles.capturePanelTop}` : `${panelChrome} ${styles.modal}`
+    variant === 'capture'
+      ? `${panelChrome} ${styles.capturePanelTop}`
+      : `${panelChrome} ${styles.panelInteractiveInGame}`
 
   const dropKind = variant === 'interactive' ? 'npc' : undefined
   const dropNpcId = variant === 'interactive' ? npc.id : undefined
@@ -132,16 +79,6 @@ export function NpcDialogModal(props: {
   const topPanel = (
     <div
       className={topPanelClass}
-      style={
-        variant === 'interactive' && viewportRect != null
-          ? {
-              position: 'fixed' as const,
-              left: viewportRect.left + viewportRect.width / 2,
-              top: viewportRect.top + NPC_MODAL_TOP_INSET_PX,
-              transform: 'translateX(-50%)',
-            }
-          : undefined
-      }
       data-drop-kind={dropKind}
       data-drop-npc-id={dropNpcId}
       onClick={stopBackdrop}
@@ -194,22 +131,16 @@ export function NpcDialogModal(props: {
   )
 
   const speechStripStyle =
-    variant === 'interactive' && viewportRect != null
-      ? {
-          position: 'fixed' as const,
-          left: viewportRect.left + viewportRect.width / 2,
-          bottom: `${viewportRect.speechBottomPct}%`,
-          transform: 'translateX(-50%)',
-        }
-      : variant === 'capture' && captureSpeechBottomPct != null
-        ? { bottom: `${captureSpeechBottomPct}%` }
-        : undefined
+    variant === 'capture' && captureSpeechBottomPct != null ? { bottom: `${captureSpeechBottomPct}%` } : undefined
+
+  const speechStripClass =
+    variant === 'capture'
+      ? `${styles.speechStrip} ${styles.captureSpeech}`
+      : `${styles.speechStrip} ${styles.speechInteractiveInGame}`
 
   const speechStrip = (
     <div
-      className={`${styles.speechStrip} ${variant === 'capture' ? styles.captureSpeech : ''} ${
-        variant === 'interactive' && viewportRect == null ? styles.speechInteractiveFallback : ''
-      }`}
+      className={speechStripClass}
       style={speechStripStyle}
       data-drop-kind={dropKind}
       data-drop-npc-id={dropNpcId}
@@ -230,9 +161,9 @@ export function NpcDialogModal(props: {
     )
   }
 
-  const tree = (
+  return (
     <div
-      className={`${styles.backdrop} ${styles.backdropHitLayer}`}
+      className={`${styles.backdropInteractiveInGame} ${styles.backdropHitLayer}`}
       onClick={() => dispatch({ type: 'ui/closeNpcDialog' })}
       onPointerCancel={cursor.cancelDrag}
       onPointerUp={(e) => {
@@ -244,11 +175,4 @@ export function NpcDialogModal(props: {
       {speechStrip}
     </div>
   )
-
-  // `FixedStageViewport` applies `transform: scale` on `.stage`; `position:fixed` inside it uses that
-  // ancestor as the containing block, so viewport `getBoundingClientRect()` numbers do not match `left`/`top`.
-  if (typeof document !== 'undefined' && document.body) {
-    return createPortal(tree, document.body)
-  }
-  return tree
 }

@@ -5,6 +5,7 @@ import { getCharacterEquipmentHudModel, itemFitsCharacterEquipmentSlot } from '.
 import type { EquipmentSlot, GameState } from '../../game/types'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 import { useCursor } from '../cursor/useCursor'
+import { portraitDropNormForDragDrop } from './portraitDropNorm'
 import { resolveGameViewportDragDropTarget } from '../viewport/resolveGameViewportDragDropTarget'
 import { EquipIcon } from './EquipIcon'
 import styles from './CharacterEquipStrip.module.css'
@@ -30,6 +31,8 @@ export function CharacterEquipStrip(props: {
   const m = getCharacterEquipmentHudModel(state, content, characterId)
   if (!m) return null
 
+  const alive = (state.party.chars.find((x) => x.id === characterId)?.hp ?? 0) > 0
+
   const {
     headItem,
     leftHandItem,
@@ -43,6 +46,7 @@ export function CharacterEquipStrip(props: {
   } = m
 
   const beginEquipDrag = (slot: EquipmentSlot, itemId: string, e: PointerEvent<HTMLButtonElement>) => {
+    if (!alive) return
     cursor.beginPointerDown(
       {
         itemId,
@@ -53,6 +57,7 @@ export function CharacterEquipStrip(props: {
   }
 
   const onPointerUpStrip = (e: PointerEvent) => {
+    if (!alive) return
     const result = cursor.endPointerUp(e)
     if (!result?.drop) return
     const target = resolveGameViewportDragDropTarget(
@@ -68,6 +73,7 @@ export function CharacterEquipStrip(props: {
       payload: result.drop.payload,
       target,
       nowMs: performance.now(),
+      ...portraitDropNormForDragDrop(target, e.clientX, e.clientY),
     })
   }
 
@@ -92,14 +98,14 @@ export function CharacterEquipStrip(props: {
 
   return (
     <div
-      className={[styles.root, className].filter(Boolean).join(' ')}
+      className={[styles.root, alive ? '' : styles.rootDead, className].filter(Boolean).join(' ')}
       style={nudgeStyle}
-      onPointerCancel={cursor.cancelDrag}
+      onPointerCancel={alive ? cursor.cancelDrag : undefined}
       onPointerUp={onPointerUpStrip}
     >
       <div
-        className={`${styles.slot} ${styles.slotHead}${afford.head ? ` ${styles.slotAffordEquip}` : ''}`}
-        data-drop-kind="equipmentSlot"
+        className={`${styles.slot} ${styles.slotHead}${alive && afford.head ? ` ${styles.slotAffordEquip}` : ''}`}
+        data-drop-kind={alive ? 'equipmentSlot' : undefined}
         data-drop-character-id={characterId}
         data-drop-equip-slot="head"
       >
@@ -118,8 +124,8 @@ export function CharacterEquipStrip(props: {
       </div>
 
       <div
-        className={`${styles.slot} ${styles.slotHandLeft}${afford.handLeft ? ` ${styles.slotAffordEquip}` : ''}`}
-        data-drop-kind="equipmentSlot"
+        className={`${styles.slot} ${styles.slotHandLeft}${alive && afford.handLeft ? ` ${styles.slotAffordEquip}` : ''}`}
+        data-drop-kind={alive ? 'equipmentSlot' : undefined}
         data-drop-character-id={characterId}
         data-drop-equip-slot="handLeft"
       >
@@ -138,8 +144,8 @@ export function CharacterEquipStrip(props: {
       </div>
 
       <div
-        className={`${styles.slot} ${styles.slotHandRight}${afford.handRight ? ` ${styles.slotAffordEquip}` : ''}`}
-        data-drop-kind="equipmentSlot"
+        className={`${styles.slot} ${styles.slotHandRight}${alive && afford.handRight ? ` ${styles.slotAffordEquip}` : ''}`}
+        data-drop-kind={alive ? 'equipmentSlot' : undefined}
         data-drop-character-id={characterId}
         data-drop-equip-slot="handRight"
       >

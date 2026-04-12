@@ -1,12 +1,35 @@
 import type { ContentDB } from '../content/contentDb'
 import { STORAGE_POI_LOOT_DEF_IDS_BY_FLOOR } from '../content/poiLootTables'
-import type { GameState, ItemId } from '../types'
+import type { CharacterId, GameState, ItemDefId, ItemId } from '../types'
 import { addStatus, removeStatus } from './status'
 import { consumeItem } from './inventory'
 import { makeDropJitter } from './dropJitter'
 import { pushActivityLog } from './activityLog'
 import { descendToNextFloor } from './floorProgression'
-import { hpMax, staminaMax } from './runProgression'
+import {
+  applyXpWithActivityLog,
+  hpMax,
+  staminaMax,
+  XP_CONTAINER_OPEN,
+  XP_COOK_SUCCESS,
+  XP_NEST_EGG,
+  XP_SECRET_OPEN,
+  XP_SHRINE_PURIFY,
+} from './runProgression'
+import { applyItemDurabilityWear, inventoryItemFromDef } from './itemDurability'
+import { canItemBreakKuratkoNest } from './openDoorDestroy'
+
+/** Raw → roast output for `Campfire` POI (drag ingredient onto fire). */
+const CAMPFIRE_ROAST: Partial<Record<ItemDefId, ItemDefId>> = {
+  Mushrooms: 'RoastMushrooms',
+  Foodroot: 'RoastFoodroot',
+  Grubling: 'RoastGrub',
+  Snailing: 'RoastSnailing',
+  Fungus: 'RoastFungus',
+  KuratkoEgg: 'RoastKuratkoEgg',
+}
+
+const CAMPFIRE_COOK_DC = 9
 
 export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
@@ -35,7 +58,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     const loot = pickContainerLootDefId(state, poiId)
     const newId = (`i_${loot}_${state.floor.seed}_${poiId}` as unknown) as ItemId
 
-    const items = { ...state.party.items, [newId]: { id: newId, defId: loot, qty: 1 } }
+    const items = { ...state.party.items, [newId]: inventoryItemFromDef(_content, loot, newId, 1) }
     const jitter = makeDropJitter({
       floorSeed: state.floor.seed,
       itemId: newId,
@@ -46,18 +69,20 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     const pois = state.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
     const sfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }])
 
-    return pushActivityLog(
-      {
-        ...state,
-        party: { ...state.party, items },
-        floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
-        ui: {
-          ...state.ui,
-          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.26 },
-          sfxQueue,
-        },
+    const openedState: GameState = {
+      ...state,
+      party: { ...state.party, items },
+      floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+      ui: {
+        ...state.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.26 },
+        sfxQueue,
       },
-      `${poi.kind} opened.`,
+    }
+    return applyXpWithActivityLog(
+      openedState,
+      XP_CONTAINER_OPEN,
+      `${poi.kind} opened. (+${XP_CONTAINER_OPEN} XP)`,
     )
   }
 
@@ -138,7 +163,7 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     const loot = pickChestLootDefId(state, poiId)
     const newId = (`i_${loot}_${state.floor.seed}_${poiId}` as unknown) as ItemId
 
-    const items = { ...state.party.items, [newId]: { id: newId, defId: loot, qty: 1 } }
+    const items = { ...state.party.items, [newId]: inventoryItemFromDef(_content, loot, newId, 1) }
     const jitter = makeDropJitter({
       floorSeed: state.floor.seed,
       itemId: newId,
@@ -149,36 +174,39 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
     const pois = state.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
     const sfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }])
 
-    return pushActivityLog(
-      {
-        ...state,
-        party: { ...state.party, items },
-        floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
-        ui: {
-          ...state.ui,
-          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.28 },
-          sfxQueue,
-        },
+    const chestOpened: GameState = {
+      ...state,
+      party: { ...state.party, items },
+      floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+      ui: {
+        ...state.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.28 },
+        sfxQueue,
       },
-      'Chest opened.',
-    )
+    }
+    return applyXpWithActivityLog(chestOpened, XP_CONTAINER_OPEN, `Chest opened. (+${XP_CONTAINER_OPEN} XP)`)
   }
   if (poi.kind === 'Shrine') {
     let next = state
     for (const c of state.party.chars) next = removeStatus(next, c.id, 'Cursed')
     const removedAny = next !== state
     const pois = next.floor.pois.map((p) => (p.id === poiId ? { ...p, opened: true } : p))
-    return pushActivityLog(
-      {
-        ...next,
-        floor: { ...next.floor, pois, floorGeomRevision: next.floor.floorGeomRevision + 1 },
-        ui: {
-          ...next.ui,
-          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: removedAny ? 0.26 : 0.18 },
-        },
+    const shrineState: GameState = {
+      ...next,
+      floor: { ...next.floor, pois, floorGeomRevision: next.floor.floorGeomRevision + 1 },
+      ui: {
+        ...next.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 140, magnitude: removedAny ? 0.26 : 0.18 },
       },
-      removedAny ? 'A weight lifts from the party.' : 'The shrine is silent.',
-    )
+    }
+    if (removedAny) {
+      return applyXpWithActivityLog(
+        shrineState,
+        XP_SHRINE_PURIFY,
+        `A weight lifts from the party. (+${XP_SHRINE_PURIFY} XP)`,
+      )
+    }
+    return pushActivityLog(shrineState, 'The shrine is silent.')
   }
   if (poi.kind === 'CrackedWall') {
     return pushActivityLog(
@@ -192,6 +220,42 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
       'A cracked wall. Maybe a tool could pry it open.',
     )
   }
+  if (poi.kind === 'Campfire') {
+    return pushActivityLog(
+      {
+        ...state,
+        ui: {
+          ...state.ui,
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.14 },
+        },
+      },
+      'The fire crackles.',
+    )
+  }
+  if (poi.kind === 'KuratkoNest') {
+    if (poi.opened || (poi.eggsLeft ?? 0) <= 0) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+          },
+        },
+        'The nest is empty.',
+      )
+    }
+    return pushActivityLog(
+      {
+        ...state,
+        ui: {
+          ...state.ui,
+          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+        },
+      },
+      'The eggs sit too deep to grab bare-handed—drag a stick, blade, or chisel onto the nest.',
+    )
+  }
   if (poi.kind === 'Exit') {
     return descendToNextFloor(state)
   }
@@ -199,7 +263,13 @@ export function applyPoiUse(state: GameState, _content: ContentDB, poiId: string
   return state
 }
 
-export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: ItemId, poiId: string): GameState {
+export function applyItemOnPoi(
+  state: GameState,
+  content: ContentDB,
+  itemId: ItemId,
+  poiId: string,
+  opts?: { durabilityCharacterHint?: CharacterId },
+): GameState {
   const poi = state.floor.pois.find((p) => p.id === poiId)
   const item = state.party.items[itemId]
   if (!poi || !item) return state
@@ -207,6 +277,18 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
   if (poi.kind === 'Well') {
     const def = content.item(item.defId)
     const hook = def.useOnPoi?.Well
+    if (hook?.transformTo && poi.drained) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.14 },
+          },
+        },
+        'The well is dry.',
+      )
+    }
     if (hook?.transformTo) {
       const nextItem = { ...item, defId: hook.transformTo }
       const pois = state.floor.pois.map((x) => (x.id === poiId && x.kind === 'Well' ? { ...x, drained: true } : x))
@@ -240,6 +322,76 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
   if (poi.kind === 'Chest') {
     // Treat “item on chest” as “use chest”.
     return applyPoiUse(state, content, poiId)
+  }
+
+  if (poi.kind === 'KuratkoNest') {
+    const itemOk = canItemBreakKuratkoNest(content, item.defId)
+    if (!itemOk) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.16 },
+            sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'reject' as const }]),
+          },
+        },
+        'That will not reach into the nest.',
+      )
+    }
+
+    if (poi.opened || (poi.eggsLeft ?? 0) <= 0) {
+      const pois = state.floor.pois.filter((p) => p.id !== poiId)
+      const q = state.ui.sfxQueue ?? []
+      const sfxQueue = q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'pickup' as const }])
+      const scattered = pushActivityLog(
+        {
+          ...state,
+          floor: { ...state.floor, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.26 },
+            sfxQueue,
+          },
+        },
+        'You scatter the empty nest.',
+      )
+      return applyItemDurabilityWear(scattered, content, itemId, 'toolUse', opts?.durabilityCharacterHint)
+    }
+
+    const leftBefore = poi.eggsLeft ?? 0
+    const newId = (`i_KuratkoEgg_${state.floor.seed}_${poiId}_${state.nowMs}` as unknown) as ItemId
+    const items = { ...state.party.items, [newId]: inventoryItemFromDef(content, 'KuratkoEgg' as ItemDefId, newId, 1) }
+    const jitter = makeDropJitter({
+      floorSeed: state.floor.seed,
+      itemId: newId,
+      nonce: Math.floor(state.nowMs),
+      radius: state.render.dropJitterRadius ?? 0.28,
+    })
+    const itemsOnFloor = state.floor.itemsOnFloor.concat([{ id: newId, pos: { ...poi.pos }, jitter }])
+    const leftAfter = leftBefore - 1
+    const pois = state.floor.pois.map((p) =>
+      p.id === poiId
+        ? { ...p, eggsLeft: leftAfter, opened: leftAfter <= 0 ? true : p.opened }
+        : p,
+    )
+    const sfxQueue = (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }])
+    const afterPry: GameState = {
+      ...state,
+      party: { ...state.party, items },
+      floor: { ...state.floor, pois, itemsOnFloor, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+      ui: {
+        ...state.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 150, magnitude: 0.24 },
+        sfxQueue,
+      },
+    }
+    const withWear = applyItemDurabilityWear(afterPry, content, itemId, 'toolUse', opts?.durabilityCharacterHint)
+    return applyXpWithActivityLog(
+      withWear,
+      XP_NEST_EGG,
+      `You pry a Kuratko egg loose. (+${XP_NEST_EGG} XP)`,
+    )
   }
 
   if (poi.kind === 'Barrel' || poi.kind === 'Crate') {
@@ -317,18 +469,107 @@ export function applyItemOnPoi(state: GameState, content: ContentDB, itemId: Ite
     const tiles = state.floor.tiles.slice()
     tiles[idx] = 'floor'
     const pois = state.floor.pois.filter((p) => p.id !== poi.id)
-    return pushActivityLog(
-      {
-        ...state,
-        floor: { ...state.floor, tiles, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
-        ui: {
-          ...state.ui,
-          shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.35 },
-          sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
-        },
+    const wallOpen: GameState = {
+      ...state,
+      floor: { ...state.floor, tiles, pois, floorGeomRevision: state.floor.floorGeomRevision + 1 },
+      ui: {
+        ...state.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 160, magnitude: 0.35 },
+        sfxQueue: (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(state.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
       },
-      'The cracked wall gives way.',
+    }
+    return applyXpWithActivityLog(
+      wallOpen,
+      XP_SECRET_OPEN,
+      `The cracked wall gives way. (+${XP_SECRET_OPEN} XP)`,
     )
+  }
+
+  if (poi.kind === 'Campfire') {
+    const outDef = CAMPFIRE_ROAST[item.defId]
+    if (!outDef) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.14 },
+          },
+        },
+        'That will not cook here.',
+      )
+    }
+    const usesNow = poi.cookUsesLeft ?? 6
+    if (usesNow <= 0) {
+      return pushActivityLog(
+        {
+          ...state,
+          ui: {
+            ...state.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 110, magnitude: 0.12 },
+          },
+        },
+        'The fire is cold.',
+      )
+    }
+
+    const bestCook = state.party.chars.reduce((best, ch) => Math.max(best, Number(ch.skills?.cooking ?? 0)), 0)
+    const cookSeed = hashStr(`${state.floor.seed}:campfireCook:${poi.id}:${item.id}:${item.defId}`)
+    const d20 = (cookSeed % 20) + 1
+    const success = d20 + bestCook >= CAMPFIRE_COOK_DC
+
+    let next = consumeItem(state, itemId)
+    if (!success) {
+      const leftFail = usesNow - 1
+      const poisFail =
+        leftFail <= 0
+          ? next.floor.pois.filter((p) => p.id !== poi.id)
+          : next.floor.pois.map((p) => (p.id === poi.id && p.kind === 'Campfire' ? { ...p, cookUsesLeft: leftFail } : p))
+      return pushActivityLog(
+        {
+          ...next,
+          floor: { ...next.floor, pois: poisFail, floorGeomRevision: next.floor.floorGeomRevision + 1 },
+          ui: {
+            ...next.ui,
+            shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 130, magnitude: 0.22 },
+            sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'reject' }]),
+          },
+        },
+        'Burnt.',
+      )
+    }
+
+    const newId = (`i_${outDef}_${state.floor.seed}_${(cookSeed >>> 8).toString(16)}` as unknown) as ItemId
+    const jitter = makeDropJitter({
+      floorSeed: next.floor.seed,
+      itemId: newId,
+      nonce: Math.floor(state.nowMs),
+      radius: state.render.dropJitterRadius ?? 0.28,
+    })
+    const items = { ...next.party.items, [newId]: inventoryItemFromDef(content, outDef, newId, 1) }
+    const itemsOnFloor = next.floor.itemsOnFloor.concat([{ id: newId, pos: { ...poi.pos }, jitter }])
+    const leftOk = usesNow - 1
+    const poisOk =
+      leftOk <= 0
+        ? next.floor.pois.filter((p) => p.id !== poi.id)
+        : next.floor.pois.map((p) => (p.id === poi.id && p.kind === 'Campfire' ? { ...p, cookUsesLeft: leftOk } : p))
+
+    const roasted: GameState = {
+      ...next,
+      party: { ...next.party, items },
+      floor: {
+        ...next.floor,
+        pois: poisOk,
+        itemsOnFloor,
+        floorGeomRevision: next.floor.floorGeomRevision + 1,
+      },
+      ui: {
+        ...next.ui,
+        shake: { startedAtMs: state.nowMs, untilMs: state.nowMs + 120, magnitude: 0.2 },
+        sfxQueue: (next.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_${(next.ui.sfxQueue ?? []).length}`, kind: 'pickup' }]),
+      },
+    }
+    return applyXpWithActivityLog(roasted, XP_COOK_SUCCESS, `Roasted. (+${XP_COOK_SUCCESS} XP)`)
   }
 
   return state

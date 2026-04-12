@@ -1,5 +1,6 @@
 import type { DragTarget } from '../../game/types'
 import type { GameState } from '../../game/types'
+import { isPassableOpenDoorTile } from '../../game/tiles'
 import type { WorldRenderer } from '../../world/WorldRenderer'
 
 function isInsideRect(x: number, y: number, r: DOMRectReadOnly) {
@@ -72,10 +73,28 @@ export function resolveGameViewportDragDropTarget(
   const rect = viewportEl.getBoundingClientRect()
   if (!isInsideRect(clientX, clientY, rect)) return domTarget
 
-  const pick = world.pickTarget(rect, clientX, clientY)
+  const pick = world.pickTarget(state, rect, clientX, clientY)
   if (pick?.kind === 'poi') return { kind: 'poi', poiId: pick.id }
   if (pick?.kind === 'npc') return { kind: 'npc', npcId: pick.id }
   if (pick?.kind === 'floorItem') return { kind: 'floorItem', itemId: pick.id }
+  if (pick?.kind === 'door') {
+    const [xs, ys] = pick.id.split(',')
+    const x = Number(xs)
+    const y = Number(ys)
+    const w = state.floor.w
+    const idx = x + y * w
+    if (
+      Number.isFinite(x) &&
+      Number.isFinite(y) &&
+      x >= 0 &&
+      y >= 0 &&
+      x < w &&
+      y < state.floor.h &&
+      isPassableOpenDoorTile(state.floor.tiles[idx]!)
+    ) {
+      return { kind: 'openDoor', x, y }
+    }
+  }
 
   const p = world.pickFloorPoint(rect, clientX, clientY)
   if (p) {

@@ -2,88 +2,246 @@
  * Mission-first dungeon generation (abstract progression graph before grid embedding).
  * See `Dungeon_generation_plan_summary.md` and DESIGN.md §8.4.
  *
- * **Embedding contract (future):** When `planMissionBeforeGeometry` returns non-null,
- * floor-type realizers should reserve walkable mass so each planned node has a distinct
- * chamber or corridor junction (visit order = graph topological walk from Entrance),
- * then run locks/POIs to match planned LockGate/KeyPickup/Well/Bed/Chest roles.
- * The shipped pipeline in `generateDungeon.ts` remains geometry-first until that embed exists.
- *
- * ---
- * Track B specification (planned; not shipped)
- * ---
- *
- * **PlannedMission vs MissionGraph**
- * - `PlannedMission` (this module): abstract DAG before geometry — node ids, roles
- *   (`Entrance`, `Exit`, `LockGate`, `KeyPickup`, `Well`, `Bed`, `Chest`, `Wildcard`),
- *   edges labelled `walk` | `gated` + optional `lockId`. No grid positions.
- * - `MissionGraph` (`types.ts` / `missionGraph.ts`): *realized* graph after generation —
- *   same conceptual roles but every node carries `pos` (and optional `poiId` / `itemDefId`).
- *   Today it is built *post hoc* from tiles + POIs + doors. After Track B, positions must
- *   match embedded chambers; the graph may still add `shortcut` / `hasAlternateEntranceExitRoute`
- *   from lattice stats.
- *
- * **Formal plan validation (before any tile allocation)**
- * - Every `KeyPickup` for `lockId` L must be reachable from `Entrance` in the abstract
- *   graph without traversing a `gated` edge that requires L (mirror of `validateGen` lock order).
- * - `Exit` must not be reachable from `Entrance` until all `gated` edges are satisfied
- *   (ordering of lock discovery matches gameplay).
- * - Optional pacing: max graph distance to a `Well`/`Bed` node (analogous to BFS caps today).
- *
- * **Embedding strategy by floorType** (geometry-last)
- * - **Dungeon (`realizeDungeonBsp`)**: build a corridor spine matching planned edge order;
- *   inflate BSP leaves or carved rects at each mission node site before sibling L-stitch;
- *   entrance/exit cells chosen to align with `Entrance`/`Exit` nodes.
- * - **Cave (`realizeCave`)**: worm-carve backbone along abstract path; widen or blob-carve
- *   at each node; single `GenRoom` fallback must not swallow distinct node sites — either
- *   tag sub-chambers or run a secondary carve pass per node.
- * - **Ruins (`realizeRuins`)**: place macro-stamps so stamped chambers map 1:1 to mission
- *   nodes where possible; doorways between stamps follow planned edges; extra stamps only
- *   for filler loop geometry.
- *
- * **Downstream wiring**
- * - `placeLocksOnPath` becomes “place planned locks” (or validate that grid locks match
- *   plan) so `forLockId` / door order stay consistent with `PlannedMission`.
- * - `buildMissionGraph` should prefer copying plan structure + filling positions from the
- *   grid rather than the current entrance→POI BFS chain heuristic when a plan exists.
- *
- * **Schema**
- * - When embedding ships: bump `floor.gen.meta.genVersion`, add e.g. `meta.plannedMission`
- *   (JSON-serializable `PlannedMission`) for dumps and multiplayer sync debugging.
- *   Current shipped version uses `genVersion` 5 for difficulty meta only (see ADR-0105).
- *
- * ---
+ * **Palace v1:** `planMissionBeforeGeometry` returns a linear `PlannedMission` for
+ * `floorType === 'Palace'`; locks follow `targetLockCount` in `placeLocksOnPath`.
+ * Ruins stamp↔node embedding remains future work.
  */
 import type { Rng } from './seededRng'
-import type { FloorGenInput } from './types'
+import type {
+  FloorGenDifficulty,
+  FloorGenInput,
+  FloorGenOutput,
+  PalacePlannedMissionTemplateId,
+  PlannedMission,
+  PlannedMissionEdge,
+  PlannedMissionNode,
+} from './types'
+import { normalizeFloorGenDifficulty } from './types'
 
-export type PlannedMissionNodeRole =
-  | 'Entrance'
-  | 'Exit'
-  | 'LockGate'
-  | 'KeyPickup'
-  | 'Well'
-  | 'Bed'
-  | 'Chest'
-  /** Placeholder for boss / quest / extra POI before roles are fixed in data. */
-  | 'Wildcard'
+export type {
+  PalacePlannedMissionTemplateId,
+  PlannedMission,
+  PlannedMissionEdge,
+  PlannedMissionNode,
+  PlannedMissionNodeRole,
+} from './types'
 
-export type PlannedMissionNode = {
-  id: string
-  role: PlannedMissionNodeRole
-  /** For LockGate / KeyPickup pairs. */
-  lockId?: string
+function palaceTemplateSpine(): PlannedMission {
+  const nodes: PlannedMissionNode[] = [
+    { id: 'n_e', role: 'Entrance' },
+    { id: 'n_x', role: 'Exit' },
+  ]
+  const edges: PlannedMissionEdge[] = [{ fromId: 'n_e', toId: 'n_x', kind: 'walk' }]
+  return { templateId: 'palace_spine', nodes, edges }
 }
 
-export type PlannedMissionEdge = {
-  fromId: string
-  toId: string
-  kind: 'walk' | 'gated'
-  lockId?: string
+function palaceTemplateSealA(): PlannedMission {
+  const nodes: PlannedMissionNode[] = [
+    { id: 'n_e', role: 'Entrance' },
+    { id: 'n_ka', role: 'KeyPickup', lockId: 'A' },
+    { id: 'n_ga', role: 'LockGate', lockId: 'A' },
+    { id: 'n_x', role: 'Exit' },
+  ]
+  const edges: PlannedMissionEdge[] = [
+    { fromId: 'n_e', toId: 'n_ka', kind: 'walk' },
+    { fromId: 'n_ka', toId: 'n_ga', kind: 'walk' },
+    { fromId: 'n_ga', toId: 'n_x', kind: 'gated', lockId: 'A' },
+  ]
+  return { templateId: 'palace_seal_a', nodes, edges }
 }
 
-export type PlannedMission = {
-  nodes: PlannedMissionNode[]
-  edges: PlannedMissionEdge[]
+function palaceTemplateSealAb(): PlannedMission {
+  const nodes: PlannedMissionNode[] = [
+    { id: 'n_e', role: 'Entrance' },
+    { id: 'n_ka', role: 'KeyPickup', lockId: 'A' },
+    { id: 'n_ga', role: 'LockGate', lockId: 'A' },
+    { id: 'n_kb', role: 'KeyPickup', lockId: 'B' },
+    { id: 'n_gb', role: 'LockGate', lockId: 'B' },
+    { id: 'n_x', role: 'Exit' },
+  ]
+  const edges: PlannedMissionEdge[] = [
+    { fromId: 'n_e', toId: 'n_ka', kind: 'walk' },
+    { fromId: 'n_ka', toId: 'n_ga', kind: 'walk' },
+    { fromId: 'n_ga', toId: 'n_kb', kind: 'gated', lockId: 'A' },
+    { fromId: 'n_kb', toId: 'n_gb', kind: 'walk' },
+    { fromId: 'n_gb', toId: 'n_x', kind: 'gated', lockId: 'B' },
+  ]
+  return { templateId: 'palace_seal_ab', nodes, edges }
+}
+
+function pickPalaceTemplateId(difficulty: FloorGenDifficulty, rng: Rng): PalacePlannedMissionTemplateId {
+  const r = rng.next()
+  if (difficulty === 0) {
+    if (r < 0.5) return 'palace_spine'
+    if (r < 0.85) return 'palace_seal_a'
+    return 'palace_seal_ab'
+  }
+  if (difficulty === 2) {
+    if (r < 0.2) return 'palace_spine'
+    if (r < 0.55) return 'palace_seal_a'
+    return 'palace_seal_ab'
+  }
+  if (r < 0.35) return 'palace_spine'
+  if (r < 0.7) return 'palace_seal_a'
+  return 'palace_seal_ab'
+}
+
+function missionForTemplateId(id: PalacePlannedMissionTemplateId): PlannedMission {
+  if (id === 'palace_spine') return palaceTemplateSpine()
+  if (id === 'palace_seal_a') return palaceTemplateSealA()
+  return palaceTemplateSealAb()
+}
+
+/** BFS: traverse `walk` always; traverse `gated` only if `openLocks` contains that edge's `lockId`. */
+function reachableWithOpenLocks(
+  plan: PlannedMission,
+  startId: string,
+  goalId: string,
+  openLocks: Set<string>,
+): boolean {
+  const adj = new Map<string, PlannedMissionEdge[]>()
+  for (const e of plan.edges) {
+    const list = adj.get(e.fromId) ?? []
+    list.push(e)
+    adj.set(e.fromId, list)
+  }
+  for (const list of adj.values()) list.sort((a, b) => a.toId.localeCompare(b.toId))
+
+  const q: string[] = [startId]
+  const seen = new Set<string>([startId])
+  for (let qi = 0; qi < q.length; qi++) {
+    const cur = q[qi]!
+    if (cur === goalId) return true
+    for (const e of adj.get(cur) ?? []) {
+      if (e.kind === 'gated') {
+        const L = e.lockId
+        if (!L || !openLocks.has(L)) continue
+      }
+      if (seen.has(e.toId)) continue
+      seen.add(e.toId)
+      q.push(e.toId)
+    }
+  }
+  return false
+}
+
+/** Ordered lock ids as first encountered along gated edges on the unique Entrance→Exit path. */
+function lockOrderOnPlannedPath(plan: PlannedMission): string[] | null {
+  const ent = plan.nodes.find((n) => n.role === 'Entrance')
+  const ex = plan.nodes.find((n) => n.role === 'Exit')
+  if (!ent || !ex) return null
+
+  const byFrom = new Map<string, PlannedMissionEdge[]>()
+  for (const e of plan.edges) {
+    const list = byFrom.get(e.fromId) ?? []
+    list.push(e)
+    byFrom.set(e.fromId, list)
+  }
+  for (const list of byFrom.values()) list.sort((a, b) => a.toId.localeCompare(b.toId))
+
+  const order: string[] = []
+  const seen = new Set<string>([ent.id])
+  let cur = ent.id
+  while (cur !== ex.id) {
+    const outs = byFrom.get(cur) ?? []
+    if (outs.length !== 1) return null
+    const e = outs[0]!
+    if (e.kind === 'gated' && e.lockId) order.push(e.lockId)
+    if (seen.has(e.toId)) return null
+    seen.add(e.toId)
+    cur = e.toId
+  }
+  return order
+}
+
+/**
+ * Validates abstract lock/key ordering: each key is reachable before its gate opens;
+ * exit unreachable with no keys; exit reachable with all keys.
+ */
+export function validatePlannedMission(plan: PlannedMission): boolean {
+  const ent = plan.nodes.find((n) => n.role === 'Entrance')
+  const ex = plan.nodes.find((n) => n.role === 'Exit')
+  if (!ent || !ex) return false
+
+  const lockOrder = lockOrderOnPlannedPath(plan)
+  if (lockOrder === null) return false
+
+  const hasGates = lockOrder.length > 0
+  const exitReachNoKeys = reachableWithOpenLocks(plan, ent.id, ex.id, new Set())
+
+  if (hasGates && exitReachNoKeys) return false
+  if (!hasGates && !exitReachNoKeys) return false
+  if (!hasGates) return true
+
+  const open = new Set<string>()
+  for (const L of lockOrder) {
+    const keyNode = plan.nodes.find((n) => n.role === 'KeyPickup' && n.lockId === L)
+    if (!keyNode) return false
+    if (!reachableWithOpenLocks(plan, ent.id, keyNode.id, open)) return false
+    open.add(L)
+  }
+
+  return reachableWithOpenLocks(plan, ent.id, ex.id, open)
+}
+
+export function plannedMissionTargetLockCount(plan: PlannedMission): 0 | 1 | 2 {
+  const gated = plan.edges.filter((e) => e.kind === 'gated')
+  const ids = [...new Set(gated.map((e) => e.lockId).filter((x): x is string => Boolean(x)))]
+  if (ids.length === 0) return 0
+  if (ids.length === 1) return 1
+  return 2
+}
+
+export function validatePlannedMissionRealized(gen: FloorGenOutput, plan: PlannedMission): boolean {
+  const target = plannedMissionTargetLockCount(plan)
+  const locked = gen.doors.filter((d) => d.locked && d.lockId).sort((a, b) => (a.orderOnPath ?? 0) - (b.orderOnPath ?? 0))
+  if (locked.length !== target) return false
+
+  const keys = gen.floorItems.filter((it) => it.forLockId)
+  if (target === 0) return keys.length === 0
+
+  const expectedLocks = new Set(
+    plan.edges.filter((e) => e.kind === 'gated').map((e) => e.lockId).filter((x): x is string => Boolean(x)),
+  )
+  if (expectedLocks.size !== target) return false
+
+  for (const d of locked) {
+    if (!d.lockId || !expectedLocks.has(d.lockId)) return false
+    const k = keys.find((it) => it.forLockId === d.lockId)
+    if (!k) return false
+  }
+  return true
+}
+
+/**
+ * Linear node ids from Entrance to Exit (inclusive). Null if not a simple path.
+ */
+export function plannedLinearPathNodeIds(plan: PlannedMission): string[] | null {
+  const ent = plan.nodes.find((n) => n.role === 'Entrance')
+  const ex = plan.nodes.find((n) => n.role === 'Exit')
+  if (!ent || !ex) return null
+
+  const byFrom = new Map<string, PlannedMissionEdge[]>()
+  for (const e of plan.edges) {
+    const list = byFrom.get(e.fromId) ?? []
+    list.push(e)
+    byFrom.set(e.fromId, list)
+  }
+  for (const list of byFrom.values()) list.sort((a, b) => a.toId.localeCompare(b.toId))
+
+  const out: string[] = [ent.id]
+  const seen = new Set<string>([ent.id])
+  let cur = ent.id
+  while (cur !== ex.id) {
+    const outs = byFrom.get(cur) ?? []
+    if (outs.length !== 1) return null
+    const e = outs[0]!
+    if (seen.has(e.toId)) return null
+    seen.add(e.toId)
+    out.push(e.toId)
+    cur = e.toId
+  }
+  return out
 }
 
 /**
@@ -91,6 +249,10 @@ export type PlannedMission = {
  * current geometry-first order; callers should still construct `missionRng` so the stream
  * stays phase-stable when this begins emitting plans.
  */
-export function planMissionBeforeGeometry(_input: FloorGenInput, _rng: Rng): PlannedMission | null {
-  return null
+export function planMissionBeforeGeometry(input: FloorGenInput, rng: Rng): PlannedMission | null {
+  if (input.floorType !== 'Palace') return null
+  const difficulty = normalizeFloorGenDifficulty(input.difficulty)
+  const tid = pickPalaceTemplateId(difficulty, rng)
+  const plan = missionForTemplateId(tid)
+  return validatePlannedMission(plan) ? plan : palaceTemplateSpine()
 }

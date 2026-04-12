@@ -1,8 +1,9 @@
 import type { ContentDB, ItemDef } from '../content/contentDb'
-import type { Character, GameState, ItemDefId, ItemId, StatusEffectId } from '../types'
-import { consumeItem } from './inventory'
-import { removeStatus } from './status'
+import type { Character, GameState, ItemDefId, ItemId, PortraitBandageDecal, StatusEffectId } from '../types'
+import { consumeFeedLeavingEmpty, consumeItem } from './inventory'
 import { pushActivityLog } from './activityLog'
+import { pushPortraitToast } from './portraitToasts'
+import { addStatusWithPortraitToast, removeStatusWithPortraitToast } from './statusTelegraph'
 import { hpMax, staminaMax } from './runProgression'
 
 export function inspectCharacter(state: GameState, content: ContentDB, characterId: string, itemId: ItemId): GameState {
@@ -10,6 +11,7 @@ export function inspectCharacter(state: GameState, content: ContentDB, character
   if (!item) return state
   const c = state.party.chars.find((x) => x.id === characterId)
   if (!c) return state
+  if (c.hp <= 0) return pushActivityLog(state, 'They cannot respond.')
   const def = content.item(item.defId)
   const perception = c.stats.perception
   const seed = hashStr(`${state.floor.seed}:inspect:${characterId}:${itemId}:${item.defId}`)
@@ -53,7 +55,7 @@ function inspectDcForItem(def: ItemDef): number {
   if (tags.includes('quest')) dc = Math.max(dc, 14)
   if (tags.includes('weapon') || tags.includes('tool') || tags.includes('hat')) dc = Math.max(dc, 12)
   if (tags.includes('container')) dc = Math.max(dc, 11)
-  if (tags.includes('food') || tags.includes('material')) dc = Math.max(dc, 10)
+  if (tags.includes('food') || tags.includes('material') || tags.includes('remedy')) dc = Math.max(dc, 10)
   return dc
 }
 
@@ -95,6 +97,7 @@ function buildInspectSuccessLine(state: GameState, def: ItemDef, c: Character): 
 
 function classifyItemShort(def: ItemDef): string {
   const tags = def.tags
+  if (tags.includes('remedy')) return 'A topical remedy.'
   if (tags.includes('weapon') && def.weapon) {
     const hand = tags.includes('twoHand') ? 'Two-handed' : 'One-handed'
     return `${hand} ${def.weapon.damageType.toLowerCase()} weapon (~${def.weapon.baseDamage} base damage).`
@@ -154,11 +157,71 @@ function buildInspectGreatLines(content: ContentDB, def: ItemDef): string[] {
   return lines.slice(0, 2)
 }
 
+function clamp01(x: number) {
+  if (!Number.isFinite(x)) return 0.5
+  return Math.max(0, Math.min(1, x))
+}
+
+/** Deterministic tilt for the portrait bandage decal (tests can mirror `hashStr` + modulo). */
+export function computeBandageStripRotateDeg(state: GameState, characterId: string, itemId: ItemId): number {
+  return (hashStr(`${state.floor.seed}:bandageRot:${characterId}:${itemId}:${state.nowMs}`) % 71) - 35
+}
+
+export function prunePortraitBandageDecals(state: GameState, nowMs: number): GameState {
+  const list = state.ui.portraitBandageDecals
+  if (!list?.length) return state
+  const nextList = list.filter((d) => d.untilMs == null || d.untilMs > nowMs)
+  if (nextList.length === list.length) return state
+  return { ...state, ui: { ...state.ui, portraitBandageDecals: nextList.length ? nextList : undefined } }
+}
+
+export function applyBandageStrip(
+  state: GameState,
+  _content: ContentDB,
+  characterId: string,
+  itemId: ItemId,
+  portraitDropNorm: { u: number; v: number } | undefined,
+): GameState {
+  const item = state.party.items[itemId]
+  if (!item || item.defId !== 'BandageStrip') return state
+  const c = state.party.chars.find((x) => x.id === characterId)
+  if (!c) return state
+  if (c.hp <= 0) return pushActivityLog(state, 'They cannot respond.')
+
+  const u = clamp01(portraitDropNorm?.u ?? 0.5)
+  const v = clamp01(portraitDropNorm?.v ?? 0.5)
+  const rotateDeg = computeBandageStripRotateDeg(state, characterId, itemId)
+  const decal: PortraitBandageDecal = {
+    id: `bd_${state.nowMs}_${hashStr(`${itemId}:${characterId}`) >>> 0}`,
+    characterId,
+    u,
+    v,
+    rotateDeg,
+  }
+  const prev = state.ui.portraitBandageDecals ?? []
+  const portraitBandageDecals = prev.filter((d) => d.untilMs == null || d.untilMs > state.nowMs).concat([decal]).slice(-6)
+
+  let next = removeStatusWithPortraitToast(state, characterId, 'Bleeding')
+  next = consumeItem(next, itemId)
+  const q = next.ui.sfxQueue ?? []
+  next = {
+    ...next,
+    ui: {
+      ...next.ui,
+      portraitBandageDecals,
+      sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'ui' }]),
+    },
+  }
+  return pushActivityLog(next, `${c.name} applies a bandage.`)
+}
+
 export function feedCharacter(state: GameState, content: ContentDB, characterId: string, itemId: ItemId): GameState {
   const item = state.party.items[itemId]
   if (!item) return state
   const cIdx = state.party.chars.findIndex((x) => x.id === characterId)
   if (cIdx < 0) return state
+  const feedTarget = state.party.chars[cIdx]!
+  if (feedTarget.hp <= 0) return pushActivityLog(state, 'They cannot eat.')
   const def = content.item(item.defId)
 
   if (!def.feed) {
@@ -205,6 +268,8 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
   const chars = state.party.chars.slice()
   const c = chars[cIdx]
 
+  const beforeVitals = { hunger: c.hunger, thirst: c.thirst, hp: c.hp, stamina: c.stamina }
+
   const hungerDelta = def.feed.hunger ?? 0
   const thirstDelta = def.feed.thirst ?? 0
   const staminaDelta = def.feed.stamina ?? 0
@@ -228,45 +293,51 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
     for (const sc of def.feed.statusChances) {
       if (sc.onlySpecies && sc.onlySpecies !== next.species) continue
       const roll = (statusSeed % 100) + 1
-      if (roll <= sc.pct) nextState = addStatus(nextState, characterId, sc.status)
+      if (roll <= sc.pct) nextState = addStatusWithPortraitToast(nextState, characterId, sc.status)
     }
   }
 
   // Basic remedies: if the item is tagged as food and has no hunger/thirst impact but is named like a remedy,
   // keep current MVP behavior via statuses in ContentDB (preferred). For now, we use explicit defs.
-  if (item.defId === 'BandageStrip') nextState = removeStatus(nextState, characterId, 'Bleeding')
-  if (item.defId === 'AntitoxinVial') nextState = removeStatus(nextState, characterId, 'Poisoned')
+  if (item.defId === 'AntitoxinVial') nextState = removeStatusWithPortraitToast(nextState, characterId, 'Poisoned')
   if (item.defId === 'HerbPoultice') {
-    nextState = removeStatus(nextState, characterId, 'Sick')
+    nextState = removeStatusWithPortraitToast(nextState, characterId, 'Sick')
     const roll2 = ((statusSeed >>> 8) % 100) + 1
-    if (roll2 <= 12) nextState = addStatus(nextState, characterId, 'Drowsy')
+    if (roll2 <= 12) nextState = addStatusWithPortraitToast(nextState, characterId, 'Drowsy')
   }
   if (item.defId === 'Salt') {
-    nextState = removeStatus(nextState, characterId, 'Spored')
-    nextState = removeStatus(nextState, characterId, 'Parasitized')
+    nextState = removeStatusWithPortraitToast(nextState, characterId, 'Spored')
+    nextState = removeStatusWithPortraitToast(nextState, characterId, 'Parasitized')
   }
-  if (item.defId === 'Moss') nextState = removeStatus(nextState, characterId, 'NanoTagged')
-  if (item.defId === 'AntitoxinVial') nextState = removeStatus(nextState, characterId, 'Parasitized')
-  if (item.defId === 'CoolingPoultice') nextState = removeStatus(nextState, characterId, 'Burning')
-  if (item.defId === 'DryWrap') nextState = removeStatus(nextState, characterId, 'Drenched')
+  if (item.defId === 'Moss') nextState = removeStatusWithPortraitToast(nextState, characterId, 'NanoTagged')
+  if (item.defId === 'AntitoxinVial') nextState = removeStatusWithPortraitToast(nextState, characterId, 'Parasitized')
+  if (item.defId === 'CoolingPoultice') nextState = removeStatusWithPortraitToast(nextState, characterId, 'Burning')
+  if (item.defId === 'DryWrap') nextState = removeStatusWithPortraitToast(nextState, characterId, 'Drenched')
 
-  nextState = consumeItem(nextState, itemId)
+  const leaveEmpty = def.feed.leaveEmptyAs
+  nextState = leaveEmpty ? consumeFeedLeavingEmpty(nextState, itemId, leaveEmpty) : consumeItem(nextState, itemId)
   const q = nextState.ui.sfxQueue ?? []
-  const withSfx: GameState = { ...nextState, ui: { ...nextState.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'munch' }]) } }
-  return pushActivityLog(withSfx, `${c.name} eats.`)
-}
+  let withSfx: GameState = { ...nextState, ui: { ...nextState.ui, sfxQueue: q.concat([{ id: `s_${state.nowMs}_${q.length}`, kind: 'munch' }]) } }
 
-function addStatus(state: GameState, characterId: string, status: StatusEffectId): GameState {
-  const idx = state.party.chars.findIndex((c) => c.id === characterId)
-  if (idx < 0) return state
-  const chars = state.party.chars.slice()
-  const c = chars[idx]
-  const untilMs =
-    status === 'Blessed' ? state.nowMs + 45_000
-    : status === 'Drowsy' ? state.nowMs + 18_000
-    : state.nowMs + 30_000
-  chars[idx] = { ...c, statuses: c.statuses.concat([{ id: status, untilMs }]) }
-  return { ...state, party: { ...state.party, chars } }
+  const fed = withSfx.party.chars.find((x) => x.id === characterId)
+  if (fed) {
+    const parts: string[] = []
+    const dSta = fed.stamina - beforeVitals.stamina
+    const dHp = fed.hp - beforeVitals.hp
+    const dHun = fed.hunger - beforeVitals.hunger
+    const dThr = fed.thirst - beforeVitals.thirst
+    if (dSta > 0) parts.push(`+${dSta} STA`)
+    if (dHp > 0) parts.push(`+${dHp} HP`)
+    if (dHun > 0) parts.push(`+${dHun} hunger`)
+    if (dThr > 0) parts.push(`+${dThr} thirst`)
+    const primary = def.feed?.primaryStamina === true && (def.feed.stamina ?? 0) > 0
+    if (parts.length) {
+      const line = primary ? `Stamina food: ${parts.join(', ')}` : parts.join(', ')
+      withSfx = pushPortraitToast(withSfx, { characterId, kind: 'statDelta', text: line })
+    }
+  }
+
+  return pushActivityLog(withSfx, `${c.name} eats.`)
 }
 
 function hashStr(s: string) {

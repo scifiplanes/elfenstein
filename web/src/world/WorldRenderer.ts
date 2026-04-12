@@ -1,13 +1,29 @@
 import * as THREE from 'three'
 import { shakeEnvelopeFactor } from '../game/shakeEnvelope'
-import type { ContentDB } from '../game/content/contentDb'
+import type { ContentDB, PlayerLightTag } from '../game/content/contentDb'
+import { renderItemEmojiIconToCanvas } from '../game/renderItemEmojiIconCanvas'
 import type { GameState, ItemId, NpcKind, PoiKind } from '../game/types'
 import type { DistrictTag, GenRoom } from '../procgen/types'
 import type { FloorType } from '../procgen/types'
-import { isAnyDoorTile, isOctopusDoorTile, isPassableOpenDoorTile } from '../game/tiles'
-import { getDungeonEnvTextureSrcs } from './dungeonEnvTextures'
-import { NPC_SPRITE_IDLE_SRC, NPC_SPRITE_SRC } from '../game/npc/npcDefs'
 import {
+  DOOR_OCTOPUS_OPEN_FRAME_MS,
+  isAnyDoorTile,
+  isOctopusDoorTile,
+  isPassableOpenDoorTile,
+} from '../game/tiles'
+import { getDungeonEnvTextureSrcs, OVERGROWN_ENV_TEXTURE_SRCS } from './dungeonEnvTextures'
+import { isProceduralDungeonEnvFloorType, makeProceduralDungeonEnvTextures } from './dungeonEnvProceduralTextures'
+import {
+  getNpcWorldEmojiPlaceholder,
+  NPC_SPRITE_IDLE_SRC,
+  NPC_SPRITE_SRC,
+  NPC_SPRITE_TINT_HEX,
+} from '../game/npc/npcDefs'
+import {
+  POI_CAMPFIRE_EMOJI,
+  POI_CRACKED_WALL_EMOJI,
+  POI_KURATKO_NEST_EMOJI_EMPTY,
+  POI_KURATKO_NEST_EMOJI_WITH_EGGS,
   POI_OPENED_SPRITE_SRC,
   POI_SPRITE_SRC,
   POI_WELL_DRAINED_SRC,
@@ -20,15 +36,56 @@ import {
   type RoomHazardProperty,
 } from '../game/world/hazardDefs'
 import { ROOM_HAZARD_SPRITE_SRC, shouldPlaceHazardDecal } from '../game/world/hazardDefs'
-import { resolvePlayerCameraLightKind } from '../game/state/playerLight'
+import { bossVisualScale } from '../game/content/npcBosses'
+import {
+  glowbugMulForInventory,
+  resolvePartyPlayerLightAggregate,
+  type PartyPlayerLightThemeMults,
+} from '../game/state/playerLight'
 import { getThemeLightIntent } from './themeTuning'
+import { resolveWorldPickHit } from './resolveWorldPickHit'
+import { applyElderDistortionUniforms, createElderDistortionMaterial } from './elderDistortionBillboard'
 
 const TAU = Math.PI * 2
+
+function partyPlayerLightThemeMultsForState(state: GameState): PartyPlayerLightThemeMults {
+  const intent = getThemeLightIntent(state.floor.gen?.theme?.id)
+  return {
+    lanternIntensityMult: intent.lanternIntensityMult ?? 1.0,
+    torchIntensityMult: intent.torchIntensityMult ?? 1.0,
+  }
+}
+
+/** Per-POI phase so multiple campfires do not flicker in lockstep. */
+function campfireFlickerPhaseRad(id: string): number {
+  let h = 2166136261
+  for (let i = 0; i < id.length; i++) {
+    h ^= id.charCodeAt(i)!
+    h = Math.imul(h, 16777619)
+  }
+  return ((h >>> 0) % 10_000) / 10_000 * TAU
+}
 
 /** World-space height for room-hazard floor decals (`hazard_*.png`). */
 const HAZARD_DECAL_HEIGHT = 0.45
 /** Y offset above floor plane (ground-stain read). */
 const HAZARD_DECAL_FLOOR_Y = 0.08
+/** World Y of dropped floor-item billboard center (sprite default pivot is texture center). */
+const FLOOR_ITEM_SPRITE_CENTER_Y = 0.18
+
+/** Matches dungeon floor emissive (`buildGeometry`) so lit billboards stay readable in dim cells. */
+const LIT_BILLBOARD_EMISSIVE_HEX = 0x101018
+
+function createLitBillboardLambertMaterial(map: THREE.Texture | null): THREE.MeshLambertMaterial {
+  return new THREE.MeshLambertMaterial({
+    map: map ?? undefined,
+    color: new THREE.Color(0xffffff),
+    emissive: new THREE.Color(LIT_BILLBOARD_EMISSIVE_HEX),
+    emissiveIntensity: 0,
+    transparent: true,
+    depthWrite: false,
+  })
+}
 
 const DOOR_CLOSED_SRC = '/content/door_closed.png'
 const DOOR_OPEN_SRC = '/content/door_open.png'
@@ -83,6 +140,86 @@ function nearestPoisByManhattan<T extends { pos: { x: number; y: number } }>(
   return best.map((x) => x.p)
 }
 
+type FloorPlayerLightPick = {
+  pos: { x: number; y: number }
+  jitter: { x: number; z: number }
+  tag: PlayerLightTag
+  glowbugMul: number
+}
+
+/** Nearest floor items that emit `playerLight` (Manhattan on grid), capped at `max`. */
+function nearestFloorPlayerLightItems(state: GameState, content: ContentDB, max: number): FloorPlayerLightPick[] {
+  if (max <= 0 || state.floor.itemsOnFloor.length === 0) return []
+  const px = state.floor.playerPos.x
+  const py = state.floor.playerPos.y
+  const best: Array<{ row: FloorPlayerLightPick; d: number }> = []
+  for (const it of state.floor.itemsOnFloor) {
+    const inv = state.party.items[it.id]
+    if (!inv) continue
+    const tag = content.item(inv.defId).playerLight
+    if (!tag) continue
+    const glowbugMul = tag === 'glowbug' ? glowbugMulForInventory(inv) : 1
+    const d = Math.abs(it.pos.x - px) + Math.abs(it.pos.y - py)
+    const row: FloorPlayerLightPick = {
+      pos: it.pos,
+      jitter: { x: it.jitter?.x ?? 0, z: it.jitter?.z ?? 0 },
+      tag,
+      glowbugMul,
+    }
+    if (best.length < max) {
+      best.push({ row, d })
+      for (let j = best.length - 1; j > 0 && best[j]!.d < best[j - 1]!.d; j--) {
+        const tmp = best[j - 1]!
+        best[j - 1] = best[j]!
+        best[j] = tmp
+      }
+      continue
+    }
+    if (d >= best[best.length - 1]!.d) continue
+    best[best.length - 1] = { row, d }
+    for (let j = best.length - 1; j > 0 && best[j]!.d < best[j - 1]!.d; j--) {
+      const tmp = best[j - 1]!
+      best[j - 1] = best[j]!
+      best[j] = tmp
+    }
+  }
+  return best.map((x) => x.row)
+}
+
+function floorItemPlayerLightBase(
+  tag: PlayerLightTag,
+  state: GameState,
+  glowbugMul: number,
+  globalI: number,
+  lanternThemeMult: number,
+  torchThemeMult: number,
+): { intensity: number; distance: number } {
+  switch (tag) {
+    case 'torch':
+      return {
+        intensity: state.render.heldTorchIntensity * 0.42 * torchThemeMult * globalI,
+        distance: state.render.heldTorchDistance * 0.88,
+      }
+    case 'lantern':
+      return {
+        intensity: state.render.equippedLanternIntensity * 0.3 * lanternThemeMult * globalI,
+        distance: state.render.equippedLanternDistance * 0.68,
+      }
+    case 'headlamp':
+      return {
+        intensity: state.render.headlampIntensity * 0.36 * lanternThemeMult * globalI,
+        distance: state.render.headlampDistance * 0.55,
+      }
+    case 'glowbug': {
+      const distMul = Math.sqrt(glowbugMul)
+      return {
+        intensity: state.render.glowbugIntensity * 0.52 * lanternThemeMult * globalI * glowbugMul,
+        distance: state.render.glowbugDistance * 0.88 * distMul,
+      }
+    }
+  }
+}
+
 export class WorldRenderer {
   private readonly renderer: THREE.WebGLRenderer
   private rt: THREE.WebGLRenderTarget | null = null
@@ -92,6 +229,10 @@ export class WorldRenderer {
   private readonly torchLights: THREE.PointLight[] = []
   private lastTorchPickKey = ''
   private cachedTorchPicked: Array<{ pos: { x: number; y: number } }> = []
+
+  private readonly floorPlayerLights: THREE.PointLight[] = []
+  private lastFloorPlayerLightKey = ''
+  private cachedFloorPlayerLightPicked: FloorPlayerLightPick[] = []
 
   private expFog: THREE.FogExp2 | null = null
   private lastShadowMapSize = 0
@@ -118,38 +259,50 @@ export class WorldRenderer {
   private overgrownEnvTex: { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } | null = null
 
   private readonly textureLoader = new THREE.TextureLoader()
+  /** NPC base + idle PNGs keyed by URL so kinds sharing art (e.g. Grub variants) load once. */
+  private readonly npcLoaderTexturesByUrl = new Map<string, THREE.Texture>()
   /** Shared by floor-item billboards; disposed in `dispose()`. Do not dispose maps in `disposeGeoGroupResources`. */
   private readonly floorItemIconTextures = new Map<string, THREE.Texture>()
-  private readonly npcSpriteMats: Partial<Record<NpcKind, THREE.SpriteMaterial>> = {}
+  /** XY plane, centered pivot (matches NPC/door/floor-item/hazard billboards). */
+  private readonly litBillboardPlaneGeoCenter: THREE.PlaneGeometry
+  /** XY plane, bottom edge at local y=0 (matches POI `Sprite.center` 0.5,0). */
+  private readonly litBillboardPlaneGeoPoi: THREE.PlaneGeometry
+  private readonly npcBillboardMats: Partial<Record<NpcKind, THREE.MeshLambertMaterial>> = {}
   private readonly npcSpriteAspects: Partial<Record<NpcKind, number>> = {}
   private readonly npcSpriteBaseTex: Partial<Record<NpcKind, THREE.Texture>> = {}
   private readonly npcIdleTextures: Partial<Record<NpcKind, THREE.Texture>> = {}
-  private npcSprites: Array<{ sprite: THREE.Sprite; id: string; kind: NpcKind }> = []
+  private npcBillboards: Array<
+    | { mode: 'billboard'; object: THREE.Mesh; id: string; kind: NpcKind }
+    | { mode: 'elder'; object: THREE.Mesh; id: string; kind: NpcKind }
+    | { mode: 'emoji'; object: THREE.Mesh; id: string; kind: NpcKind }
+  > = []
+  /** Shared by all Elder procedural meshes; disposed in `dispose()`. */
+  private elderDistortionMat: THREE.ShaderMaterial | null = null
 
-  private readonly poiSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
-  private readonly poiOpenedSpriteMats: Partial<Record<PoiKind, THREE.SpriteMaterial>> = {}
+  private readonly poiBillboardMats: Partial<Record<PoiKind, THREE.MeshLambertMaterial>> = {}
+  private readonly poiOpenedBillboardMats: Partial<Record<PoiKind, THREE.MeshLambertMaterial>> = {}
   private readonly poiSpriteAspects: Partial<Record<PoiKind, number>> = {}
-  private poiSprites: Array<{ sprite: THREE.Sprite; id: string; kind: PoiKind }> = []
+  private poiBillboards: Array<{ mesh: THREE.Mesh; id: string; kind: PoiKind }> = []
   private lastPoiSpriteBoost = NaN
+  private lastNpcSpriteBoost = NaN
   private themeSpriteColor = new THREE.Color('#ffffff')
   private readonly tmpHsl = { h: 0, s: 0, l: 0 }
-  private lastFloorItemTintHex = -1
 
-  private wellDrainedMat: THREE.SpriteMaterial | null = null
+  private wellDrainedMat: THREE.MeshLambertMaterial | null = null
   private wellGlowMat: THREE.SpriteMaterial | null = null
   private wellSparkleMat: THREE.SpriteMaterial | null = null
   private wellSparkleTextures: THREE.Texture[] = []
-  private wellDecorSprites: Array<{ main: THREE.Sprite; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
+  private wellDecorSprites: Array<{ main: THREE.Mesh; glow: THREE.Sprite; sparkle: THREE.Sprite }> = []
 
-  private doorClosedMat: THREE.SpriteMaterial | null = null
-  private doorOctopusClosedMat: THREE.SpriteMaterial | null = null
-  private doorOpenMat: THREE.SpriteMaterial | null = null
+  private doorClosedMat: THREE.MeshLambertMaterial | null = null
+  private doorOctopusClosedMat: THREE.MeshLambertMaterial | null = null
+  private doorOpenMat: THREE.MeshLambertMaterial | null = null
   /** Last frame of octopus opening strip; static open billboard on `doorOpenOctopus` tiles. */
-  private doorOctopusOpenStaticMat: THREE.SpriteMaterial | null = null
+  private doorOctopusOpenStaticMat: THREE.MeshLambertMaterial | null = null
   private doorOpenOctopusTextures: THREE.Texture[] = []
   private doorFxTracked: Array<{
     id: string
-    sprite: THREE.Sprite
+    mesh: THREE.Mesh
     visual: 'wooden' | 'octopus'
     startedAtMs: number
     /** Grid cell (same as `DoorOpenFx.pos`) for world XZ each frame. */
@@ -157,9 +310,9 @@ export class WorldRenderer {
     cellY: number
   }> = []
 
-  private readonly hazardDecalMats: Partial<Record<RoomHazardProperty, THREE.SpriteMaterial>> = {}
+  private readonly hazardDecalMats: Partial<Record<RoomHazardProperty, THREE.MeshLambertMaterial>> = {}
   private readonly hazardDecalAspects: Partial<Record<RoomHazardProperty, number>> = {}
-  private hazardDecalSprites: Array<{ sprite: THREE.Sprite; prop: RoomHazardProperty }> = []
+  private hazardDecalMeshes: Array<{ mesh: THREE.Mesh; prop: RoomHazardProperty }> = []
 
   private doorFxGroup: THREE.Group | null = null
   private lastDoorFxKey = ''
@@ -186,29 +339,32 @@ export class WorldRenderer {
     this.lantern.castShadow = true
     this.lantern.shadow.mapSize.set(256, 256)
     this.lantern.shadow.bias = -0.0002
-    this.camera.add(this.lantern)
+    // World-anchored for non-headlamp; `syncScene` reparents for headlamp.
+    this.scene.add(this.lantern)
+
+    this.litBillboardPlaneGeoCenter = new THREE.PlaneGeometry(1, 1)
+    this.litBillboardPlaneGeoPoi = new THREE.PlaneGeometry(1, 1)
+    this.litBillboardPlaneGeoPoi.translate(0, 0.5, 0)
 
     this.syncSize(1, 1)
   }
 
   dispose() {
-    for (const t of Object.values(this.npcSpriteBaseTex)) {
-      t?.dispose()
+    for (const t of this.npcLoaderTexturesByUrl.values()) {
+      t.dispose()
     }
-    for (const t of Object.values(this.npcIdleTextures)) {
-      t?.dispose()
-    }
-    for (const m of Object.values(this.npcSpriteMats)) {
+    this.npcLoaderTexturesByUrl.clear()
+    for (const m of Object.values(this.npcBillboardMats)) {
       if (!m) continue
       m.map = null
       m.dispose()
     }
-    for (const m of Object.values(this.poiSpriteMats)) {
+    for (const m of Object.values(this.poiBillboardMats)) {
       if (!m) continue
       m.map?.dispose()
       m.dispose()
     }
-    for (const m of Object.values(this.poiOpenedSpriteMats)) {
+    for (const m of Object.values(this.poiOpenedBillboardMats)) {
       if (!m) continue
       m.map?.dispose()
       m.dispose()
@@ -239,7 +395,8 @@ export class WorldRenderer {
       this.doorOctopusClosedMat = null
     }
     if (this.doorOctopusOpenStaticMat) {
-      this.doorOctopusOpenStaticMat.map?.dispose()
+      // Map may be shared with `doorOpenOctopusTextures[n-1]`; dispose textures once in the array loop below.
+      this.doorOctopusOpenStaticMat.map = null
       this.doorOctopusOpenStaticMat.dispose()
       this.doorOctopusOpenStaticMat = null
     }
@@ -265,13 +422,39 @@ export class WorldRenderer {
       bundle.wall.dispose()
       bundle.ceiling.dispose()
     }
+    Object.keys(this.envTex).forEach((k) => delete this.envTex[k as FloorType])
+    if (this.overgrownEnvTex) {
+      this.overgrownEnvTex.floor.dispose()
+      this.overgrownEnvTex.wall.dispose()
+      this.overgrownEnvTex.ceiling.dispose()
+      this.overgrownEnvTex = null
+    }
     this.geoGroup?.traverse((obj) => {
       const mesh = obj as THREE.Mesh
       if (mesh.isMesh) {
-        mesh.geometry?.dispose()
+        const g = mesh.geometry
+        if (
+          g &&
+          g !== this.litBillboardPlaneGeoCenter &&
+          g !== this.litBillboardPlaneGeoPoi
+        ) {
+          g.dispose()
+        }
+        const itemUd = mesh.userData as { disposableItemIcon?: boolean }
         const mat = mesh.material
-        if (Array.isArray(mat)) mat.forEach((m) => m.dispose())
-        else mat?.dispose()
+        if (Array.isArray(mat)) {
+          for (const m of mat) {
+            if (m === this.elderDistortionMat) continue
+            m?.dispose()
+          }
+        } else if (mat && mat !== this.elderDistortionMat) {
+          if (itemUd.disposableItemIcon) {
+            const lm = mat as THREE.MeshLambertMaterial
+            const map = lm.map
+            if (map instanceof THREE.CanvasTexture) map.dispose()
+          }
+          mat.dispose()
+        }
         return
       }
       const sprite = obj as THREE.Sprite
@@ -287,14 +470,20 @@ export class WorldRenderer {
       t.dispose()
     }
     this.floorItemIconTextures.clear()
+    if (this.elderDistortionMat) {
+      this.elderDistortionMat.dispose()
+      this.elderDistortionMat = null
+    }
+    this.litBillboardPlaneGeoCenter.dispose()
+    this.litBillboardPlaneGeoPoi.dispose()
     this.rt?.dispose()
     this.rt = null
     this.lastSize = { w: 0, h: 0 }
     if (this.doorFxGroup) {
       this.doorFxGroup.traverse((obj) => {
-        const spr = obj as THREE.Sprite
-        const mat = spr.material as THREE.SpriteMaterial | undefined
-        if (!mat) return
+        const mesh = obj as THREE.Mesh
+        const mat = mesh.material as THREE.MeshLambertMaterial | undefined
+        if (!mat || !mesh.isMesh) return
         if (mat !== this.doorOpenMat) {
           mat.map = null
           mat.dispose()
@@ -305,6 +494,19 @@ export class WorldRenderer {
     this.doorFxGroup = null
     this.doorFxTracked = []
     this.lastDoorFxKey = ''
+    while (this.torchLights.length) {
+      const l = this.torchLights.pop()!
+      this.scene.remove(l)
+      ;(l as unknown as { dispose?: () => void }).dispose?.()
+    }
+    while (this.floorPlayerLights.length) {
+      const l = this.floorPlayerLights.pop()!
+      this.scene.remove(l)
+      ;(l as unknown as { dispose?: () => void }).dispose?.()
+    }
+    const lanternParent = this.lantern.parent
+    if (lanternParent) lanternParent.remove(this.lantern)
+    ;(this.lantern as unknown as { dispose?: () => void }).dispose?.()
     this.disposeProcgenDebugOverlay()
   }
 
@@ -350,27 +552,8 @@ export class WorldRenderer {
     return out
   }
 
-  /**
-   * Ray hits are distance-sorted (closest first). Prefer the nearest floor item on the ray so POI
-   * billboards (e.g. chests) do not block click/hover/drag on loot behind them.
-   */
-  private resolvePickHit(hits: THREE.Intersection[]): THREE.Intersection | null {
-    let firstOther: THREE.Intersection | null = null
-    for (let i = 0; i < hits.length; i++) {
-      const hit = hits[i]!
-      const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
-      const kind = String(ud.kind ?? '')
-      const id = ud.id == null ? '' : String(ud.id)
-      if (!id) continue
-      if (kind === 'floorItem') return hit
-      if (kind === 'poi' || kind === 'npc' || kind === 'door') {
-        if (!firstOther) firstOther = hit
-      }
-    }
-    return firstOther
-  }
-
   pickTarget(
+    state: GameState,
     gameRect: DOMRectReadOnly,
     clientX: number,
     clientY: number,
@@ -381,7 +564,7 @@ export class WorldRenderer {
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
-    const hit = this.resolvePickHit(hits)
+    const hit = resolveWorldPickHit(hits, state.floor.tiles, state.floor.w)
     if (!hit) return null
     const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
     const kind = String(ud.kind ?? '')
@@ -395,6 +578,7 @@ export class WorldRenderer {
   }
 
   pickObject(
+    state: GameState,
     gameRect: DOMRectReadOnly,
     clientX: number,
     clientY: number,
@@ -405,7 +589,7 @@ export class WorldRenderer {
     this.ndc.set(x, y)
     this.raycaster.setFromCamera(this.ndc, this.camera)
     const hits = this.raycaster.intersectObjects(this.pickables, true)
-    const hit = this.resolvePickHit(hits)
+    const hit = resolveWorldPickHit(hits, state.floor.tiles, state.floor.w)
     if (!hit) return null
     const ud = hit.object.userData as unknown as { kind?: unknown; id?: unknown }
     const kind = String(ud.kind ?? '')
@@ -535,21 +719,60 @@ export class WorldRenderer {
     this.syncProcgenDebugOverlay(state)
     this.syncDoorFx(state)
 
-    // Lantern is camera-attached; offsets are in camera-local space (forward is -Z).
-    this.lantern.position.set(0, state.render.lanternVerticalOffset, -state.render.lanternForwardOffset)
+    const plAgg = resolvePartyPlayerLightAggregate(state, content, partyPlayerLightThemeMultsForState(state))
+    this.ensurePrimaryPlayerLightParent(plAgg.anyHeadlamp)
+    if (plAgg.anyHeadlamp) {
+      this.lantern.position.set(0, state.render.lanternVerticalOffset, -state.render.lanternForwardOffset)
+    } else {
+      const fw = state.floor.w
+      const fh = state.floor.h
+      const wx = state.floor.playerPos.x - fw / 2
+      const wz = state.floor.playerPos.y - fh / 2
+      const fwd = state.render.lanternForwardOffset
+      const fx = Math.sin(yawGame)
+      const fz = -Math.cos(yawGame)
+      const worldY = state.view.camPos.y + state.render.lanternVerticalOffset
+      this.lantern.position.set(wx + fx * fwd, worldY, wz + fz * fwd)
+    }
+  }
+
+  /** Headlamp stays on the camera; other primary lights sit in world space (grid + yaw, not pitch). */
+  private ensurePrimaryPlayerLightParent(anyHeadlampEquipped: boolean) {
+    const wantCamera = anyHeadlampEquipped
+    const onCamera = this.lantern.parent === this.camera
+    if (wantCamera === onCamera) return
+    if (wantCamera) {
+      this.scene.remove(this.lantern)
+      this.camera.add(this.lantern)
+    } else {
+      this.camera.remove(this.lantern)
+      this.scene.add(this.lantern)
+    }
+  }
+
+  /** Clamped index into `DOOR_OCTOPUS_OPEN_FRAMES` / `doorOpenOctopusTextures`. */
+  private doorOctopusOpeningFrameIndex(nowMs: number, startedAtMs: number): number {
+    const n = DOOR_OCTOPUS_OPEN_FRAMES.length
+    const elapsed = Math.max(0, nowMs - startedAtMs)
+    return Math.min(n - 1, Math.floor(elapsed / DOOR_OCTOPUS_OPEN_FRAME_MS))
   }
 
   private syncDoorFx(state: GameState) {
-    const active = (state.ui.doorOpenFx ?? []).filter((fx) => fx.untilMs > state.nowMs)
+    const active = (state.ui.doorOpenFx ?? [])
+      .filter((fx) => fx.untilMs > state.nowMs)
+      .sort((a, b) => a.id.localeCompare(b.id))
     const key = active.map((fx) => fx.id).join('|')
+    const trackedMatches =
+      active.length === this.doorFxTracked.length &&
+      active.every((fx, i) => this.doorFxTracked[i]?.id === fx.id)
 
-    if (key !== this.lastDoorFxKey) {
+    if (key !== this.lastDoorFxKey || !trackedMatches) {
       this.lastDoorFxKey = key
       if (this.doorFxGroup) {
         this.doorFxGroup.traverse((obj) => {
-          const spr = obj as THREE.Sprite
-          const mat = spr.material as THREE.SpriteMaterial | undefined
-          if (!mat) return
+          const mesh = obj as THREE.Mesh
+          const mat = mesh.material as THREE.MeshLambertMaterial | undefined
+          if (!mat || !mesh.isMesh) return
           if (mat !== this.doorOpenMat) {
             mat.map = null
             mat.dispose()
@@ -569,19 +792,21 @@ export class WorldRenderer {
           const x = fx.pos.x - w / 2
           const z = fx.pos.y - h / 2
           const visual = fx.visual === 'octopus' ? 'octopus' : 'wooden'
-          let mat: THREE.SpriteMaterial
-          if (visual === 'octopus' && octoTex.length >= 3) {
-            mat = new THREE.SpriteMaterial({ map: octoTex[0]!, transparent: true, depthWrite: false })
-            mat.color.copy(this.themeSpriteColor)
+          let mat: THREE.MeshLambertMaterial
+          if (visual === 'octopus' && octoTex.length >= DOOR_OCTOPUS_OPEN_FRAMES.length) {
+            const fi = this.doorOctopusOpeningFrameIndex(state.nowMs, fx.startedAtMs)
+            mat = createLitBillboardLambertMaterial(octoTex[fi]!)
           } else {
             mat = this.getDoorOpenMat()
           }
-          const s = new THREE.Sprite(mat)
-          s.position.set(x, 0.55, z)
-          g.add(s)
+          const mesh = new THREE.Mesh(this.litBillboardPlaneGeoCenter, mat)
+          mesh.position.set(x, 0.55, z)
+          mesh.castShadow = false
+          mesh.receiveShadow = false
+          g.add(mesh)
           this.doorFxTracked.push({
             id: fx.id,
-            sprite: s,
+            mesh,
             visual,
             startedAtMs: fx.startedAtMs,
             cellX: fx.pos.x,
@@ -594,21 +819,23 @@ export class WorldRenderer {
     }
 
     const octoTex = this.doorOpenOctopusTextures
+    const nOcto = DOOR_OCTOPUS_OPEN_FRAMES.length
     for (const entry of this.doorFxTracked) {
-      if (entry.visual !== 'octopus' || octoTex.length < 3) continue
-      const mat = entry.sprite.material as THREE.SpriteMaterial
-      const frame = Math.floor((state.nowMs - entry.startedAtMs) / 280) % 3
+      if (entry.visual !== 'octopus' || octoTex.length < nOcto) continue
+      const mat = entry.mesh.material as THREE.MeshLambertMaterial
+      const srcFx = active.find((f) => f.id === entry.id)
+      const startedAtMs = srcFx?.startedAtMs ?? entry.startedAtMs
+      const frame = this.doorOctopusOpeningFrameIndex(state.nowMs, startedAtMs)
       const tex = octoTex[frame]!
       if (mat.map !== tex) {
         mat.map = tex
         mat.needsUpdate = true
       }
-      mat.color.copy(this.themeSpriteColor)
     }
   }
 
   private ensureDoorOctopusOpenTextures(): THREE.Texture[] {
-    if (this.doorOpenOctopusTextures.length >= 3) return this.doorOpenOctopusTextures
+    if (this.doorOpenOctopusTextures.length >= DOOR_OCTOPUS_OPEN_FRAMES.length) return this.doorOpenOctopusTextures
     for (const src of DOOR_OCTOPUS_OPEN_FRAMES) {
       const tex = this.textureLoader.load(src)
       tex.colorSpace = THREE.SRGBColorSpace
@@ -632,19 +859,46 @@ export class WorldRenderer {
     return tex
   }
 
+  private configureDungeonEnvTexture(tex: THREE.Texture) {
+    tex.colorSpace = THREE.SRGBColorSpace
+    tex.wrapS = tex.wrapT = THREE.RepeatWrapping
+    tex.repeat.set(1, 1)
+  }
+
+  private configureProceduralDungeonEnvTexture(tex: THREE.DataTexture) {
+    this.configureDungeonEnvTexture(tex)
+    tex.minFilter = THREE.NearestFilter
+    tex.magFilter = THREE.NearestFilter
+    tex.generateMipmaps = false
+  }
+
   private getEnvTexturesForFloorType(floorType: FloorType): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
+    if (floorType === 'Jungle') {
+      return this.getOvergrownEnvTextures()
+    }
+
     const cached = this.envTex[floorType]
     if (cached) return cached
 
+    if (isProceduralDungeonEnvFloorType(floorType)) {
+      const bundle = makeProceduralDungeonEnvTextures(floorType)
+      for (const tex of [bundle.floor, bundle.wall, bundle.ceiling]) {
+        this.configureProceduralDungeonEnvTexture(tex)
+      }
+      this.envTex[floorType] = bundle
+      return bundle
+    }
+
     const srcs = getDungeonEnvTextureSrcs(floorType)
+    if (!srcs) {
+      throw new Error(`getEnvTexturesForFloorType: missing PNG srcs for ${floorType}`)
+    }
     const floor = this.textureLoader.load(srcs.floor)
     const wall = this.textureLoader.load(srcs.wall)
     const ceiling = this.textureLoader.load(srcs.ceiling)
 
     for (const tex of [floor, wall, ceiling]) {
-      tex.colorSpace = THREE.SRGBColorSpace
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.repeat.set(1, 1)
+      this.configureDungeonEnvTexture(tex)
     }
 
     const bundle = { floor, wall, ceiling }
@@ -655,14 +909,12 @@ export class WorldRenderer {
   private getOvergrownEnvTextures(): { floor: THREE.Texture; wall: THREE.Texture; ceiling: THREE.Texture } {
     if (this.overgrownEnvTex) return this.overgrownEnvTex
 
-    const floor = this.textureLoader.load('/content/overgrown_floor.png')
-    const wall = this.textureLoader.load('/content/overgrown_wall.png')
-    const ceiling = this.textureLoader.load('/content/overgrown_ceiling.png')
+    const floor = this.textureLoader.load(OVERGROWN_ENV_TEXTURE_SRCS.floor)
+    const wall = this.textureLoader.load(OVERGROWN_ENV_TEXTURE_SRCS.wall)
+    const ceiling = this.textureLoader.load(OVERGROWN_ENV_TEXTURE_SRCS.ceiling)
 
     for (const tex of [floor, wall, ceiling]) {
-      tex.colorSpace = THREE.SRGBColorSpace
-      tex.wrapS = tex.wrapT = THREE.RepeatWrapping
-      tex.repeat.set(1, 1)
+      this.configureDungeonEnvTexture(tex)
     }
 
     this.overgrownEnvTex = { floor, wall, ceiling }
@@ -672,8 +924,8 @@ export class WorldRenderer {
   private buildGeometry(state: GameState, content: ContentDB) {
     const g = new THREE.Group()
     this.pickables = []
-    this.npcSprites = []
-    this.poiSprites = []
+    this.npcBillboards = []
+    this.poiBillboards = []
     this.wellDecorSprites = []
 
     const env = this.getEnvTexturesForFloorType(state.floor.floorType)
@@ -788,11 +1040,12 @@ export class WorldRenderer {
 
           if (isPassableOpenDoorTile(t)) {
             const openMat = t === 'doorOpenOctopus' ? this.getDoorOctopusOpenStaticMat() : this.getDoorOpenMat()
-            const d = new THREE.Sprite(openMat)
+            const d = new THREE.Mesh(this.litBillboardPlaneGeoCenter, openMat)
             d.position.set(wx, 0.55, wz)
-            d.userData = { kind: 'door', id: `${x},${y}`, baseX: wx, baseZ: wz }
-            // Visible billboard only: do not raycast (avoids stealing picks from POIs/NPCs/items along the same ray).
-            ;(d as THREE.Object3D).raycast = () => {}
+            d.castShadow = false
+            d.receiveShadow = false
+            const doorVisual = t === 'doorOpenOctopus' ? 'octopus' : 'wooden'
+            d.userData = { kind: 'door', doorVisual, id: `${x},${y}`, baseX: wx, baseZ: wz }
             g.add(d)
             this.pickables.push(d)
           }
@@ -810,9 +1063,12 @@ export class WorldRenderer {
           g.add(c)
 
           const doorMat = isOctopusDoorTile(t) ? this.getDoorOctopusClosedMat() : this.getDoorClosedMat()
-          const d = new THREE.Sprite(doorMat)
+          const d = new THREE.Mesh(this.litBillboardPlaneGeoCenter, doorMat)
           d.position.set(wx, 0.55, wz)
-          d.userData = { kind: 'door', id: `${x},${y}`, baseX: wx, baseZ: wz }
+          d.castShadow = false
+          d.receiveShadow = false
+          const doorVisual = isOctopusDoorTile(t) ? 'octopus' : 'wooden'
+          d.userData = { kind: 'door', doorVisual, id: `${x},${y}`, baseX: wx, baseZ: wz }
           g.add(d)
           this.pickables.push(d)
         } else {
@@ -825,7 +1081,7 @@ export class WorldRenderer {
       }
     }
 
-    this.hazardDecalSprites = []
+    this.hazardDecalMeshes = []
     const floorSeed = state.floor.seed
     const genRooms = state.floor.gen?.rooms
     if (genRooms?.length) {
@@ -848,11 +1104,13 @@ export class WorldRenderer {
             const wx = x - w / 2
             const wz = y - h / 2
             const mat = this.getHazardDecalMat(prop)
-            const s = new THREE.Sprite(mat)
-            s.position.set(wx, HAZARD_DECAL_FLOOR_Y, wz)
-            s.userData = { kind: 'hazardDecal' }
-            g.add(s)
-            this.hazardDecalSprites.push({ sprite: s, prop })
+            const mesh = new THREE.Mesh(this.litBillboardPlaneGeoCenter, mat)
+            mesh.position.set(wx, HAZARD_DECAL_FLOOR_Y, wz)
+            mesh.castShadow = false
+            mesh.receiveShadow = false
+            mesh.userData = { kind: 'hazardDecal' }
+            g.add(mesh)
+            this.hazardDecalMeshes.push({ mesh, prop })
           }
         }
       }
@@ -861,46 +1119,87 @@ export class WorldRenderer {
     state.floor.pois.forEach((p) => {
       const x = p.pos.x - w / 2
       const z = p.pos.y - h / 2
-      const mat =
-        p.kind === 'Well' && p.drained
-          ? this.getWellDrainedMat()
-          : p.opened && POI_OPENED_SPRITE_SRC[p.kind]
-            ? this.getPoiOpenedSpriteMat(p.kind)
-            : this.getPoiSpriteMat(p.kind)
-      const s = new THREE.Sprite(mat)
-      s.center.set(0.5, 0)
-      s.position.set(x, 0, z)
+      let mat: THREE.MeshLambertMaterial
+      if (p.kind === 'KuratkoNest') {
+        const glyph = p.opened ? POI_KURATKO_NEST_EMOJI_EMPTY : POI_KURATKO_NEST_EMOJI_WITH_EGGS
+        mat = makeItemIconBillboardMaterial(glyph)
+      } else if (p.kind === 'Campfire') {
+        mat = makeItemIconBillboardMaterial(POI_CAMPFIRE_EMOJI)
+        mat.opacity = 1
+      } else if (p.kind === 'CrackedWall') {
+        mat = makeItemIconBillboardMaterial(POI_CRACKED_WALL_EMOJI)
+      } else if (p.kind === 'Well' && p.drained) {
+        mat = this.getWellDrainedMat()
+      } else if (p.opened && POI_OPENED_SPRITE_SRC[p.kind]) {
+        mat = this.getPoiOpenedBillboardMat(p.kind)
+      } else {
+        mat = this.getPoiBillboardMat(p.kind)
+      }
+      const mesh = new THREE.Mesh(this.litBillboardPlaneGeoPoi, mat)
+      mesh.position.set(x, 0, z)
+      mesh.castShadow = false
+      mesh.receiveShadow = false
       // Scale and floor grounding are applied in `syncTuning()` (bottom pivot + `poiFootLift`).
-      s.userData = { kind: 'poi', id: p.id }
-      g.add(s)
-      this.pickables.push(s)
-      this.poiSprites.push({ sprite: s, id: p.id, kind: p.kind })
+      mesh.userData =
+        p.kind === 'KuratkoNest' || p.kind === 'Campfire' || p.kind === 'CrackedWall'
+          ? { kind: 'poi', id: p.id, poiEmojiBillboard: true, disposableItemIcon: true }
+          : { kind: 'poi', id: p.id }
+      g.add(mesh)
+      this.pickables.push(mesh)
+      this.poiBillboards.push({ mesh, id: p.id, kind: p.kind })
 
       if (p.kind === 'Well' && !p.drained) {
+        const ro = mesh.renderOrder
         const glow = new THREE.Sprite(this.getWellGlowMat())
         glow.center.set(0.5, 0)
         glow.position.set(x, 0, z)
-        glow.renderOrder = s.renderOrder - 1
+        // Draw above the Lambert well base so the water glow is not occluded; sparkle stacks on top.
+        glow.renderOrder = ro + 1
         const sparkle = new THREE.Sprite(this.getWellSparkleMat())
         sparkle.center.set(0.5, 0)
         sparkle.position.set(x, 0, z)
-        sparkle.renderOrder = s.renderOrder + 1
+        sparkle.renderOrder = ro + 2
         g.add(glow)
         g.add(sparkle)
-        this.wellDecorSprites.push({ main: s, glow, sparkle })
+        this.wellDecorSprites.push({ main: mesh, glow, sparkle })
       }
     })
 
     state.floor.npcs.forEach((n) => {
       const x = n.pos.x - w / 2
       const z = n.pos.y - h / 2
-      const s = new THREE.Sprite(this.getNpcSpriteMat(n.kind))
-      s.position.set(x, 0.38, z)
-      // Scale is applied in `syncTuning()` so it can react to debug tuning and texture load (aspect).
-      s.userData = { kind: 'npc', id: n.id }
-      g.add(s)
-      this.pickables.push(s)
-      this.npcSprites.push({ sprite: s, id: n.id, kind: n.kind })
+      if (n.kind === 'Elder') {
+        const mat = this.ensureElderDistortionMat()
+        const mesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), mat)
+        mesh.position.set(x, 0.38, z)
+        mesh.userData = { kind: 'npc', id: n.id, elderProcedural: true }
+        g.add(mesh)
+        this.pickables.push(mesh)
+        this.npcBillboards.push({ mode: 'elder', object: mesh, id: n.id, kind: n.kind })
+      } else {
+        const emoji = getNpcWorldEmojiPlaceholder(n.kind)
+        if (emoji) {
+          const mat = makeItemIconBillboardMaterial(emoji)
+          const mesh = new THREE.Mesh(this.litBillboardPlaneGeoCenter, mat)
+          mesh.position.set(x, 0.38, z)
+          mesh.castShadow = false
+          mesh.receiveShadow = false
+          mesh.userData = { kind: 'npc', id: n.id, npcEmojiBillboard: true, disposableItemIcon: true }
+          g.add(mesh)
+          this.pickables.push(mesh)
+          this.npcBillboards.push({ mode: 'emoji', object: mesh, id: n.id, kind: n.kind })
+        } else {
+          const mesh = new THREE.Mesh(this.litBillboardPlaneGeoCenter, this.getNpcBillboardMat(n.kind))
+          mesh.position.set(x, 0.38, z)
+          mesh.castShadow = false
+          mesh.receiveShadow = false
+          // Scale is applied in `syncTuning()` so it can react to debug tuning and texture load (aspect).
+          mesh.userData = { kind: 'npc', id: n.id }
+          g.add(mesh)
+          this.pickables.push(mesh)
+          this.npcBillboards.push({ mode: 'billboard', object: mesh, id: n.id, kind: n.kind })
+        }
+      }
     })
 
     state.floor.itemsOnFloor.forEach((it) => {
@@ -909,19 +1208,22 @@ export class WorldRenderer {
       const icon = resolveFloorItemIcon(state, content, it.id)
       const mat =
         icon.kind === 'emoji'
-          ? makeItemIconBillboardMaterial(icon.glyph)
-          : (() => {
-              const tex = this.getFloorItemIconTexture(icon.path)
-              const m = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-              m.color.setRGB(1, 1, 1)
-              return m
-            })()
-      const s = new THREE.Sprite(mat)
-      s.position.set(x, 0.18, z)
-      s.scale.set(0.5, 0.5, 1)
-      s.userData = { kind: 'floorItem', id: it.id, disposableItemIcon: true }
-      g.add(s)
-      this.pickables.push(s)
+          ? makeItemIconBillboardMaterial(icon.glyph, {
+              tintFilter: icon.tintFilter,
+              displayScale: icon.displayScale,
+              rotateDeg: icon.rotateDeg,
+              flipHorizontal: icon.flipHorizontal,
+              flipVertical: icon.flipVertical,
+            })
+          : createLitBillboardLambertMaterial(this.getFloorItemIconTexture(icon.path))
+      const mesh = new THREE.Mesh(this.litBillboardPlaneGeoCenter, mat)
+      mesh.position.set(x, FLOOR_ITEM_SPRITE_CENTER_Y, z)
+      mesh.scale.set(0.5, 0.5, 1)
+      mesh.castShadow = false
+      mesh.receiveShadow = false
+      mesh.userData = { kind: 'floorItem', id: it.id, disposableItemIcon: true, baseX: x, baseZ: z }
+      g.add(mesh)
+      this.pickables.push(mesh)
     })
 
     g.userData = {
@@ -943,7 +1245,12 @@ export class WorldRenderer {
     const themeId = state.floor.gen?.theme?.id
     const intent = getThemeLightIntent(themeId)
     const globalI = Math.max(0, Number(state.render.globalIntensity ?? 1.0))
-    const cameraLightKind = resolvePlayerCameraLightKind(state, content)
+    const lanternM = intent.lanternIntensityMult ?? 1.0
+    const torchM = intent.torchIntensityMult ?? 1.0
+    const plAgg = resolvePartyPlayerLightAggregate(state, content, {
+      lanternIntensityMult: lanternM,
+      torchIntensityMult: torchM,
+    })
 
     if (state.render.fogEnabled > 0) {
       if (!this.expFog) this.expFog = new THREE.FogExp2(0x050508, 0)
@@ -967,37 +1274,15 @@ export class WorldRenderer {
         ? 1
         : 1 + state.render.lanternFlickerAmp * Math.sin(t * Math.PI * 2 * state.render.lanternFlickerHz)
 
-    const lanternM = intent.lanternIntensityMult ?? 1.0
-    const torchM = intent.torchIntensityMult ?? 1.0
-    let baseI = 0
-    let baseD = 0
-    let useTorchTheme = false
-    switch (cameraLightKind) {
-      case 'bare':
-        baseI = state.render.bareLightIntensity
-        baseD = state.render.bareLightDistance
-        break
-      case 'torch':
-        baseI = state.render.heldTorchIntensity
-        baseD = state.render.heldTorchDistance
-        useTorchTheme = true
-        break
-      case 'lantern':
-        baseI = state.render.equippedLanternIntensity
-        baseD = state.render.equippedLanternDistance
-        break
-      case 'headlamp':
-        baseI = state.render.headlampIntensity
-        baseD = state.render.headlampDistance
-        break
-      case 'glowbug':
-        baseI = state.render.glowbugIntensity
-        baseD = state.render.glowbugDistance
-        break
+    if (plAgg.summandCount <= 0) {
+      this.lantern.intensity = Math.max(0, state.render.bareLightIntensity * lanternM * globalI * flicker)
+      this.lantern.distance = state.render.bareLightDistance
+    } else {
+      const raw = plAgg.intensityBeforeGlobalFlicker * globalI * flicker
+      const cap = Math.max(0, Number(state.render.equippedLightIntensityCap ?? 10))
+      this.lantern.intensity = Math.max(0, Math.min(raw, cap))
+      this.lantern.distance = plAgg.combinedDistance
     }
-    const mult = useTorchTheme ? torchM : lanternM
-    this.lantern.intensity = Math.max(0, baseI * mult * globalI * flicker)
-    this.lantern.distance = baseD
     {
       const base = new THREE.Color(0xffd7a0)
       const tint = new THREE.Color(intent.intentHex)
@@ -1010,7 +1295,6 @@ export class WorldRenderer {
       this.lantern.color.copy(final)
       this.themeSpriteColor.copy(final).multiplyScalar(globalI)
     }
-    const tintHex = this.themeSpriteColor.getHex()
 
     const mapSize = state.render.shadowMapSize
     if (mapSize !== this.lastShadowMapSize) {
@@ -1039,6 +1323,9 @@ export class WorldRenderer {
     if (this.overgrownFloorMat) this.overgrownFloorMat.emissiveIntensity = base * 1.0
     if (this.overgrownWallMat) this.overgrownWallMat.emissiveIntensity = base * 0.8
     if (this.overgrownCeilMat) this.overgrownCeilMat.emissiveIntensity = base * 0.6
+
+    this.syncPoiSpriteBoost(state)
+    this.syncLitBillboardEmissive(base)
 
     const torchKey = `${state.floor.floorGeomRevision}|${state.floor.playerPos.x},${state.floor.playerPos.y}|${state.render.torchPoiLightMax}`
     if (torchKey !== this.lastTorchPickKey) {
@@ -1073,66 +1360,194 @@ export class WorldRenderer {
       this.torchLights[i].color.copy(this.lantern.color)
     }
 
-    this.syncPoiSpriteBoost(state)
-    this.syncNpcSpriteThemeTint()
-    if (tintHex !== this.lastFloorItemTintHex) {
-      this.lastFloorItemTintHex = tintHex
-      this.syncFloorItemThemeTint()
+    const floorPlParts: string[] = []
+    for (const it of state.floor.itemsOnFloor) {
+      const inv = state.party.items[it.id]
+      if (!inv) continue
+      if (!content.item(inv.defId).playerLight) continue
+      floorPlParts.push(
+        `${it.id}:${it.pos.x},${it.pos.y}:${it.jitter?.x ?? 0},${it.jitter?.z ?? 0}:${inv.defId}:${inv.glowbugs ?? ''}`,
+      )
     }
+    floorPlParts.sort()
+    const floorPlKey = `${state.floor.floorGeomRevision}|${state.floor.playerPos.x},${state.floor.playerPos.y}|${state.render.playerLightFloorItemMax}|${floorPlParts.join('|')}`
+    if (floorPlKey !== this.lastFloorPlayerLightKey) {
+      this.lastFloorPlayerLightKey = floorPlKey
+      this.cachedFloorPlayerLightPicked = nearestFloorPlayerLightItems(
+        state,
+        content,
+        state.render.playerLightFloorItemMax,
+      )
+    }
+    const floorPicked = this.cachedFloorPlayerLightPicked
+    const floorDesired = floorPicked.length
+    while (this.floorPlayerLights.length < floorDesired) {
+      const l = new THREE.PointLight(0xffd7a0, 1, 8, 2)
+      l.castShadow = false
+      this.floorPlayerLights.push(l)
+      this.scene.add(l)
+    }
+    while (this.floorPlayerLights.length > floorDesired) {
+      const l = this.floorPlayerLights.pop()!
+      this.scene.remove(l)
+      ;(l as unknown as { dispose?: () => void }).dispose?.()
+    }
+    const floorLightY = FLOOR_ITEM_SPRITE_CENTER_Y + 0.05
+    for (let i = 0; i < floorDesired; i++) {
+      const pick = floorPicked[i]!
+      const base = floorItemPlayerLightBase(pick.tag, state, pick.glowbugMul, globalI, lanternM, torchM)
+      const tf = pick.tag === 'torch' ? 0.88 + 0.12 * Math.sin(t * 6.5 + i * 2.1) : 1
+      const x = pick.pos.x - state.floor.w / 2 + pick.jitter.x
+      const z = pick.pos.y - state.floor.h / 2 + pick.jitter.z
+      const light = this.floorPlayerLights[i]!
+      light.position.set(x, floorLightY, z)
+      light.distance = base.distance
+      light.intensity = Math.max(0, base.intensity * tf * flicker)
+      light.color.copy(this.lantern.color)
+    }
+
+    if (this.elderDistortionMat) {
+      applyElderDistortionUniforms(this.elderDistortionMat, {
+        timeSec: state.nowMs * 0.001,
+        theme: this.themeSpriteColor,
+        tuning: state.render.elderDistortion,
+        shaderQuality: state.render.elderShaderQuality,
+        npcSpriteBoost: Number(state.render.npcSpriteBoost ?? 1),
+      })
+    }
+    this.syncLitBillboardFacingCamera()
     this.syncNpcSpriteScales(state)
     this.syncPoiSpriteScales(state)
+    this.syncCampfireEmojiFlicker(state)
     this.syncDoorSprites(state)
+    this.syncFloorItemSprites(state)
     this.syncHazardDecalScales()
     this.syncNpcIdleFrames(state)
     this.syncWellSparkleFrame(state)
   }
 
   private syncPoiSpriteBoost(state: GameState) {
-    const next = Math.max(0, Number(state.render.poiSpriteBoost ?? 1.0))
-    this.lastPoiSpriteBoost = next
-
-    for (const mat of Object.values(this.poiSpriteMats)) {
-      if (!mat) continue
-      mat.color.copy(this.themeSpriteColor).multiplyScalar(next)
-    }
-    for (const mat of Object.values(this.poiOpenedSpriteMats)) {
-      if (!mat) continue
-      mat.color.copy(this.themeSpriteColor).multiplyScalar(next)
-    }
-    if (this.wellDrainedMat) this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(next)
-    if (this.doorClosedMat) this.doorClosedMat.color.copy(this.themeSpriteColor)
-    if (this.doorOctopusClosedMat) this.doorOctopusClosedMat.color.copy(this.themeSpriteColor)
-    if (this.doorOpenMat) this.doorOpenMat.color.copy(this.themeSpriteColor)
-    if (this.doorOctopusOpenStaticMat) this.doorOctopusOpenStaticMat.color.copy(this.themeSpriteColor)
+    this.lastPoiSpriteBoost = Math.max(0, Number(state.render.poiSpriteBoost ?? 1.0))
+    this.lastNpcSpriteBoost = Math.max(0, Number(state.render.npcSpriteBoost ?? 1.0))
   }
 
-  private syncNpcSpriteThemeTint() {
-    for (const mat of Object.values(this.npcSpriteMats)) {
-      if (!mat) continue
-      mat.color.copy(this.themeSpriteColor)
-    }
-  }
+  /**
+   * Lit billboard fill: `baseEmissive` × boost on emissive, and **albedo `color` × boost** on Lambert sprites.
+   * Emissive alone is barely visible when point lights dominate diffuse; scaling `color` makes F2 boosts read in normal play.
+   */
+  private syncLitBillboardEmissive(baseEmissiveScaled: number) {
+    const poiBoost = Number.isFinite(this.lastPoiSpriteBoost) ? this.lastPoiSpriteBoost : 1.0
+    const poiEm = baseEmissiveScaled * poiBoost
+    const npcBoost = Number.isFinite(this.lastNpcSpriteBoost) ? this.lastNpcSpriteBoost : 1.0
+    const npcEm = baseEmissiveScaled * npcBoost
 
-  private syncFloorItemThemeTint() {
-    // Floor-item sprites use per-instance materials; update live sprites only.
-    for (const p of this.pickables) {
-      const ud = (p.userData ?? {}) as { kind?: unknown }
-      if (String(ud.kind ?? '') !== 'floorItem') continue
-      const spr = p as THREE.Sprite
-      const mat = spr.material as THREE.SpriteMaterial
-      mat.color.copy(this.themeSpriteColor)
+    for (const kind of Object.keys(this.npcBillboardMats) as NpcKind[]) {
+      const mat = this.npcBillboardMats[kind]
+      if (!mat) continue
+      mat.emissiveIntensity = npcEm
+      const tintHex = NPC_SPRITE_TINT_HEX[kind]
+      if (tintHex !== undefined) {
+        mat.color.setHex(tintHex).multiplyScalar(npcBoost)
+      } else {
+        mat.color.setRGB(npcBoost, npcBoost, npcBoost)
+      }
+    }
+    for (const mat of Object.values(this.poiBillboardMats)) {
+      if (!mat) continue
+      mat.emissiveIntensity = poiEm
+      mat.color.setRGB(poiBoost, poiBoost, poiBoost)
+    }
+    for (const mat of Object.values(this.poiOpenedBillboardMats)) {
+      if (!mat) continue
+      mat.emissiveIntensity = poiEm
+      mat.color.setRGB(poiBoost, poiBoost, poiBoost)
+    }
+    if (this.wellDrainedMat) {
+      this.wellDrainedMat.emissiveIntensity = poiEm
+      this.wellDrainedMat.color.setRGB(poiBoost, poiBoost, poiBoost)
+    }
+    // Filled-well VFX: Lambert base already uses `poiBoost`; glow/sparkle are separate `Sprite` materials.
+    if (this.wellGlowMat) {
+      this.wellGlowMat.color.setRGB(poiBoost, poiBoost, poiBoost)
+    }
+    if (this.wellSparkleMat) {
+      this.wellSparkleMat.color.setRGB(poiBoost, poiBoost, poiBoost)
+    }
+    for (const mat of [
+      this.doorClosedMat,
+      this.doorOctopusClosedMat,
+      this.doorOpenMat,
+      this.doorOctopusOpenStaticMat,
+    ]) {
+      if (mat) mat.emissiveIntensity = baseEmissiveScaled
     }
     for (const prop of ALL_ROOM_HAZARD_PROPERTIES) {
       const m = this.hazardDecalMats[prop]
-      if (m) m.color.copy(this.themeSpriteColor)
+      if (m) m.emissiveIntensity = baseEmissiveScaled
     }
+    for (const p of this.pickables) {
+      const mesh = p as THREE.Mesh
+      if (!mesh.isMesh) continue
+      const mat = mesh.material as THREE.MeshLambertMaterial
+      if (!mat || mat === this.elderDistortionMat) continue
+      const ud = mesh.userData as { kind?: unknown; poiEmojiBillboard?: boolean; npcEmojiBillboard?: boolean }
+      const k = String(ud.kind ?? '')
+      if (k === 'floorItem') mat.emissiveIntensity = baseEmissiveScaled
+      else if (ud.poiEmojiBillboard) {
+        mat.emissiveIntensity = poiEm
+        mat.color.setRGB(poiBoost, poiBoost, poiBoost)
+      } else if (ud.npcEmojiBillboard) {
+        mat.emissiveIntensity = npcEm
+        mat.color.setRGB(npcBoost, npcBoost, npcBoost)
+      }
+    }
+    if (this.doorFxGroup) {
+      this.doorFxGroup.traverse((obj) => {
+        const mesh = obj as THREE.Mesh
+        if (!mesh.isMesh) return
+        const m = mesh.material as THREE.MeshLambertMaterial
+        if (m) m.emissiveIntensity = baseEmissiveScaled
+      })
+    }
+  }
+
+  private syncLitBillboardFacingCamera() {
+    const q = this.camera.quaternion
+    for (const n of this.npcBillboards) {
+      n.object.quaternion.copy(q)
+    }
+    for (const p of this.poiBillboards) {
+      p.mesh.quaternion.copy(q)
+    }
+    for (const p of this.pickables) {
+      const mesh = p as THREE.Mesh
+      if (!mesh.isMesh) continue
+      const k = String((mesh.userData as { kind?: unknown }).kind ?? '')
+      if (k === 'door' || k === 'floorItem') mesh.quaternion.copy(q)
+    }
+    for (const { mesh } of this.hazardDecalMeshes) {
+      mesh.quaternion.copy(q)
+    }
+    for (const entry of this.doorFxTracked) {
+      entry.mesh.quaternion.copy(q)
+    }
+    for (const w of this.wellDecorSprites) {
+      w.main.quaternion.copy(q)
+    }
+  }
+
+  private ensureElderDistortionMat(): THREE.ShaderMaterial {
+    if (!this.elderDistortionMat) {
+      this.elderDistortionMat = createElderDistortionMaterial(this.themeSpriteColor)
+    }
+    return this.elderDistortionMat
   }
 
   private syncHazardDecalScales() {
     const baseH = HAZARD_DECAL_HEIGHT
-    for (const { sprite, prop } of this.hazardDecalSprites) {
+    for (const { mesh, prop } of this.hazardDecalMeshes) {
       const aspect = this.hazardDecalAspects[prop] ?? 1.0
-      sprite.scale.set(baseH * aspect, baseH, 1)
+      mesh.scale.set(baseH * aspect, baseH, 1)
     }
   }
 
@@ -1159,11 +1574,7 @@ export class WorldRenderer {
     return { hueShiftDeg: 0, saturationMult: 1.0 }
   }
 
-  private currentPoiSpriteBoost() {
-    return Number.isFinite(this.lastPoiSpriteBoost) ? this.lastPoiSpriteBoost : 1.0
-  }
-
-  private getWellDrainedMat(): THREE.SpriteMaterial {
+  private getWellDrainedMat(): THREE.MeshLambertMaterial {
     if (this.wellDrainedMat) return this.wellDrainedMat
     const tex = this.textureLoader.load(POI_WELL_DRAINED_SRC, () => {
       const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
@@ -1175,17 +1586,16 @@ export class WorldRenderer {
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
-    this.wellDrainedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.wellDrainedMat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
+    this.wellDrainedMat = createLitBillboardLambertMaterial(tex)
     return this.wellDrainedMat
   }
 
-  private getPoiOpenedSpriteMat(kind: PoiKind): THREE.SpriteMaterial {
-    const cached = this.poiOpenedSpriteMats[kind]
+  private getPoiOpenedBillboardMat(kind: keyof typeof POI_OPENED_SPRITE_SRC): THREE.MeshLambertMaterial {
+    const cached = this.poiOpenedBillboardMats[kind]
     if (cached) return cached
 
     const src = POI_OPENED_SPRITE_SRC[kind]
-    if (!src) return this.getPoiSpriteMat(kind)
+    if (!src) return this.getPoiBillboardMat(kind)
 
     const tex = this.textureLoader.load(src, () => {
       const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
@@ -1198,9 +1608,8 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
 
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    mat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
-    this.poiOpenedSpriteMats[kind] = mat
+    const mat = createLitBillboardLambertMaterial(tex)
+    this.poiOpenedBillboardMats[kind] = mat
     return mat
   }
 
@@ -1213,9 +1622,12 @@ export class WorldRenderer {
     tex.generateMipmaps = false
     this.wellGlowMat = new THREE.SpriteMaterial({
       map: tex,
+      color: new THREE.Color(0xffffff),
       transparent: true,
+      blending: THREE.AdditiveBlending,
       depthWrite: false,
-      opacity: 0.92,
+      toneMapped: false,
+      opacity: 1,
     })
     return this.wellGlowMat
   }
@@ -1239,8 +1651,8 @@ export class WorldRenderer {
     return this.wellSparkleMat
   }
 
-  private getPoiSpriteMat(kind: PoiKind): THREE.SpriteMaterial {
-    const cached = this.poiSpriteMats[kind]
+  private getPoiBillboardMat(kind: keyof typeof POI_SPRITE_SRC): THREE.MeshLambertMaterial {
+    const cached = this.poiBillboardMats[kind]
     if (cached) return cached
 
     const src = POI_SPRITE_SRC[kind]
@@ -1255,41 +1667,71 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
 
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    mat.color.copy(this.themeSpriteColor).multiplyScalar(this.currentPoiSpriteBoost())
-    this.poiSpriteMats[kind] = mat
+    const mat = createLitBillboardLambertMaterial(tex)
+    this.poiBillboardMats[kind] = mat
     return mat
   }
 
   private syncPoiSpriteScales(state: GameState) {
-    if (!this.poiSprites.length) return
+    if (!this.poiBillboards.length) return
 
     const floorTopY = 0
     const foot = Number(state.render.poiFootLift ?? 0.02)
     const baseH = 0.55
     /** Exit (`stairs_down`) renders at 2× other POI billboards for readability. */
     const exitMult = 2
-    for (const p of this.poiSprites) {
-      const mult = p.kind === 'Exit' ? exitMult : 1
+    const kuratkoNestScale = Math.max(0.25, Math.min(3, Number(state.render.poiKuratkoNestSpriteScale ?? 1)))
+    const campfireScale = Math.max(0.25, Math.min(3, Number(state.render.poiCampfireSpriteScale ?? 1)))
+    for (const p of this.poiBillboards) {
+      const mult =
+        p.kind === 'Exit'
+          ? exitMult
+          : p.kind === 'KuratkoNest'
+            ? kuratkoNestScale
+            : p.kind === 'Campfire'
+              ? campfireScale
+              : 1
       const h = baseH * mult
       const aspect = this.poiSpriteAspects[p.kind] ?? 1.0
-      p.sprite.scale.set(h * aspect, h, 1)
+      p.mesh.scale.set(h * aspect, h, 1)
       const groundY = this.getPoiGroundYForKind(state, p.kind)
       // Bottom pivot: texture row at `groundY` (0=bottom) meets the floor at `floorTopY + foot`.
-      p.sprite.position.y = floorTopY + foot - groundY * h
+      p.mesh.position.y = floorTopY + foot - groundY * h
     }
 
+    const r = state.render
+    const gnx = Number(r.poiWellGlowNudgeX ?? 0)
+    const gny = Number(r.poiWellGlowNudgeY ?? 0)
+    const gnz = Number(r.poiWellGlowNudgeZ ?? 0)
+    const snx = Number(r.poiWellSparkleNudgeX ?? 0)
+    const sny = Number(r.poiWellSparkleNudgeY ?? 0)
+    const snz = Number(r.poiWellSparkleNudgeZ ?? 0)
     for (const d of this.wellDecorSprites) {
-      d.glow.position.copy(d.main.position)
-      d.sparkle.position.copy(d.main.position)
-      d.sparkle.position.y += 0.02
+      const mx = d.main.position.x
+      const my = d.main.position.y
+      const mz = d.main.position.z
+      d.glow.position.set(mx + gnx, my + gny, mz + gnz)
+      d.sparkle.position.set(mx + snx, my + sny, mz + snz)
       d.glow.scale.copy(d.main.scale).multiplyScalar(1.08)
       d.sparkle.scale.copy(d.main.scale).multiplyScalar(0.5)
     }
   }
 
-  private textureAspectFromSpriteMaterial(spr: THREE.Sprite): number {
-    const mat = spr.material as THREE.SpriteMaterial | undefined
+  /** Slow opacity shimmer on campfire emoji billboards (~1–3 Hz effective, per-instance phase). */
+  private syncCampfireEmojiFlicker(state: GameState) {
+    const t = state.nowMs * 0.001
+    for (const p of this.poiBillboards) {
+      if (p.kind !== 'Campfire') continue
+      const mat = p.mesh.material as THREE.MeshLambertMaterial
+      const phase = campfireFlickerPhaseRad(p.id)
+      const a = 0.5 + 0.5 * Math.sin(t * TAU * 1.25 + phase)
+      const b = 0.5 + 0.5 * Math.sin(t * TAU * 2.4 + phase * 1.6)
+      mat.opacity = 0.84 + 0.12 * a + 0.04 * b
+    }
+  }
+
+  private textureAspectFromMapMesh(mesh: THREE.Mesh): number {
+    const mat = mesh.material as THREE.MeshLambertMaterial | undefined
     const img = mat?.map?.image as { width?: unknown; height?: unknown } | undefined
     const iw = img && typeof img.width === 'number' ? img.width : 0
     const ih = img && typeof img.height === 'number' ? img.height : 0
@@ -1297,35 +1739,88 @@ export class WorldRenderer {
     return 1
   }
 
-  private syncDoorSprites(state: GameState) {
-    const h = Number(state.render.doorSpriteHeight ?? 1)
-    const cy = Number(state.render.doorSpriteCenterY ?? 0.55)
-    const nx = Number(state.render.doorSpriteNudgeX ?? 0)
-    const nz = Number(state.render.doorSpriteNudgeZ ?? 0)
-
-    for (const p of this.pickables) {
-      const ud = (p.userData ?? {}) as { kind?: unknown; baseX?: unknown; baseZ?: unknown }
-      if (String(ud.kind ?? '') !== 'door') continue
-      const spr = p as THREE.Sprite
-      const baseX = typeof ud.baseX === 'number' ? ud.baseX : spr.position.x
-      const baseZ = typeof ud.baseZ === 'number' ? ud.baseZ : spr.position.z
-      const aspect = this.textureAspectFromSpriteMaterial(spr)
-      spr.scale.set(h * aspect, h, 1)
-      spr.position.set(baseX + nx, cy, baseZ + nz)
+  private doorBillboardTuning(state: GameState, visual: 'wooden' | 'octopus') {
+    const r = state.render
+    if (visual === 'octopus') {
+      return {
+        h: Number(r.doorOctopusSpriteHeight ?? 1),
+        cy: Number(r.doorOctopusSpriteCenterY ?? 0.55),
+        nx: Number(r.doorOctopusSpriteNudgeX ?? 0),
+        nz: Number(r.doorOctopusSpriteNudgeZ ?? 0),
+      }
     }
-
-    const fw = state.floor.w
-    const fh = state.floor.h
-    for (const entry of this.doorFxTracked) {
-      const wx = entry.cellX - fw / 2
-      const wz = entry.cellY - fh / 2
-      const aspect = this.textureAspectFromSpriteMaterial(entry.sprite)
-      entry.sprite.scale.set(h * aspect, h, 1)
-      entry.sprite.position.set(wx + nx, cy, wz + nz)
+    return {
+      h: Number(r.doorWoodenSpriteHeight ?? 1),
+      cy: Number(r.doorWoodenSpriteCenterY ?? 0.55),
+      nx: Number(r.doorWoodenSpriteNudgeX ?? 0),
+      nz: Number(r.doorWoodenSpriteNudgeZ ?? 0),
     }
   }
 
-  private getHazardDecalMat(prop: RoomHazardProperty): THREE.SpriteMaterial {
+  private syncDoorSprites(state: GameState) {
+    const activeOctopusDoorFxCells = new Set<string>()
+    for (const fx of state.ui.doorOpenFx ?? []) {
+      if (fx.untilMs <= state.nowMs) continue
+      if (fx.visual !== 'octopus') continue
+      activeOctopusDoorFxCells.add(`${fx.pos.x},${fx.pos.y}`)
+    }
+    const fw = state.floor.w
+    const fh = state.floor.h
+    const tiles = state.floor.tiles
+
+    for (const p of this.pickables) {
+      const ud = (p.userData ?? {}) as { kind?: unknown; doorVisual?: unknown; baseX?: unknown; baseZ?: unknown }
+      if (String(ud.kind ?? '') !== 'door') continue
+      const visual = ud.doorVisual === 'octopus' ? 'octopus' : 'wooden'
+      const { h, cy, nx, nz } = this.doorBillboardTuning(state, visual)
+      const doorMesh = p as THREE.Mesh
+      const baseX = typeof ud.baseX === 'number' ? ud.baseX : doorMesh.position.x
+      const baseZ = typeof ud.baseZ === 'number' ? ud.baseZ : doorMesh.position.z
+      const aspect = this.textureAspectFromMapMesh(doorMesh)
+      doorMesh.scale.set(h * aspect, h, 1)
+      doorMesh.position.set(baseX + nx, cy, baseZ + nz)
+
+      const cellX = Math.round(baseX + fw / 2)
+      const cellY = Math.round(baseZ + fh / 2)
+      const idx = cellX + cellY * fw
+      const tile = tiles[idx]
+      const hideStaticWhileFx =
+        tile === 'doorOpenOctopus' && activeOctopusDoorFxCells.has(`${cellX},${cellY}`)
+      doorMesh.visible = !hideStaticWhileFx
+    }
+
+    for (const entry of this.doorFxTracked) {
+      const { h, cy, nx, nz } = this.doorBillboardTuning(state, entry.visual)
+      const wx = entry.cellX - fw / 2
+      const wz = entry.cellY - fh / 2
+      const aspect = this.textureAspectFromMapMesh(entry.mesh)
+      entry.mesh.scale.set(h * aspect, h, 1)
+      entry.mesh.position.set(wx + nx, cy, wz + nz)
+    }
+  }
+
+  private syncFloorItemSprites(state: GameState) {
+    const h = Number(state.render.floorItemSpriteHeight)
+    if (!Number.isFinite(h) || h <= 0) return
+    const nx = Number(state.render.floorItemSpriteNudgeX)
+    const ny = Number(state.render.floorItemSpriteNudgeY)
+    const nz = Number(state.render.floorItemSpriteNudgeZ)
+    const nudgeX = Number.isFinite(nx) ? nx : 0
+    const nudgeY = Number.isFinite(ny) ? ny : 0
+    const nudgeZ = Number.isFinite(nz) ? nz : 0
+    for (const p of this.pickables) {
+      const ud = (p.userData ?? {}) as { kind?: unknown; baseX?: unknown; baseZ?: unknown }
+      if (String(ud.kind ?? '') !== 'floorItem') continue
+      const itemMesh = p as THREE.Mesh
+      const aspect = this.textureAspectFromMapMesh(itemMesh)
+      itemMesh.scale.set(h * aspect, h, 1)
+      const baseX = typeof ud.baseX === 'number' ? ud.baseX : itemMesh.position.x
+      const baseZ = typeof ud.baseZ === 'number' ? ud.baseZ : itemMesh.position.z
+      itemMesh.position.set(baseX + nudgeX, FLOOR_ITEM_SPRITE_CENTER_Y + nudgeY, baseZ + nudgeZ)
+    }
+  }
+
+  private getHazardDecalMat(prop: RoomHazardProperty): THREE.MeshLambertMaterial {
     const cached = this.hazardDecalMats[prop]
     if (cached) return cached
 
@@ -1341,57 +1836,50 @@ export class WorldRenderer {
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
 
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    mat.color.copy(this.themeSpriteColor)
+    const mat = createLitBillboardLambertMaterial(tex)
     this.hazardDecalMats[prop] = mat
     return mat
   }
 
-  private getDoorClosedMat(): THREE.SpriteMaterial {
+  private getDoorClosedMat(): THREE.MeshLambertMaterial {
     if (this.doorClosedMat) return this.doorClosedMat
     const tex = this.textureLoader.load(DOOR_CLOSED_SRC)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
-    this.doorClosedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.doorClosedMat.color.copy(this.themeSpriteColor)
+    this.doorClosedMat = createLitBillboardLambertMaterial(tex)
     return this.doorClosedMat
   }
 
-  private getDoorOctopusClosedMat(): THREE.SpriteMaterial {
+  private getDoorOctopusClosedMat(): THREE.MeshLambertMaterial {
     if (this.doorOctopusClosedMat) return this.doorOctopusClosedMat
     const tex = this.textureLoader.load(DOOR_OCTOPUS_CLOSED_SRC)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
-    this.doorOctopusClosedMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.doorOctopusClosedMat.color.copy(this.themeSpriteColor)
+    this.doorOctopusClosedMat = createLitBillboardLambertMaterial(tex)
     return this.doorOctopusClosedMat
   }
 
-  private getDoorOpenMat(): THREE.SpriteMaterial {
+  private getDoorOpenMat(): THREE.MeshLambertMaterial {
     if (this.doorOpenMat) return this.doorOpenMat
     const tex = this.textureLoader.load(DOOR_OPEN_SRC)
     tex.colorSpace = THREE.SRGBColorSpace
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
-    this.doorOpenMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.doorOpenMat.color.copy(this.themeSpriteColor)
+    this.doorOpenMat = createLitBillboardLambertMaterial(tex)
     return this.doorOpenMat
   }
 
-  private getDoorOctopusOpenStaticMat(): THREE.SpriteMaterial {
+  private getDoorOctopusOpenStaticMat(): THREE.MeshLambertMaterial {
     if (this.doorOctopusOpenStaticMat) return this.doorOctopusOpenStaticMat
-    const tex = this.textureLoader.load(DOOR_OCTOPUS_OPEN_FRAMES[2]!)
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.minFilter = THREE.NearestFilter
-    tex.magFilter = THREE.NearestFilter
-    tex.generateMipmaps = false
-    this.doorOctopusOpenStaticMat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.doorOctopusOpenStaticMat.color.copy(this.themeSpriteColor)
+    const octo = this.ensureDoorOctopusOpenTextures()
+    const n = DOOR_OCTOPUS_OPEN_FRAMES.length
+    const tex = octo[n - 1]!
+    this.doorOctopusOpenStaticMat = createLitBillboardLambertMaterial(tex)
     return this.doorOctopusOpenStaticMat
   }
 
@@ -1425,41 +1913,63 @@ export class WorldRenderer {
         return r.poiGroundY_CrackedWall
       case 'Exit':
         return r.poiGroundY_Exit
+      case 'Campfire':
+        return r.poiGroundY_Campfire
+      case 'KuratkoNest':
+        return r.poiGroundY_KuratkoNest
     }
   }
 
-  private getNpcSpriteMat(kind: NpcKind): THREE.SpriteMaterial {
-    const cached = this.npcSpriteMats[kind]
-    if (cached) return cached
-
-    const src = NPC_SPRITE_SRC[kind]
-    const tex = this.textureLoader.load(src, () => {
-      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
-      const w = img && typeof img.width === 'number' ? img.width : 0
-      const h = img && typeof img.height === 'number' ? img.height : 0
-      if (w > 0 && h > 0) this.npcSpriteAspects[kind] = w / h
+  private getOrLoadNpcTexture(url: string, onImageLoad?: () => void): THREE.Texture {
+    const hit = this.npcLoaderTexturesByUrl.get(url)
+    if (hit) {
+      const img = hit.image as HTMLImageElement | undefined
+      if (img && img.complete && img.naturalWidth > 0) {
+        onImageLoad?.()
+      } else if (img && !img.complete) {
+        const onLoad = () => {
+          img.removeEventListener('load', onLoad)
+          onImageLoad?.()
+        }
+        img.addEventListener('load', onLoad)
+      }
+      return hit
+    }
+    const tex = this.textureLoader.load(url, () => {
+      onImageLoad?.()
     })
     tex.colorSpace = THREE.SRGBColorSpace
     tex.minFilter = THREE.NearestFilter
     tex.magFilter = THREE.NearestFilter
     tex.generateMipmaps = false
+    this.npcLoaderTexturesByUrl.set(url, tex)
+    return tex
+  }
+
+  private getNpcBillboardMat(kind: NpcKind): THREE.MeshLambertMaterial {
+    const cached = this.npcBillboardMats[kind]
+    if (cached) return cached
+
+    const src = NPC_SPRITE_SRC[kind]
+    const tex = this.getOrLoadNpcTexture(src, () => {
+      const img = tex.image as unknown as { width?: unknown; height?: unknown } | undefined
+      const w = img && typeof img.width === 'number' ? img.width : 0
+      const h = img && typeof img.height === 'number' ? img.height : 0
+      if (w > 0 && h > 0) this.npcSpriteAspects[kind] = w / h
+    })
 
     this.npcSpriteBaseTex[kind] = tex
-    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
-    this.npcSpriteMats[kind] = mat
+    const mat = createLitBillboardLambertMaterial(tex)
+    this.npcBillboardMats[kind] = mat
     return mat
   }
 
   private ensureNpcIdleTexture(kind: NpcKind, src: string): THREE.Texture | null {
     const existing = this.npcIdleTextures[kind]
     if (existing) return existing
-    const tex = this.textureLoader.load(src, () => {
+    const tex = this.getOrLoadNpcTexture(src, () => {
       tex.needsUpdate = true
     })
-    tex.colorSpace = THREE.SRGBColorSpace
-    tex.minFilter = THREE.NearestFilter
-    tex.magFilter = THREE.NearestFilter
-    tex.generateMipmaps = false
     this.npcIdleTextures[kind] = tex
     return tex
   }
@@ -1468,7 +1978,7 @@ export class WorldRenderer {
     for (const kind of Object.keys(NPC_SPRITE_IDLE_SRC) as NpcKind[]) {
       const idleSrc = NPC_SPRITE_IDLE_SRC[kind]
       if (!idleSrc) continue
-      const mat = this.npcSpriteMats[kind]
+      const mat = this.npcBillboardMats[kind]
       const base = this.npcSpriteBaseTex[kind]
       if (!mat || !base) continue
       const idleTex = this.ensureNpcIdleTexture(kind, idleSrc)
@@ -1485,20 +1995,25 @@ export class WorldRenderer {
   }
 
   private syncNpcSpriteScales(state: GameState) {
-    if (!this.npcSprites.length) return
+    if (!this.npcBillboards.length) return
 
-    for (const n of this.npcSprites) {
+    for (const n of this.npcBillboards) {
       const size = this.getNpcSizeForKind(state, n.kind, n.id)
-      const aspect = this.npcSpriteAspects[n.kind] ?? 1.0
+      const aspect =
+        n.mode === 'elder'
+          ? state.render.elderDistortion.billboardAspect
+          : n.mode === 'emoji'
+            ? 1.0
+            : (this.npcSpriteAspects[n.kind] ?? 1.0)
       const width = size * aspect
-      n.sprite.scale.set(width, size, 1)
+      n.object.scale.set(width, size, 1)
 
       // Align the bottom of the sprite with the floor surface.
       // Floor top is y=0 (floor boxes are centered at y=-0.05 with height 0.1).
       const floorTopY = 0
       const lift = Number(state.render.npcFootLift ?? 0)
       const groundY = this.getNpcGroundYForKind(state, n.kind)
-      n.sprite.position.y = floorTopY + lift + size * (0.5 - groundY)
+      n.object.position.y = floorTopY + lift + size * (0.5 - groundY)
     }
   }
 
@@ -1511,7 +2026,9 @@ export class WorldRenderer {
     const randPct = this.getNpcSizeRandForKind(state, kind)
     const signed = this.signedUnitFromStr(`npcSize:${state.floor.seed}:${kind}:${npcId}`)
     const factor = 1 + signed * randPct
-    return Math.max(0.05, base * factor)
+    const row = state.floor.npcs.find((n) => n.id === npcId)
+    const bossMul = row?.variant === 'boss' ? bossVisualScale(row) : 1
+    return Math.max(0.05, base * factor * bossMul)
   }
 
   private getNpcBaseSizeForKind(state: GameState, kind: NpcKind) {
@@ -1660,10 +2177,6 @@ export class WorldRenderer {
 
 }
 
-/** Match `index.css` `--sans` + emoji fallbacks (inventory uses emoji at ~55px; canvas uses fixed px size). */
-const ITEM_ICON_CANVAS_FONT =
-  '96px ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Arial, "Apple Color Emoji", "Segoe UI Emoji", sans-serif'
-
 function disposeGeoGroupResources(group: THREE.Object3D) {
   const ud = group.userData as {
     disposableBoxGeoms?: THREE.BufferGeometry[]
@@ -1678,12 +2191,20 @@ function disposeGeoGroupResources(group: THREE.Object3D) {
   group.traverse((obj) => {
     const u = obj.userData as { disposableItemIcon?: boolean }
     if (!u.disposableItemIcon) return
-    const spr = obj as THREE.Sprite
-    const mat = spr.material as THREE.SpriteMaterial
+    const mesh = obj as THREE.Mesh
+    if (!mesh.isMesh) return
+    const mat = mesh.material as THREE.MeshLambertMaterial
     const map = mat.map
     // Emoji icons use CanvasTexture; loader icons share textures cached on WorldRenderer — never dispose those maps here.
     if (map instanceof THREE.CanvasTexture) map.dispose()
     mat.dispose()
+  })
+  group.traverse((obj) => {
+    const u = obj.userData as { elderProcedural?: boolean }
+    if (!u.elderProcedural) return
+    const mesh = obj as THREE.Mesh
+    if (!mesh.isMesh) return
+    mesh.geometry?.dispose()
   })
 }
 
@@ -1691,33 +2212,45 @@ function resolveFloorItemIcon(
   state: GameState,
   content: ContentDB,
   floorItemId: string,
-): { kind: 'emoji'; glyph: string } | { kind: 'sprite'; path: string } {
+): { kind: 'emoji'; glyph: string; tintFilter?: string; displayScale?: number; rotateDeg?: number; flipHorizontal?: boolean; flipVertical?: boolean } | { kind: 'sprite'; path: string } {
   const item = state.party.items[floorItemId as ItemId]
   if (!item) return { kind: 'emoji', glyph: '□' }
   try {
     const def = content.item(item.defId)
-    if (def.icon.kind === 'emoji') return { kind: 'emoji', glyph: def.icon.value }
+    if (def.icon.kind === 'emoji')
+      return {
+        kind: 'emoji',
+        glyph: def.icon.value,
+        tintFilter: def.icon.tintFilter,
+        displayScale: def.icon.displayScale,
+        rotateDeg: def.icon.rotateDeg,
+        flipHorizontal: def.icon.flipHorizontal,
+        flipVertical: def.icon.flipVertical,
+      }
     return { kind: 'sprite', path: def.icon.path }
   } catch {
     return { kind: 'emoji', glyph: '□' }
   }
 }
 
-function makeItemIconBillboardMaterial(glyph: string) {
-  const canvas = document.createElement('canvas')
-  canvas.width = 128
-  canvas.height = 128
-  const ctx = canvas.getContext('2d')
-  if (!ctx) throw new Error('2D canvas unavailable')
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height)
-  ctx.textAlign = 'center'
-  ctx.textBaseline = 'middle'
-  ctx.font = ITEM_ICON_CANVAS_FONT
-  ctx.fillStyle = 'rgba(0,0,0,0.55)'
-  ctx.fillText(glyph, 64 + 4, 64 + 6)
-  ctx.fillStyle = 'rgba(255,255,255,0.92)'
-  ctx.fillText(glyph, 64, 64)
+function makeItemIconBillboardMaterial(
+  glyph: string,
+  opts?: {
+    tintFilter?: string
+    displayScale?: number
+    rotateDeg?: number
+    flipHorizontal?: boolean
+    flipVertical?: boolean
+  },
+) {
+  const canvas = renderItemEmojiIconToCanvas({
+    glyph,
+    tintFilter: opts?.tintFilter,
+    displayScale: opts?.displayScale,
+    rotateDeg: opts?.rotateDeg,
+    flipHorizontal: opts?.flipHorizontal,
+    flipVertical: opts?.flipVertical,
+  })
 
   const tex = new THREE.CanvasTexture(canvas)
   tex.colorSpace = THREE.SRGBColorSpace
@@ -1725,6 +2258,6 @@ function makeItemIconBillboardMaterial(glyph: string) {
   tex.magFilter = THREE.LinearFilter
   tex.generateMipmaps = false
 
-  return new THREE.SpriteMaterial({ map: tex, transparent: true, depthWrite: false })
+  return createLitBillboardLambertMaterial(tex)
 }
 

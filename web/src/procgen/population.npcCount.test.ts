@@ -38,6 +38,7 @@ describe('spawnNpcsAndItems NPC count', () => {
       floorType: 'Dungeon',
       npcSpawnCountMin: 6,
       npcSpawnCountMax: 12,
+      spawnBosses: false,
     })
     expect(rng.int(6, 13)).toBe(9)
     expect(npcs.length).toBe(9)
@@ -75,6 +76,7 @@ describe('spawnNpcsAndItems NPC count', () => {
       floorType: 'Dungeon',
       npcSpawnCountMin: 12,
       npcSpawnCountMax: 12,
+      spawnBosses: false,
     })
     expect(npcs.length).toBe(4)
   })
@@ -109,6 +111,7 @@ describe('spawnNpcsAndItems NPC count', () => {
       floorType: 'Dungeon',
       npcSpawnCountMin: 20,
       npcSpawnCountMax: 20,
+      spawnBosses: false,
     })
     // 5×5 − 1 reserved center = 24 slots; target 20 → 20 NPCs (old center-only filter gave 0).
     expect(npcs.length).toBe(20)

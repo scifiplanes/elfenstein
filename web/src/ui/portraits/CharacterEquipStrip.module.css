@@ -1,4 +1,10 @@
 /* Art: Content/ui/hud/ui_hud_charequip_background.png — 198×589 px; three stacked frames (head, L hand, R hand). */
+.rootDead {
+  pointer-events: none;
+  opacity: 0.55;
+  filter: grayscale(0.75);
+}
+
 .root {
   --equip-strip-scale: 1.15;
   position: relative;
@@ -73,17 +79,13 @@
   border: none;
   background: transparent;
   color: inherit;
-  cursor: grab;
+  cursor: none;
   display: flex;
   align-items: center;
   justify-content: center;
   width: 100%;
   height: 100%;
   min-height: 0;
-}
-
-.equipBtn:active {
-  cursor: grabbing;
 }
 
 .emoji {

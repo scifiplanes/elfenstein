@@ -18,6 +18,7 @@ export type NpcSpawnContext = {
 }
 
 export type ItemSpawnContext = {
+  floorType: FloorType
   floorProperties: readonly FloorProperty[]
   room: GenRoom
   isOnEntranceExitShortestPath: boolean
@@ -85,14 +86,16 @@ export const NPC_DEFAULT_WEIGHTS_BY_FLOOR: Record<FloorType, Array<{ id: NpcKind
     { id: 'Snailord', w: 2 },
     { id: 'Wurglepup', w: 3 },
     { id: 'Bobr', w: 2 },
-    { id: 'Grub', w: 2 },
+    { id: 'Grub', w: 1 },
+    { id: 'SunGrub', w: 1 },
     { id: 'Chumbo', w: 1 },
     { id: 'Kerekere', w: 1 },
   ],
   LivingBio: [
     { id: 'Wurglepup', w: 4 },
     { id: 'Bulba', w: 3 },
-    { id: 'Grub', w: 3 },
+    { id: 'Grub', w: 2 },
+    { id: 'SunGrub', w: 1 },
     { id: 'Catoctopus', w: 2 },
     { id: 'Snailord', w: 2 },
     { id: 'Gargantula', w: 1 },
@@ -140,6 +143,7 @@ export const NPC_DEFAULT_WEIGHTS_BY_FLOOR: Record<FloorType, Array<{ id: NpcKind
 export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
   'AntitoxinVial',
   'Ash',
+  'Bahno',
   'BitterHerb',
   'BobrJuice',
   'Bone',
@@ -159,9 +163,12 @@ export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
   'Mold',
   'MortarMeal',
   'Moss',
+  'Rapier',
   'Mucus',
   'Mushrooms',
+  'NestHat',
   'Salt',
+  'ShellHat',
   'Sling',
   'Slime',
   'SporeCap',
@@ -171,7 +178,9 @@ export const PROCgen_FLOOR_SPAWN_TABLE_ITEM_DEF_IDS: ItemDefId[] = [
   'Sulfur',
   'Sweetroot',
   'Twine',
+  'TravelFlaskEmpty',
   'WaterbagEmpty',
+  'WaterskinEmpty',
   'WoolCap',
 ]
 
@@ -184,6 +193,8 @@ export const PROCgen_ALL_NPC_KINDS: NpcKind[] = [
   'Swarm',
   'Chumbo',
   'Grub',
+  'SporeGrub',
+  'SunGrub',
   'Kuratko',
   'Grechka',
   'Snailord',
@@ -210,7 +221,19 @@ export function pickNpcKindFromTable(ctx: NpcSpawnContext, rng: Rng): NpcKind {
   if (prop === 'Infected') return 'Skeleton'
   if (prop === 'Burning') return 'Catoctopus'
   if (prop === 'Flooded') return 'Bobr'
-  if (prop === 'SporeMist') return rng.next() < 0.45 ? 'Wurglepup' : 'Bobr'
+  if (prop === 'SporeMist') {
+    const r = rng.next()
+    if (!fp.includes('Infested')) {
+      // Legacy: single draw, same 45% Wurglepup / 55% Bobr split.
+      return r < 0.45 ? 'Wurglepup' : 'Bobr'
+    }
+    // Infested floor + SporeMist room: one draw — Bulba / SporeGrub / Grub / Wurglepup / Bobr (spore garden).
+    if (r < 0.22) return 'Bulba'
+    if (r < 0.32) return 'SporeGrub'
+    if (r < 0.42) return 'Grub'
+    if (r < 0.67) return 'Wurglepup'
+    return 'Bobr'
+  }
   if (prop === 'NanoHaze') return 'Catoctopus'
   if (prop === 'Unstable') return rng.next() < 0.55 ? 'Skeleton' : 'Wurglepup'
   if (prop === 'Haunted') return 'Skeleton'
@@ -247,8 +270,12 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   const neigh = ctx.neighborRoomFunctions
 
   if (prop === 'Flooded') {
-    // Early deterministic “water utility” drop; gives Flooded rooms a clear identity.
-    return fp.includes('Cursed') ? 'AntitoxinVial' : 'WaterbagEmpty'
+    // Water utility drop; non-cursed rooms pick among empty vessels (one rng draw).
+    if (fp.includes('Cursed')) return 'AntitoxinVial'
+    const r = rng.next()
+    if (r < 1 / 3) return 'WaterbagEmpty'
+    if (r < 2 / 3) return 'WaterskinEmpty'
+    return 'TravelFlaskEmpty'
   }
   if (prop === 'Burning') {
     // Burning rooms skew toward combustibles; district still nudges sulfur.
@@ -259,7 +286,17 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
     // Even if Infected rooms are already dangerous, drop a counterplay item sometimes.
     return fp.includes('Cursed') ? 'HerbPoultice' : 'AntitoxinVial'
   }
-  if (prop === 'SporeMist') return rng.next() < 0.45 ? 'Moss' : 'Mushrooms'
+  if (prop === 'SporeMist') {
+    const sp = rng.next()
+    if (sp < 0.08) return rng.next() < 0.5 ? 'Slime' : 'GlassVial'
+    const sp2 = rng.next()
+    // Same two-draw shape as before; repartition tail for Mold / Salt (counterplay) vs Moss / Mushrooms / Fungus.
+    if (sp2 < 0.36) return 'Moss'
+    if (sp2 < 0.74) return 'Mushrooms'
+    if (sp2 < 0.82) return 'Salt'
+    if (sp2 < 0.9) return 'Mold'
+    return 'Fungus'
+  }
   if (prop === 'NanoHaze') return rng.next() < 0.5 ? 'Slime' : 'GlassVial'
   if (prop === 'Unstable') return rng.next() < 0.5 ? 'Stone' : 'StoneShard'
   if (prop === 'Haunted') return rng.next() < 0.45 ? 'Bone' : 'Twine'
@@ -269,12 +306,28 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   if (fp.includes('Destroyed') && func === 'Storage') return 'Stone'
   if (fp.includes('Overgrown') && func === 'Communal') return 'Foodroot'
 
+  if (fp.includes('Infested') && func === 'Habitat') {
+    const r = rng.next()
+    if (r < 0.06) return rng.next() < 0.5 ? 'Slime' : 'GlassVial'
+    if (r < 0.18) return 'Grubling'
+  }
+  if (ctx.floorType === 'Jungle' && func === 'Habitat') {
+    if (rng.next() < 0.1) return 'Grubling'
+  }
+
   let defId = (func && ITEM_BY_ROOM_FUNCTION[func]) || (rng.next() < 0.5 ? 'Stick' : 'Stone')
   if (func === 'Workshop' && (neigh?.Workshop ?? 0) >= 1 && rng.next() < 0.35) defId = 'Ash'
   if (ctx.room.district === 'EastWing' && rng.next() < 0.3) defId = 'Sulfur'
   if (ctx.room.district === 'NorthWing' && defId === 'Stick' && rng.next() < 0.22) defId = 'Stone'
   if (ctx.room.district === 'SouthWing' && defId === 'Stone' && rng.next() < 0.18) defId = 'Stick'
   if (ctx.isOnEntranceExitShortestPath && rng.next() < 0.22) defId = rng.next() < 0.5 ? 'Stick' : 'Ash'
+
+  // Path rooms: nudge generic floor scrap toward forage food (always consume two rolls for stable RNG stream).
+  const pathFoodRoll = rng.next()
+  const pathFoodSide = rng.next()
+  if (ctx.isOnEntranceExitShortestPath && pathFoodRoll < 0.12 && (defId === 'Stick' || defId === 'Stone')) {
+    defId = pathFoodSide < 0.5 ? 'Mushrooms' : 'Foodroot'
+  }
 
   // Extra material variety (same RNG stream as before this block; order affects determinism).
   if (func === 'Passage' && rng.next() < 0.16) defId = rng.next() < 0.55 ? 'Twine' : 'ClothScrap'
@@ -283,6 +336,7 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
     if (rw < 0.08) defId = 'Chisel'
     else if (rw < 0.15) defId = 'StoneShard'
     else if (rw < 0.22) defId = 'Sling'
+    else if (rw < 0.28) defId = 'Rapier'
   }
   if (func === 'Storage' && rng.next() < 0.09) defId = 'Club'
   if (func === 'Communal' && rng.next() < 0.07) defId = 'MortarMeal'
@@ -292,17 +346,31 @@ export function pickFloorItemDefFromTable(ctx: ItemSpawnContext, rng: Rng): Item
   if (fp.includes('Infested') && func === 'Workshop' && rng.next() < 0.12) defId = 'Hive'
   if (ctx.room.district === 'WestWing' && rng.next() < 0.18) defId = 'HerbLeaf'
 
-  // Headwear: low chance in cloth- / gathering-adjacent room functions.
+  // Headwear: low chance in cloth- / gathering-adjacent room functions (five hats).
   if (func === 'Passage' && rng.next() < 0.07) {
     const h = rng.next()
-    if (h < 0.34) defId = 'WoolCap'
-    else if (h < 0.67) defId = 'HerbCirclet'
-    else defId = 'SporeCap'
+    if (h < 0.2) defId = 'WoolCap'
+    else if (h < 0.4) defId = 'HerbCirclet'
+    else if (h < 0.6) defId = 'SporeCap'
+    else if (h < 0.8) defId = 'ShellHat'
+    else defId = 'NestHat'
   } else if (func === 'Communal' && rng.next() < 0.05) {
-    defId = rng.next() < 0.5 ? 'WoolCap' : 'HerbCirclet'
+    const hc = rng.next()
+    if (hc < 0.2) defId = 'WoolCap'
+    else if (hc < 0.4) defId = 'HerbCirclet'
+    else if (hc < 0.6) defId = 'SporeCap'
+    else if (hc < 0.8) defId = 'ShellHat'
+    else defId = 'NestHat'
   } else if (func === 'Habitat' && rng.next() < 0.06) {
-    defId = rng.next() < 0.55 ? 'SporeCap' : 'HerbCirclet'
+    const hh = rng.next()
+    if (hh < 0.2) defId = 'WoolCap'
+    else if (hh < 0.4) defId = 'HerbCirclet'
+    else if (hh < 0.6) defId = 'SporeCap'
+    else if (hh < 0.8) defId = 'ShellHat'
+    else defId = 'NestHat'
   }
+
+  if (func === 'Habitat' && (defId === 'Mushrooms' || defId === 'Fungus') && rng.next() < 0.055) defId = 'Bahno'
 
   return defId
 }

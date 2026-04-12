@@ -1,5 +1,20 @@
 import type { ItemDefId, SkillId } from '../types'
 
+/** Full vessels that count as `WaterbagFull` for cooking recipe matching (`findRecipe`). */
+export const FULL_WATER_VESSEL_DEF_IDS = ['WaterbagFull', 'WaterskinFull', 'TravelFlaskFull'] as const satisfies readonly ItemDefId[]
+
+/**
+ * On successful crafts that consume a full water vessel, the matching empty container is returned
+ * (same as portrait `feed.leaveEmptyAs`). Keep in sync with full-container `feed.leaveEmptyAs` in `items.ts`.
+ */
+export const FULL_WATER_VESSEL_TO_EMPTY = {
+  WaterbagFull: 'WaterbagEmpty',
+  WaterskinFull: 'WaterskinEmpty',
+  TravelFlaskFull: 'TravelFlaskEmpty',
+} as const satisfies Record<(typeof FULL_WATER_VESSEL_DEF_IDS)[number], ItemDefId>
+
+const FULL_WATER_VESSEL_SET = new Set<ItemDefId>(FULL_WATER_VESSEL_DEF_IDS)
+
 export type RecipeDef = {
   /** Ordered ingredient A (order-sensitive recipes are allowed). */
   a: ItemDefId
@@ -12,6 +27,13 @@ export type RecipeDef = {
   skill: SkillId
   /** Difficulty class for d20 + skill >= dc. */
   dc: number
+  /**
+   * When true, the ingredient in slot A (the source stack when crafting starts) is not consumed on success.
+   * Failure “something broke” only considers the B slot for destruction when A is preserved, etc.
+   */
+  preserveA?: boolean
+  /** Same for slot B (destination stack when crafting starts). */
+  preserveB?: boolean
 }
 
 export function recipeKey(a: ItemDefId, b: ItemDefId) {
@@ -24,17 +46,20 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Sulfur', b: 'Ash', result: 'Fireshield', craftMs: 1200, failDestroyChancePct: 20, skill: 'weaving', dc: 11 },
 
   // Weapon/tool assembly.
-  { a: 'Stone', b: 'Chisel', result: 'StoneShard', craftMs: 1100, failDestroyChancePct: 15, skill: 'chipping', dc: 9 },
+  { a: 'Stone', b: 'Chisel', result: 'StoneShard', craftMs: 1100, failDestroyChancePct: 15, skill: 'chipping', dc: 9, preserveB: true },
   { a: 'Stick', b: 'StoneShard', result: 'Spear', craftMs: 1500, failDestroyChancePct: 18, skill: 'chipping', dc: 10 },
   { a: 'Stick', b: 'Twine', result: 'Bow', craftMs: 1700, failDestroyChancePct: 22, skill: 'weaving', dc: 12 },
   { a: 'Twine', b: 'Stick', result: 'Sling', craftMs: 1300, failDestroyChancePct: 16, skill: 'weaving', dc: 10 },
   { a: 'Stone', b: 'Twine', result: 'Bolas', craftMs: 1400, failDestroyChancePct: 18, skill: 'weaving', dc: 11 },
 
-  // Remedies & cooking (edible so feed interactions work; some have extra cure logic).
+  // Remedies & cooking (most remedies stay `feed` for portrait-mouth use; **Bandage strip** applies on portrait body instead).
+  { a: 'Stick', b: 'ClothScrap', result: 'WaterbagEmpty', craftMs: 1200, failDestroyChancePct: 14, skill: 'weaving', dc: 10 },
+  { a: 'Twine', b: 'Moss', result: 'WaterskinEmpty', craftMs: 1150, failDestroyChancePct: 13, skill: 'weaving', dc: 10 },
+  { a: 'GlassVial', b: 'Twine', result: 'TravelFlaskEmpty', craftMs: 1300, failDestroyChancePct: 15, skill: 'weaving', dc: 11 },
   { a: 'ClothScrap', b: 'ClothScrap', result: 'BandageStrip', craftMs: 900, failDestroyChancePct: 10, skill: 'weaving', dc: 9 },
   { a: 'HerbLeaf', b: 'ClothScrap', result: 'HerbPoultice', craftMs: 1200, failDestroyChancePct: 14, skill: 'foraging', dc: 11 },
   { a: 'BitterHerb', b: 'GlassVial', result: 'AntitoxinVial', craftMs: 1300, failDestroyChancePct: 16, skill: 'foraging', dc: 12 },
-  { a: 'Foodroot', b: 'Stone', result: 'MortarMeal', craftMs: 1000, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
+  { a: 'Foodroot', b: 'Stone', result: 'MortarMeal', craftMs: 1000, failDestroyChancePct: 12, skill: 'cooking', dc: 10, preserveB: true },
   { a: 'MortarMeal', b: 'WaterbagFull', result: 'Flourball', craftMs: 1600, failDestroyChancePct: 18, skill: 'cooking', dc: 12 },
   { a: 'HerbLeaf', b: 'WaterbagFull', result: 'HerbTea', craftMs: 1100, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
 
@@ -53,7 +78,7 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Stick', b: 'Moss', result: 'Torch', craftMs: 1000, failDestroyChancePct: 12, skill: 'foraging', dc: 9 },
   { a: 'Glowbug', b: 'Twine', result: 'Headlamp', craftMs: 1400, failDestroyChancePct: 14, skill: 'weaving', dc: 11 },
   { a: 'Torch', b: 'BobrJuice', result: 'Lantern', craftMs: 1500, failDestroyChancePct: 16, skill: 'cooking', dc: 11 },
-  { a: 'Sweetroot', b: 'Stone', result: 'MushedRoot', craftMs: 1000, failDestroyChancePct: 11, skill: 'cooking', dc: 9 },
+  { a: 'Sweetroot', b: 'Stone', result: 'MushedRoot', craftMs: 1000, failDestroyChancePct: 11, skill: 'cooking', dc: 9, preserveB: true },
   { a: 'MushedRoot', b: 'Fungus', result: 'Shroomcake', craftMs: 1400, failDestroyChancePct: 14, skill: 'cooking', dc: 10 },
   { a: 'Shroomcake', b: 'Sweetroot', result: 'Shroompie', craftMs: 1600, failDestroyChancePct: 15, skill: 'cooking', dc: 11 },
   { a: 'MushedRoot', b: 'WaterbagFull', result: 'Rootsoup', craftMs: 1500, failDestroyChancePct: 14, skill: 'cooking', dc: 10 },
@@ -64,11 +89,13 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Fungus', b: 'Mucus', result: 'Slime', craftMs: 900, failDestroyChancePct: 15, skill: 'foraging', dc: 10 },
   { a: 'Mold', b: 'HerbLeaf', result: 'SporePaste', craftMs: 1000, failDestroyChancePct: 14, skill: 'foraging', dc: 10 },
   { a: 'Mushrooms', b: 'Mold', result: 'SporePaste', craftMs: 1050, failDestroyChancePct: 15, skill: 'foraging', dc: 10 },
+  { a: 'Mold', b: 'Mushrooms', result: 'BitterHerb', craftMs: 950, failDestroyChancePct: 14, skill: 'foraging', dc: 10 },
   { a: 'SporePaste', b: 'WaterbagFull', result: 'SporeStew', craftMs: 1500, failDestroyChancePct: 16, skill: 'cooking', dc: 11 },
   { a: 'Gem', b: 'Twine', result: 'GemCharm', craftMs: 1400, failDestroyChancePct: 14, skill: 'weaving', dc: 11 },
   { a: 'ClothScrap', b: 'Moss', result: 'MossWrap', craftMs: 1150, failDestroyChancePct: 12, skill: 'weaving', dc: 10 },
   { a: 'Moss', b: 'Twine', result: 'MossSandals', craftMs: 1200, failDestroyChancePct: 13, skill: 'weaving', dc: 10 },
   { a: 'SporePaste', b: 'Salt', result: 'BrinedSpore', craftMs: 1100, failDestroyChancePct: 12, skill: 'cooking', dc: 9 },
+  { a: 'Salt', b: 'SporePaste', result: 'Mold', craftMs: 1100, failDestroyChancePct: 28, skill: 'foraging', dc: 10 },
   { a: 'Ash', b: 'Twine', result: 'SmolderBundle', craftMs: 1250, failDestroyChancePct: 16, skill: 'foraging', dc: 10 },
   { a: 'BobrJuice', b: 'BitterHerb', result: 'RiverTonic', craftMs: 1200, failDestroyChancePct: 14, skill: 'cooking', dc: 10 },
   { a: 'HerbLeaf', b: 'Moss', result: 'CoolingPoultice', craftMs: 1050, failDestroyChancePct: 11, skill: 'foraging', dc: 9 },
@@ -78,12 +105,17 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Staff', b: 'Figurine', result: 'AttunedStaff', craftMs: 2000, failDestroyChancePct: 20, skill: 'weaving', dc: 13 },
 
   // Alternates (new ingredient pairs → existing results).
-  { a: 'Stone', b: 'Club', result: 'StoneShard', craftMs: 1200, failDestroyChancePct: 20, skill: 'chipping', dc: 11 },
+  { a: 'Stone', b: 'Club', result: 'StoneShard', craftMs: 1200, failDestroyChancePct: 20, skill: 'chipping', dc: 11, preserveB: true },
   { a: 'Stick', b: 'Claw', result: 'Spear', craftMs: 1550, failDestroyChancePct: 20, skill: 'chipping', dc: 11 },
   { a: 'Twine', b: 'Bone', result: 'Bolas', craftMs: 1450, failDestroyChancePct: 20, skill: 'weaving', dc: 12 },
   { a: 'Twine', b: 'Claw', result: 'Sling', craftMs: 1350, failDestroyChancePct: 18, skill: 'weaving', dc: 11 },
+  // Claw + Twine → Bolas (Twine+Claw is Sling; mirror Twine+Bone tuning).
+  { a: 'Claw', b: 'Twine', result: 'Bolas', craftMs: 1450, failDestroyChancePct: 20, skill: 'weaving', dc: 12 },
   { a: 'Tooth', b: 'StoneShard', result: 'BoneSpike', craftMs: 1300, failDestroyChancePct: 17, skill: 'chipping', dc: 11 },
+  { a: 'Twine', b: 'Tooth', result: 'Bolas', craftMs: 1450, failDestroyChancePct: 20, skill: 'weaving', dc: 12 },
   { a: 'Bone', b: 'ClothScrap', result: 'BandageStrip', craftMs: 1000, failDestroyChancePct: 14, skill: 'weaving', dc: 10 },
+  { a: 'Claw', b: 'ClothScrap', result: 'BandageStrip', craftMs: 1000, failDestroyChancePct: 14, skill: 'weaving', dc: 10 },
+  { a: 'Tooth', b: 'ClothScrap', result: 'BandageStrip', craftMs: 1000, failDestroyChancePct: 14, skill: 'weaving', dc: 10 },
   { a: 'BandageStrip', b: 'HerbLeaf', result: 'HerbPoultice', craftMs: 1250, failDestroyChancePct: 15, skill: 'foraging', dc: 12 },
   { a: 'BandageStrip', b: 'BitterHerb', result: 'AntitoxinVial', craftMs: 1350, failDestroyChancePct: 18, skill: 'foraging', dc: 12 },
   { a: 'Ash', b: 'Stick', result: 'Torch', craftMs: 1100, failDestroyChancePct: 14, skill: 'foraging', dc: 10 },
@@ -92,7 +124,12 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Flourball', b: 'Mushrooms', result: 'Shroomcake', craftMs: 1550, failDestroyChancePct: 17, skill: 'cooking', dc: 11 },
   { a: 'Grubling', b: 'Moss', result: 'PreservedGrub', craftMs: 1350, failDestroyChancePct: 14, skill: 'cooking', dc: 11 },
   { a: 'StoneShard', b: 'Bone', result: 'Chisel', craftMs: 1650, failDestroyChancePct: 26, skill: 'chipping', dc: 14 },
+  { a: 'StoneShard', b: 'Claw', result: 'Chisel', craftMs: 1650, failDestroyChancePct: 26, skill: 'chipping', dc: 14 },
+  { a: 'StoneShard', b: 'Tooth', result: 'Chisel', craftMs: 1650, failDestroyChancePct: 26, skill: 'chipping', dc: 14 },
+  { a: 'Claw', b: 'StoneShard', result: 'BoneSpike', craftMs: 1300, failDestroyChancePct: 16, skill: 'chipping', dc: 11 },
   { a: 'Bone', b: 'Gem', result: 'Staff', craftMs: 1800, failDestroyChancePct: 20, skill: 'chipping', dc: 12 },
+  { a: 'Claw', b: 'Gem', result: 'Staff', craftMs: 1800, failDestroyChancePct: 20, skill: 'chipping', dc: 12 },
+  { a: 'Tooth', b: 'Gem', result: 'Staff', craftMs: 1800, failDestroyChancePct: 20, skill: 'chipping', dc: 12 },
 
   // Order-sensitive pairs (reverse order → different result).
   { a: 'Bone', b: 'Stick', result: 'Club', craftMs: 1600, failDestroyChancePct: 22, skill: 'chipping', dc: 11 },
@@ -100,24 +137,66 @@ export const ALL_RECIPES: RecipeDef[] = [
   { a: 'Foodroot', b: 'WaterbagFull', result: 'Flourball', craftMs: 1700, failDestroyChancePct: 20, skill: 'cooking', dc: 13 },
   { a: 'WaterbagFull', b: 'Foodroot', result: 'MortarMeal', craftMs: 1500, failDestroyChancePct: 16, skill: 'cooking', dc: 11 },
   { a: 'Salt', b: 'Rootsoup', result: 'Mold', craftMs: 1100, failDestroyChancePct: 28, skill: 'foraging', dc: 10 },
-  { a: 'Sweetroot', b: 'Shroomcake', result: 'MushedRoot', craftMs: 1250, failDestroyChancePct: 15, skill: 'cooking', dc: 10 },
   { a: 'ClothScrap', b: 'Mushrooms', result: 'HerbLeaf', craftMs: 1000, failDestroyChancePct: 13, skill: 'foraging', dc: 10 },
-  { a: 'Lantern', b: 'BobrJuice', result: 'Torch', craftMs: 1300, failDestroyChancePct: 22, skill: 'cooking', dc: 10 },
   { a: 'Slime', b: 'Fungus', result: 'Mold', craftMs: 1050, failDestroyChancePct: 20, skill: 'foraging', dc: 11 },
   { a: 'Fungus', b: 'Slime', result: 'Mucus', craftMs: 950, failDestroyChancePct: 16, skill: 'foraging', dc: 10 },
   { a: 'WaterbagFull', b: 'SporePaste', result: 'SporeStew', craftMs: 1500, failDestroyChancePct: 16, skill: 'cooking', dc: 11 },
   { a: 'ClothScrap', b: 'Salt', result: 'DryWrap', craftMs: 950, failDestroyChancePct: 10, skill: 'weaving', dc: 9 },
 
+  // Campfire kit (Flint is slot B: preserved) + station tools.
+  { a: 'Stick', b: 'Flint', result: 'CampfireKit', craftMs: 1400, failDestroyChancePct: 18, skill: 'chipping', dc: 10, preserveB: true },
+  { a: 'StoneShard', b: 'Stone', result: 'Flint', craftMs: 1200, failDestroyChancePct: 20, skill: 'chipping', dc: 11 },
+  { a: 'Twine', b: 'Stone', result: 'IronPot', craftMs: 1800, failDestroyChancePct: 22, skill: 'weaving', dc: 13 },
+  { a: 'IronPot', b: 'Twine', result: 'Kettle', craftMs: 1600, failDestroyChancePct: 18, skill: 'weaving', dc: 12 },
+
   // Swarm tools (inventory craft; world capture onto Swarm remains separate).
   { a: 'Twine', b: 'Hive', result: 'SwarmBasket', craftMs: 1550, failDestroyChancePct: 16, skill: 'weaving', dc: 12 },
   { a: 'Hive', b: 'Grubling', result: 'CapturedSwarm', craftMs: 1650, failDestroyChancePct: 20, skill: 'foraging', dc: 11 },
   { a: 'Hive', b: 'Mushrooms', result: 'CapturedSwarm', craftMs: 1500, failDestroyChancePct: 15, skill: 'foraging', dc: 10 },
+
+  // Slime phial (inventory craft; world capture onto Wurglepup remains separate).
+  { a: 'GlassVial', b: 'Slime', result: 'SlimePhial', craftMs: 1400, failDestroyChancePct: 15, skill: 'weaving', dc: 11 },
+  { a: 'GlassVial', b: 'Mucus', result: 'SlimePhial', craftMs: 1380, failDestroyChancePct: 14, skill: 'foraging', dc: 10 },
+
+  // Glowbug jar (dim hand light + Shrine offering; vial-first only, parallel to Slime phial).
+  { a: 'GlassVial', b: 'Glowbug', result: 'GlowbugJar', craftMs: 1380, failDestroyChancePct: 14, skill: 'weaving', dc: 11 },
+  // Add glowbugs to an existing jar (order-sensitive both ways; cap 12 on the jar row).
+  { a: 'Glowbug', b: 'GlowbugJar', result: 'GlowbugJar', craftMs: 900, failDestroyChancePct: 10, skill: 'weaving', dc: 9 },
+  { a: 'GlowbugJar', b: 'Glowbug', result: 'GlowbugJar', craftMs: 900, failDestroyChancePct: 10, skill: 'weaving', dc: 9 },
+
+  // Snailord-linked juvenile snail + shell (bases: `npcLoot` Snailord; procgen allowlist).
+  { a: 'Snailing', b: 'Chisel', result: 'SnailingShell', craftMs: 1150, failDestroyChancePct: 15, skill: 'chipping', dc: 10, preserveB: true },
+  { a: 'Snailing', b: 'Salt', result: 'PickledSnailing', craftMs: 1300, failDestroyChancePct: 12, skill: 'cooking', dc: 10 },
+  { a: 'Snailing', b: 'Moss', result: 'PickledSnailing', craftMs: 1350, failDestroyChancePct: 14, skill: 'cooking', dc: 11 },
+  { a: 'SnailingShell', b: 'StoneShard', result: 'ShellSpike', craftMs: 1280, failDestroyChancePct: 16, skill: 'chipping', dc: 11 },
+  { a: 'SnailingShell', b: 'Twine', result: 'ShellCharm', craftMs: 1380, failDestroyChancePct: 14, skill: 'weaving', dc: 11 },
+  { a: 'Snailing', b: 'Slime', result: 'SnailSlimePaste', craftMs: 1120, failDestroyChancePct: 14, skill: 'foraging', dc: 10 },
+
+  // Kuratko nest eggs (`findRecipe` maps any full water vessel to `WaterbagFull` for matching).
+  { a: 'KuratkoEgg', b: 'WaterbagFull', result: 'BoiledKuratkoEgg', craftMs: 1200, failDestroyChancePct: 12, skill: 'cooking', dc: 9 },
+  { a: 'KuratkoEgg', b: 'HerbLeaf', result: 'HerbKuratkoOmelette', craftMs: 1300, failDestroyChancePct: 13, skill: 'cooking', dc: 10 },
 ]
 
 export function findRecipe(defA: ItemDefId, defB: ItemDefId): RecipeDef | null {
+  const aV = FULL_WATER_VESSEL_SET.has(defA)
+  const bV = FULL_WATER_VESSEL_SET.has(defB)
+  if (aV && bV) return null
+  const canonA = aV ? ('WaterbagFull' as ItemDefId) : defA
+  const canonB = bV ? ('WaterbagFull' as ItemDefId) : defB
   for (const r of ALL_RECIPES) {
-    if (r.a === defA && r.b === defB) return r
+    if (r.a === canonA && r.b === canonB) return r
   }
   return null
+}
+
+/** Max glowbugs stowed in one jar (camera light scales up to this). */
+export const GLOWBUG_JAR_MAX_GLOWBUGS = 12 as const
+
+/** Inventory craft that adds a Glowbug into an existing Glowbug jar (not vial + bug). */
+export function isGlowbugJarEnrichPair(defSrc: ItemDefId, defDst: ItemDefId): boolean {
+  return (
+    (defSrc === 'Glowbug' && defDst === 'GlowbugJar') ||
+    (defSrc === 'GlowbugJar' && defDst === 'Glowbug')
+  )
 }
 
