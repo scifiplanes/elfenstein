@@ -16,7 +16,7 @@ function mkCombat(npcIds: string[]): CombatState {
 }
 
 function baseFloor(overrides: Partial<GameState['floor']>): GameState['floor'] {
-  return {
+  const base: GameState['floor'] = {
     seed: 1,
     floorIndex: 0,
     floorType: 'Dungeon',
@@ -24,12 +24,19 @@ function baseFloor(overrides: Partial<GameState['floor']>): GameState['floor'] {
     difficulty: 1,
     w: 16,
     h: 16,
-    tiles: Array(16 * 16).fill('floor'),
+    tiles: Array(16 * 16).fill('floor') as GameState['floor']['tiles'],
     pois: [],
     itemsOnFloor: [],
     floorGeomRevision: 0,
     npcs: [],
+    playerPos: { x: 1, y: 1 },
+    playerDir: 0,
+  }
+  return {
+    ...base,
     ...overrides,
+    playerPos: overrides.playerPos ?? base.playerPos,
+    playerDir: overrides.playerDir ?? base.playerDir,
   }
 }
 
@@ -65,7 +72,7 @@ function shell(floor: GameState['floor']): GameState {
       perkHistory: [],
       bonuses: { hpMaxBonus: 0, staminaMaxBonus: 0, damageBonusPct: 0 },
     },
-    party: { chars: [], items: {}, inventory: { slots: Array(24).fill(null) } },
+    party: { chars: [], items: {}, inventory: { cols: 6, rows: 4, slots: Array(24).fill(null) } },
     view: { camPos: { x: 0, y: 0, z: 0 }, camYaw: 0 },
     floor,
   }
@@ -93,7 +100,7 @@ describe('combatVictoryXp', () => {
             status: 'hostile',
             hp: 0,
             hpMax: npcKindHpMax('Kuratko'),
-            language: 'Common',
+            language: 'DeepGnome',
             statuses: [],
           },
         ],
@@ -110,7 +117,7 @@ describe('combatVictoryXp', () => {
             status: 'hostile',
             hp: 0,
             hpMax: npcKindHpMax('Chumbo'),
-            language: 'Common',
+            language: 'DeepGnome',
             statuses: [],
           },
         ],
@@ -132,7 +139,7 @@ describe('combatVictoryXp', () => {
             status: 'hostile',
             hp: 0,
             hpMax: hp,
-            language: 'Common',
+            language: 'DeepGnome',
             statuses: [],
           },
         ],
@@ -149,7 +156,7 @@ describe('combatVictoryXp', () => {
             status: 'hostile',
             hp: 0,
             hpMax: hp,
-            language: 'Common',
+            language: 'DeepGnome',
             statuses: [],
             variant: 'boss',
           },

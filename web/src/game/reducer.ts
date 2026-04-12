@@ -1347,11 +1347,12 @@ export function reduce(state: GameState, action: Action): GameState {
 
       if (target.kind === 'stowEquipped') {
         if (payload.source.kind !== 'equipmentSlot') return stateAtAction
-        const srcPc = stateAtAction.party.chars.find((x) => x.id === payload.source.characterId)
+        const eqSrc = payload.source
+        const srcPc = stateAtAction.party.chars.find((x) => x.id === eqSrc.characterId)
         if (!srcPc || srcPc.hp <= 0) {
           return reduce(pushActivityLog(stateAtAction, 'Cannot adjust gear right now.'), { type: 'ui/sfx', kind: 'reject' })
         }
-        return unequipItem(stateAtAction, payload.source.characterId, payload.source.slot)
+        return unequipItem(stateAtAction, eqSrc.characterId, eqSrc.slot)
       }
 
       if (target.kind === 'inventorySlot') {
@@ -1386,14 +1387,15 @@ export function reduce(state: GameState, action: Action): GameState {
           return swapInventorySlots(stateAtAction, src, dst)
         }
         if (payload.source.kind === 'equipmentSlot') {
-          const srcEq = stateAtAction.party.chars.find((x) => x.id === payload.source.characterId)
+          const eqSrc = payload.source
+          const srcEq = stateAtAction.party.chars.find((x) => x.id === eqSrc.characterId)
           if (!srcEq || srcEq.hp <= 0) {
             return reduce(pushActivityLog(stateAtAction, 'Cannot adjust gear right now.'), { type: 'ui/sfx', kind: 'reject' })
           }
           return moveEquippedItemToInventorySlot(
             stateAtAction,
-            payload.source.characterId,
-            payload.source.slot,
+            eqSrc.characterId,
+            eqSrc.slot,
             itemId,
             dst,
           )

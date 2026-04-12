@@ -29,7 +29,7 @@ describe('forage floor patches', () => {
     const draws = [0.92]
     const rng = {
       next: () => draws[i++] ?? 0.99,
-      int: (min: number, maxExclusive: number) => min,
+      int: (min: number, _maxExclusive: number) => min,
       pick: <T,>(arr: readonly T[]) => arr[0]!,
     }
     const defId = pickFloorItemDefFromTable(
@@ -97,7 +97,7 @@ describe('forage floor patches', () => {
     const rng = {
       // First roll must be in [0.06, 0.18) to hit Grubling (below 0.06 is Slime/GlassVial).
       next: () => (i++ === 0 ? 0.07 : 0.99),
-      int: (min: number, maxExclusive: number) => min,
+      int: (min: number, _maxExclusive: number) => min,
       pick: <T,>(arr: readonly T[]) => arr[0]!,
     }
     const defId = pickFloorItemDefFromTable(
@@ -123,7 +123,7 @@ describe('forage floor patches', () => {
     let i = 0
     const rng = {
       next: () => (i++ === 0 ? 0.05 : 0.99),
-      int: (min: number, maxExclusive: number) => min,
+      int: (min: number, _maxExclusive: number) => min,
       pick: <T,>(arr: readonly T[]) => arr[0]!,
     }
     const defId = pickFloorItemDefFromTable(

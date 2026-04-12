@@ -47,7 +47,7 @@ describe('Glowbug jar enrich (reducer)', () => {
       target: { kind: 'inventorySlot', slotIndex: 1 },
     })
     expect(s.ui.crafting).toBeUndefined()
-    expect(s.ui.activityLog.some((e) => e.text.includes('full'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('full'))).toBe(true)
     expect(s.party.items[bugId]?.defId).toBe('Glowbug')
     expect(s.party.items[jarId]?.glowbugs).toBe(12)
   })

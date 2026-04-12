@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { generateDungeon } from './generateDungeon'
+import type { FloorProperty } from './types'
 
 const BASE = {
   w: 31,
   h: 31,
   floorType: 'Dungeon' as const,
-  floorProperties: [] as const,
+  floorProperties: [] as FloorProperty[],
   difficulty: 1 as const,
 }
 

@@ -38,7 +38,7 @@ describe('npcBosses', () => {
       floorType: 'Dungeon' as const,
       floorIndex: 0,
       floorProperties: [] as const,
-      rng: { next: () => 0.5, int: (a: number, b: number) => a, pick: <T,>(a: readonly T[]) => a[0]! },
+      rng: { next: () => 0.5, int: (a: number, _b: number) => a, pick: <T,>(a: readonly T[]) => a[0]! },
       roomDist: 5,
       onPath: true,
       neighborRoomFunctions: {},

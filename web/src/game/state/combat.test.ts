@@ -443,7 +443,7 @@ describe('skipPcTurn', () => {
       action: 'skip',
       atMs: 1000,
     })
-    expect(next.ui.activityLog.at(-1)?.text).toContain('waits')
+    expect((next.ui.activityLog ?? []).at(-1)?.text).toContain('waits')
   })
 })
 
@@ -487,7 +487,7 @@ describe('attemptFlee', () => {
     const r = attemptFlee(state)
     expect(r.advanceTurn).toBe(false)
     expect(r.state.party.chars[0]!.stamina).toBe(30)
-    expect(r.state.ui.activityLog.at(-1)?.text).toBe('Not your turn.')
+    expect((r.state.ui.activityLog ?? []).at(-1)?.text).toBe('Not your turn.')
     expect(r.state.ui.sfxQueue?.at(-1)?.kind).toBe('reject')
   })
 

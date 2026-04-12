@@ -69,7 +69,7 @@ describe('drag/drop openDoor', () => {
     })
     expect(s.floor.tiles[doorIdx]).toBe('floor')
     expect(s.floor.floorGeomRevision).toBe(rev0 + 1)
-    expect(s.ui.activityLog.some((e) => e.text.includes('splinters'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('splinters'))).toBe(true)
   })
 
   it('removes gen.doors entry at that cell when present', () => {
@@ -121,7 +121,7 @@ describe('drag/drop openDoor', () => {
       target: { kind: 'openDoor', x: 6, y: 5 },
     })
     expect(s.floor.tiles[doorIdx]).toBe(tileBefore)
-    expect(s.ui.activityLog.some((e) => e.text.includes('right tool'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('right tool'))).toBe(true)
   })
 
   it('rejects when Manhattan range exceeded', () => {
@@ -134,7 +134,7 @@ describe('drag/drop openDoor', () => {
       payload: { itemId: clubId, source: { kind: 'inventorySlot', slotIndex: 0, itemId: clubId } },
       target: { kind: 'openDoor', x: 6, y: 5 },
     })
-    expect(s.ui.activityLog.some((e) => e.text.includes('Too far'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('Too far'))).toBe(true)
   })
 
   it('splintering removes item when tool durability hits 0 (portrait toast)', () => {
@@ -162,8 +162,10 @@ describe('drag/drop openDoor', () => {
       ...s,
       combat: {
         encounterId: 'e1',
+        startedAtMs: 0,
         turnIndex: 0,
-        participants: { pcs: [s.party.chars[0]!.id], npcs: ['n1'] },
+        participants: { party: [s.party.chars[0]!.id], npcs: ['n1'] },
+        turnQueue: [],
       } as GameState['combat'],
     }
     const clubId = 'i_od_club' as ItemId
@@ -172,6 +174,6 @@ describe('drag/drop openDoor', () => {
       payload: { itemId: clubId, source: { kind: 'inventorySlot', slotIndex: 0, itemId: clubId } },
       target: { kind: 'openDoor', x: 6, y: 5 },
     })
-    expect(s.ui.activityLog.some((e) => e.text.includes('Not while in combat'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('Not while in combat'))).toBe(true)
   })
 })

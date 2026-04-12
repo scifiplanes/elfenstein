@@ -1488,8 +1488,9 @@ export class WorldRenderer {
     for (const p of this.pickables) {
       const mesh = p as THREE.Mesh
       if (!mesh.isMesh) continue
+      if (mesh.material === this.elderDistortionMat) continue
       const mat = mesh.material as THREE.MeshLambertMaterial
-      if (!mat || mat === this.elderDistortionMat) continue
+      if (!mat) continue
       const ud = mesh.userData as { kind?: unknown; poiEmojiBillboard?: boolean; npcEmojiBillboard?: boolean }
       const k = String(ud.kind ?? '')
       if (k === 'floorItem') mat.emissiveIntensity = baseEmissiveScaled

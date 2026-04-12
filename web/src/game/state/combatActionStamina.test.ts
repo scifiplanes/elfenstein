@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Character } from '../types'
+import type { Character, CharacterStats } from '../types'
 import {
   COMBAT_DEFEND_STAMINA_COST,
   COMBAT_FLEE_STAMINA_COST,
@@ -8,7 +8,10 @@ import {
   effectiveFleeStaminaCost,
 } from './combat'
 
-function mkChar(overrides: Partial<Character> & Pick<Character, 'id'>): Character {
+type MkCharOverrides = Partial<Omit<Character, 'id' | 'stats'>> &
+  Pick<Character, 'id'> & { stats?: Partial<CharacterStats> }
+
+function mkChar(overrides: MkCharOverrides): Character {
   const base: Character = {
     id: overrides.id,
     name: overrides.id,
@@ -37,7 +40,7 @@ function mkChar(overrides: Partial<Character> & Pick<Character, 'id'>): Characte
   return {
     ...base,
     ...overrides,
-    stats: { ...base.stats, ...overrides.stats },
+    stats: { ...base.stats, ...overrides.stats } as CharacterStats,
   }
 }
 

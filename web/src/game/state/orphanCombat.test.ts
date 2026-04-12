@@ -34,7 +34,8 @@ describe('orphan encounter combat', () => {
     expect(s0.combat).toBeDefined()
     const s1 = reduce(s0, { type: 'combat/fleeAttempt' })
     expect(s1.combat).toBeUndefined()
-    const last = s1.ui.activityLog[s1.ui.activityLog.length - 1]?.text ?? ''
+    const log = s1.ui.activityLog ?? []
+    const last = log[log.length - 1]?.text ?? ''
     expect(last).toMatch(/Encounter won/)
   })
 
@@ -42,7 +43,7 @@ describe('orphan encounter combat', () => {
     const s0 = orphanCombatState()
     const s1 = reduce(s0, { type: 'time/tick', nowMs: s0.nowMs + 500 })
     expect(s1.combat).toBeUndefined()
-    const won = s1.ui.activityLog.some((e) => e.text.includes('Encounter won'))
+    const won = (s1.ui.activityLog ?? []).some((e) => e.text.includes('Encounter won'))
     expect(won).toBe(true)
   })
 })

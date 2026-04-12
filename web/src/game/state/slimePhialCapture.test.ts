@@ -53,7 +53,7 @@ describe('Slime phial / Captured slime NPC drag', () => {
     expect(s.party.items[itemId]).toBeUndefined()
     const captured = Object.values(s.party.items).find((it) => it.defId === 'CapturedSlime')
     expect(captured?.qty).toBe(1)
-    expect(s.ui.activityLog.some((e) => e.text.includes('Captured the slime'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('Captured the slime'))).toBe(true)
   })
 
   it('CapturedSlime on Skeleton applies damage and consumes item', () => {
@@ -82,7 +82,7 @@ describe('Slime phial / Captured slime NPC drag', () => {
     expect(skAfter).toBeDefined()
     expect(skAfter!.hp).toBeGreaterThanOrEqual(skHp - 19)
     expect(skAfter!.hp).toBeLessThanOrEqual(skHp - 12)
-    expect(s.ui.activityLog.some((e) => e.text.includes('dmg'))).toBe(true)
+    expect((s.ui.activityLog ?? []).some((e) => e.text.includes('dmg'))).toBe(true)
   })
 
   it('rejects capture and release during combat', () => {
@@ -103,7 +103,7 @@ describe('Slime phial / Captured slime NPC drag', () => {
     const combat = {
       encounterId: 'enc_test',
       startedAtMs: 0,
-      participants: { party: ['c1'] as const, npcs: ['n_sk_c'] as const },
+      participants: { party: ['c1'], npcs: ['n_sk_c'] },
       turnQueue: [
         { kind: 'pc' as const, id: 'c1', initiative: 10 },
         { kind: 'npc' as const, id: 'n_sk_c', initiative: 8 },
@@ -118,7 +118,7 @@ describe('Slime phial / Captured slime NPC drag', () => {
       target: { kind: 'npc', npcId: 'n_wurm_test' },
     })
     expect(afterCap.floor.npcs.some((n) => n.kind === 'Wurglepup')).toBe(true)
-    expect(afterCap.ui.activityLog.some((e) => e.text === 'Not while in combat.')).toBe(true)
+    expect((afterCap.ui.activityLog ?? []).some((e) => e.text === 'Not while in combat.')).toBe(true)
 
     let s2 = withWurglepupAndItem('CapturedSlime', capId)
     s2 = { ...s2, floor: { ...s2.floor, npcs: [sk] }, combat }
@@ -128,6 +128,6 @@ describe('Slime phial / Captured slime NPC drag', () => {
       target: { kind: 'npc', npcId: 'n_sk_c' },
     })
     expect(afterRel.party.items[capId]?.defId).toBe('CapturedSlime')
-    expect(afterRel.ui.activityLog.some((e) => e.text === 'Not while in combat.')).toBe(true)
+    expect((afterRel.ui.activityLog ?? []).some((e) => e.text === 'Not while in combat.')).toBe(true)
   })
 })

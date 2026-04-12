@@ -86,7 +86,7 @@ describe('recruitAtTent', () => {
     expect(next.party.chars[1]!.hp).toBeGreaterThan(0)
     expect(next.run.tentRecruitsCompleted).toBe(1)
     expect(next.party.chars[0]!.hp).toBeGreaterThan(0)
-    const log = next.ui.activityLog.map((e) => e.text).join(' ')
+    const log = (next.ui.activityLog ?? []).map((e) => e.text).join(' ')
     expect(log).toMatch(/joins the party from the tent/)
   })
 
@@ -99,7 +99,11 @@ describe('recruitAtTent', () => {
   it('returns same state when not on village hub', () => {
     const base = makeInitialState(content)
     const dead = base.party.chars.map((c) => ({ ...c, hp: 0 }))
-    const state = { ...base, party: { ...base.party, chars: dead }, ui: { ...base.ui, screen: 'hub', hubScene: 'tavern' } }
+    const state = {
+      ...base,
+      party: { ...base.party, chars: dead },
+      ui: { ...base.ui, screen: 'hub' as const, hubScene: 'tavern' as const },
+    }
     expect(recruitAtTent(state, content)).toBe(state)
   })
 })
@@ -128,7 +132,7 @@ describe('debugReplaceAllPartyWithTentTemplates', () => {
       expect(sat).toBeGreaterThanOrEqual(TENT_REPLACEMENT_PORTRAIT_SATURATE_ALIVE_MIN)
       expect(sat).toBeLessThanOrEqual(TENT_REPLACEMENT_PORTRAIT_SATURATE_ALIVE_MAX)
     }
-    expect(next.ui.activityLog.some((e) => e.text.includes('Debug: party replaced with tent templates'))).toBe(true)
+    expect((next.ui.activityLog ?? []).some((e) => e.text.includes('Debug: party replaced with tent templates'))).toBe(true)
   })
 
   it('bumps revision on repeated calls', () => {
@@ -152,7 +156,7 @@ describe('debugReplaceAllPartyWithTentTemplates', () => {
       },
     }
     const next = reduce(state, { type: 'debug/replaceAllPartyWithTentTemplates' })
-    expect(next.ui.activityLog.some((e) => e.text.includes('Not while in combat'))).toBe(true)
+    expect((next.ui.activityLog ?? []).some((e) => e.text.includes('Not while in combat'))).toBe(true)
     expect(next.ui.sfxQueue?.some((s) => s.kind === 'reject')).toBe(true)
     expect(next.party.chars.map((c) => c.name)).toEqual(state.party.chars.map((c) => c.name))
   })
@@ -163,7 +167,7 @@ describe('hub/recruitAtTent reducer', () => {
     const base = hubVillage(makeInitialState(content))
     const next = reduce(base, { type: 'hub/recruitAtTent' })
     expect(next.party.chars.every((c) => c.hp > 0)).toBe(true)
-    expect(next.ui.activityLog.some((e) => e.text.includes('No fallen heroes'))).toBe(true)
+    expect((next.ui.activityLog ?? []).some((e) => e.text.includes('No fallen heroes'))).toBe(true)
     expect(next.ui.sfxQueue?.some((s) => s.kind === 'reject')).toBe(true)
   })
 })
@@ -175,7 +179,7 @@ describe('hub/enterDungeon living gate', () => {
     const state = { ...base, party: { ...base.party, chars: dead } }
     const next = reduce(state, { type: 'hub/enterDungeon' })
     expect(next.ui.screen).toBe('hub')
-    expect(next.ui.activityLog.some((e) => e.text.includes('living party member'))).toBe(true)
+    expect((next.ui.activityLog ?? []).some((e) => e.text.includes('living party member'))).toBe(true)
     expect(next.ui.sfxQueue?.some((s) => s.kind === 'reject')).toBe(true)
   })
 })

@@ -357,10 +357,10 @@ export function applyCombatFireshield(
 export function defend(state: GameState, pcId: CharacterId): GameState {
   if (!state.combat) return state
   const combat = state.combat
-  const cost = effectiveDefendStaminaCost(pc)
   const idx = state.party.chars.findIndex((c) => c.id === pcId)
   if (idx < 0) return state
   const pc = state.party.chars[idx]!
+  const cost = effectiveDefendStaminaCost(pc)
   if (pc.stamina < cost) {
     let next = pushActivityLog(state, 'Too exhausted to defend.')
     next = pushSfx(next, 'reject')

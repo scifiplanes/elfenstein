@@ -1,4 +1,4 @@
-import type { DamageType, NpcKind, Resistances, StatusEffectId } from '../types'
+import type { NpcKind, Resistances } from '../types'
 import type { FloorProperty, FloorType, GenRoom } from '../../procgen/types'
 import type { Rng } from '../../procgen/seededRng'
 import { npcCombatTuningFromContent, type NpcCombatRow } from './npcCombat'

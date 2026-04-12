@@ -92,6 +92,6 @@ describe('feedCharacter', () => {
     }
     const next = feedCharacter(state, content, cid, itemId)
     expect(next.party.items[itemId]).toBeDefined()
-    expect(next.ui.activityLog.some((e) => e.text.includes('cannot eat'))).toBe(true)
+    expect((next.ui.activityLog ?? []).some((e) => e.text.includes('cannot eat'))).toBe(true)
   })
 })
