@@ -7755,3 +7755,17 @@ Fetch **`debug-settings.json`** using **`import.meta.env.BASE_URL`** (via **`deb
 Deploys must still ship an up-to-date **`debug-settings.json`** for full parity; this only fixes **wrong-path** fetches and **missing-key** fallbacks. If **`debugUi.roomTelegraphStrength`** changes in JSON again, **`initialState`** should stay in sync (or a test could assert equality).
 
 ---
+
+## ADR-0494 — Shipped well glow nudge snapshot
+Date: 2026-04-13
+
+### Decision
+Commit **`web/public/debug-settings.json`** **`render.poiWellGlowNudgeX/Y/Z`** as **0 / −0.015 / 0** (was **0.005 / 0 / −0.01**).
+
+### Rationale
+Retune filled-well **glow** layer alignment relative to the Lambert well billboard.
+
+### Consequences
+Fresh loads that apply the shipped file pick up the new offsets; **`DEFAULT_RENDER`** in **`tuningDefaults.ts`** stays **0 / 0 / 0**—the JSON remains the published override until code defaults change.
+
+---
