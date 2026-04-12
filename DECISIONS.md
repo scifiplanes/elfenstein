@@ -7671,3 +7671,17 @@ Date: 2026-04-12
 Supersedes the filename claim in **ADR-0316** for actual hosting behavior; **`DESIGN.md`** §6.1 documents the canonical URLs.
 
 ---
+
+## ADR-0488 — Passive hunger/thirst drain + Starving/Dehydrated gameplay hooks
+Date: 2026-04-12
+
+### Decision
+Add real-time **dungeon-only** vitals drain (**`applyVitalsTimeDrain`** in **`web/src/game/state/vitalsDerived.ts`**) driven by **`render.vitalsHungerDrainPerGameMin`** / **`vitalsThirstDrainPerGameMin`** (**0** disables), with **2s max** delta per tick and **`run.vitalsDrainAccByChar`** fractional carry. Sync **`Starving`** / **`Dehydrated`** (**permanent** rows, **`untilMs` unset**) when **hunger ≤ 0** / **thirst ≤ 0** via **`syncStarvationDehydrationStatuses`** after tick drain (with **`nowMs`** patched to the tick time before sync), portrait rest, and feed; portrait **`status`** toasts on enter/exit only. Apply mild **step** stamina penalties (**`vitalsDrainStaminaStepPenaltyStarving` / `Dehydrated`**) and NPC-vs-PC **defense** penalties (**`vitalsDefensePenaltyStarving` / `Dehydrated`**, exposed as **`npcHitDefenseVsPc`** for tests). F2 **Portrait** sliders + **`debug-settings.json`** / **`DEFAULT_RENDER`** carry the six new **`render`** fields.
+
+### Rationale
+Vitals were previously static except portrait rest; **`Starving`** / **`Dehydrated`** existed in content but had **no** mechanics. Time-based drain during **`ui.screen === 'game'`** gives pressure without tying to grid moves; statuses centralize UX and tuning. No HP DOT in this pass keeps failure modes readable.
+
+### Consequences
+Players must **eat/drink** on longer dungeon segments or raise F2 drain to **0** for legacy feel. Checkpoints persist **`vitalsDrainAccByChar`** when present. Supersedes the prior “no passive vitals decay” implicit behavior documented in Q&A only.
+
+---

@@ -745,6 +745,19 @@ export type RenderTuning = {
   /** Min ms between low-vital portrait toasts per character. */
   lowVitalWarnCooldownMs: number
 
+  /** Passive hunger drain in dungeon (`ui.screen === 'game'`): points lost per real-time minute (0 = off). */
+  vitalsHungerDrainPerGameMin: number
+  /** Passive thirst drain under the same rules as hunger (0 = off). */
+  vitalsThirstDrainPerGameMin: number
+  /** Extra integer STA on each step pacing tick while `Starving` (0 = off). */
+  vitalsDrainStaminaStepPenaltyStarving: number
+  /** Extra integer STA on each step pacing tick while `Dehydrated` (0 = off). */
+  vitalsDrainStaminaStepPenaltyDehydrated: number
+  /** Subtracted from NPC vs PC defense while `Starving` (0 = off). */
+  vitalsDefensePenaltyStarving: number
+  /** Subtracted from NPC vs PC defense while `Dehydrated` (0 = off). */
+  vitalsDefensePenaltyDehydrated: number
+
   /** Elder NPC procedural mesh billboard; F2 **NPCs** → **Elder 3D shader**. */
   elderDistortion: ElderDistortionTuning
   /**
@@ -842,6 +855,11 @@ export type GameState = {
     debugTentPortraitHueRevision?: number
     /** F2 debug: bumped by `debug/replaceAllPartyWithTentTemplates` so hashes re-roll each click. */
     debugReplaceAllPartyRevision?: number
+    /**
+     * Fractional accumulators for passive hunger/thirst drain (see `vitalsDerived.ts`).
+     * Persisted with checkpoints when present.
+     */
+    vitalsDrainAccByChar?: Partial<Record<CharacterId, { hunger: number; thirst: number }>>
   }
 
   combat?: CombatState

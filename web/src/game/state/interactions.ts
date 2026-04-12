@@ -4,6 +4,7 @@ import { consumeFeedLeavingEmpty, consumeItem } from './inventory'
 import { pushActivityLog } from './activityLog'
 import { pushPortraitToast } from './portraitToasts'
 import { addStatusWithPortraitToast, removeStatusWithPortraitToast } from './statusTelegraph'
+import { syncStarvationDehydrationStatuses } from './vitalsDerived'
 import { hpMax, staminaMax } from './runProgression'
 
 export function inspectCharacter(state: GameState, content: ContentDB, characterId: string, itemId: ItemId): GameState {
@@ -337,7 +338,7 @@ export function feedCharacter(state: GameState, content: ContentDB, characterId:
     }
   }
 
-  return pushActivityLog(withSfx, `${c.name} eats.`)
+  return pushActivityLog(syncStarvationDehydrationStatuses(withSfx), `${c.name} eats.`)
 }
 
 function hashStr(s: string) {

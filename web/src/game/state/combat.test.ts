@@ -8,6 +8,7 @@ import {
   advanceTurnIndex,
   attemptFlee,
   collectEncounterNpcIds,
+  npcHitDefenseVsPc,
   npcTakeTurn,
   QUEST_SHOUT_CHANCE_PCT,
   questShoutRollMod100,
@@ -104,6 +105,47 @@ function gameShell(overrides: Partial<GameState> & { floor: GameState['floor']; 
   }
   return base
 }
+
+describe('npcHitDefenseVsPc', () => {
+  it('subtracts Starving and Dehydrated penalties from render tuning', () => {
+    const pc: Character = {
+      ...mkChar('c1', 5, 20),
+      statuses: [
+        { id: 'Starving', untilMs: undefined },
+        { id: 'Dehydrated', untilMs: undefined },
+      ],
+    }
+    const state = gameShell({
+      render: {
+        ...DEFAULT_RENDER,
+        vitalsDefensePenaltyStarving: 2,
+        vitalsDefensePenaltyDehydrated: 3,
+      },
+      party: {
+        chars: [pc],
+        inventory: { cols: 10, rows: 2, slots: emptySlots(20) },
+        items: {},
+      },
+      floor: {
+        seed: 1,
+        floorIndex: 0,
+        floorType: 'Dungeon',
+        floorProperties: [],
+        difficulty: 1,
+        w: 8,
+        h: 8,
+        tiles: Array(64).fill('floor') as GameState['floor']['tiles'],
+        pois: [],
+        itemsOnFloor: [],
+        floorGeomRevision: 0,
+        npcs: [],
+        playerPos: { x: 1, y: 1 },
+        playerDir: 0,
+      },
+    })
+    expect(npcHitDefenseVsPc(state, pc).defense).toBe(10)
+  })
+})
 
 describe('collectEncounterNpcIds', () => {
   it('includes hostiles in the same procgen room as the primary', () => {

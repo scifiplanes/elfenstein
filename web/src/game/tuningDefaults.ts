@@ -172,6 +172,13 @@ export const DEFAULT_RENDER: RenderTuning = {
   lowThirstWarnFrac: 0.25,
   lowVitalWarnCooldownMs: 7000,
 
+  vitalsHungerDrainPerGameMin: 2,
+  vitalsThirstDrainPerGameMin: 3,
+  vitalsDrainStaminaStepPenaltyStarving: 1,
+  vitalsDrainStaminaStepPenaltyDehydrated: 1,
+  vitalsDefensePenaltyStarving: 1,
+  vitalsDefensePenaltyDehydrated: 1,
+
   elderDistortion: DEFAULT_ELDER_DISTORTION,
   elderShaderQuality: 2,
 

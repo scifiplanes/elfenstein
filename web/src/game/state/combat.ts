@@ -93,6 +93,36 @@ function pcHasActiveStatus(c: Character, state: GameState, id: StatusEffectId): 
   return c.statuses.some((s) => s.id === id && (s.untilMs == null || s.untilMs > state.nowMs))
 }
 
+/** NPC d20+speed vs this value to hit the PC (encounter combat). Exported for tests. */
+export function npcHitDefenseVsPc(state: GameState, target: Character): {
+  defense: number
+  speedForAc: number
+  statusAcMods: string[]
+} {
+  const speedForAc = Math.min(target.stats.speed, NPC_VS_PC_DEFENSE_SPEED_CAP)
+  let defense = 10 + speedForAc
+  const statusAcMods: string[] = []
+  if (pcHasActiveStatus(target, state, 'Parasitized')) {
+    defense -= 1
+    statusAcMods.push('−1 Parasitized')
+  }
+  if (pcHasActiveStatus(target, state, 'Spored')) {
+    defense -= 1
+    statusAcMods.push('−1 Spored')
+  }
+  const penStarve = Math.max(0, Math.round(Number(state.render.vitalsDefensePenaltyStarving ?? 0)))
+  if (penStarve > 0 && pcHasActiveStatus(target, state, 'Starving')) {
+    defense -= penStarve
+    statusAcMods.push(`−${penStarve} Starving`)
+  }
+  const penDehyd = Math.max(0, Math.round(Number(state.render.vitalsDefensePenaltyDehydrated ?? 0)))
+  if (penDehyd > 0 && pcHasActiveStatus(target, state, 'Dehydrated')) {
+    defense -= penDehyd
+    statusAcMods.push(`−${penDehyd} Dehydrated`)
+  }
+  return { defense, speedForAc, statusAcMods }
+}
+
 function tieBreak01(state: GameState, encounterId: Id, participantKey: string) {
   const h = hashStr(`${state.floor.seed}:${encounterId}:${participantKey}`)
   return ((h % 10_000) + 0.5) / 10_000 // (0, 1)
@@ -579,17 +609,7 @@ export function npcTakeTurn(state: GameState, npcId: Id): GameState {
   const mitigated = isPhysical ? Math.max(0, tuned.baseDamage - armor) : tuned.baseDamage
   const d20 = combat != null ? rollD20(st, combat.encounterId, `npcHit:${npc.id}:${target.id}:${combat.turnIndex}`) : 20
   const toHit = d20 + tuned.speed
-  const speedForAc = Math.min(target.stats.speed, NPC_VS_PC_DEFENSE_SPEED_CAP)
-  let defense = 10 + speedForAc
-  const statusAcMods: string[] = []
-  if (pcHasActiveStatus(target, st, 'Parasitized')) {
-    defense -= 1
-    statusAcMods.push('−1 Parasitized')
-  }
-  if (pcHasActiveStatus(target, st, 'Spored')) {
-    defense -= 1
-    statusAcMods.push('−1 Spored')
-  }
+  const { defense, speedForAc, statusAcMods } = npcHitDefenseVsPc(st, target)
   const hit = toHit >= defense
   const crit = d20 === 20
   const final = hit ? Math.max(1, Math.round(mitigated * (1 - resist) * (crit ? 1.5 : 1))) : 0

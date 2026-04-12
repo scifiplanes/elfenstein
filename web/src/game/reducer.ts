@@ -47,6 +47,11 @@ import {
 import { effectiveStaminaMoveEveryN, nextStaminaMovePace } from './state/staminaMovePacing'
 import { prunePortraitToasts, pushPortraitToast } from './state/portraitToasts'
 import { applyLowVitalPortraitWarnings } from './state/vitalPortraitWarnings'
+import {
+  applyVitalsTimeDrain,
+  staminaStepVitalsBumpForCharacter,
+  syncStarvationDehydrationStatuses,
+} from './state/vitalsDerived'
 import { applyItemOnPoi, applyPoiUse } from './state/poi'
 import {
   clearEquippedSlotIfMatched,
@@ -866,6 +871,7 @@ export function reduce(state: GameState, action: Action): GameState {
       if (staAdded > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `+${staAdded} STA`, ttlMs: ttl })
       if (hunCost > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `−${hunCost} hunger`, ttlMs: ttl })
       if (thrCost > 0) next = pushPortraitToast(next, { characterId: action.characterId, kind: 'statDelta', text: `−${thrCost} thirst`, ttlMs: ttl })
+      next = syncStarvationDehydrationStatuses(next)
       return next
     }
     case 'ui/portraitIdleCancel': {
@@ -919,7 +925,9 @@ export function reduce(state: GameState, action: Action): GameState {
       if (state.ui.bobrIntroUntilMs != null && tickNow >= state.ui.bobrIntroUntilMs) {
         tickState = { ...state, ui: { ...state.ui, bobrIntroUntilMs: undefined } }
       }
-      let next: GameState = pruneExpiredActivityLog({ ...tickState, nowMs: tickNow })
+      const vitalsDrained = applyVitalsTimeDrain(tickState, tickNow)
+      const vitalsSynced = syncStarvationDehydrationStatuses({ ...vitalsDrained, nowMs: tickNow })
+      let next: GameState = pruneExpiredActivityLog({ ...vitalsSynced, nowMs: tickNow })
       next = prunePortraitToasts(next, tickNow)
       next = prunePortraitBandageDecals(next, tickNow)
       const withDecay = applyStatusDecay(next)
@@ -2354,6 +2362,24 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
   const lowHungerWarnFrac = Math.max(0, Math.min(1, Number(src.lowHungerWarnFrac ?? DEFAULT_RENDER.lowHungerWarnFrac)))
   const lowThirstWarnFrac = Math.max(0, Math.min(1, Number(src.lowThirstWarnFrac ?? DEFAULT_RENDER.lowThirstWarnFrac)))
   const lowVitalWarnCooldownMs = Math.max(0, Math.min(120_000, Math.round(Number(src.lowVitalWarnCooldownMs ?? DEFAULT_RENDER.lowVitalWarnCooldownMs))))
+  const vitalsHungerDrainPerGameMin = Math.max(0, Math.min(120, Number(src.vitalsHungerDrainPerGameMin ?? DEFAULT_RENDER.vitalsHungerDrainPerGameMin)))
+  const vitalsThirstDrainPerGameMin = Math.max(0, Math.min(120, Number(src.vitalsThirstDrainPerGameMin ?? DEFAULT_RENDER.vitalsThirstDrainPerGameMin)))
+  const vitalsDrainStaminaStepPenaltyStarving = Math.max(
+    0,
+    Math.min(10, Math.round(Number(src.vitalsDrainStaminaStepPenaltyStarving ?? DEFAULT_RENDER.vitalsDrainStaminaStepPenaltyStarving))),
+  )
+  const vitalsDrainStaminaStepPenaltyDehydrated = Math.max(
+    0,
+    Math.min(10, Math.round(Number(src.vitalsDrainStaminaStepPenaltyDehydrated ?? DEFAULT_RENDER.vitalsDrainStaminaStepPenaltyDehydrated))),
+  )
+  const vitalsDefensePenaltyStarving = Math.max(
+    0,
+    Math.min(5, Math.round(Number(src.vitalsDefensePenaltyStarving ?? DEFAULT_RENDER.vitalsDefensePenaltyStarving))),
+  )
+  const vitalsDefensePenaltyDehydrated = Math.max(
+    0,
+    Math.min(5, Math.round(Number(src.vitalsDefensePenaltyDehydrated ?? DEFAULT_RENDER.vitalsDefensePenaltyDehydrated))),
+  )
   const itemDurabilityEnabled = Number(src.itemDurabilityEnabled ?? DEFAULT_RENDER.itemDurabilityEnabled) > 0 ? 1 : 0
   const itemDurabilityToolUseCost = Math.max(0, Math.min(50, Math.round(Number(src.itemDurabilityToolUseCost ?? DEFAULT_RENDER.itemDurabilityToolUseCost))))
   const itemDurabilityWeaponHitCost = Math.max(0, Math.min(50, Math.round(Number(src.itemDurabilityWeaponHitCost ?? DEFAULT_RENDER.itemDurabilityWeaponHitCost))))
@@ -2479,6 +2505,12 @@ function clampRenderTuning(r: Partial<RenderTuning> & LegacyNpcRenderFlat & Reco
     lowHungerWarnFrac,
     lowThirstWarnFrac,
     lowVitalWarnCooldownMs,
+    vitalsHungerDrainPerGameMin,
+    vitalsThirstDrainPerGameMin,
+    vitalsDrainStaminaStepPenaltyStarving,
+    vitalsDrainStaminaStepPenaltyDehydrated,
+    vitalsDefensePenaltyStarving,
+    vitalsDefensePenaltyDehydrated,
     itemDurabilityEnabled,
     itemDurabilityToolUseCost,
     itemDurabilityWeaponHitCost,
@@ -2772,17 +2804,19 @@ function attemptMoveTo(state: GameState, nx: number, ny: number, moveKind: 'step
   const prevPaceMap =
     moveKind === 'step' ? state.floor.staminaStepPaceByChar : state.floor.staminaStrafePaceByChar
   const nextPaceMap: Partial<Record<CharacterId, number>> = { ...prevPaceMap }
-  const chargeCharacterIds: CharacterId[] = []
+  const stepCharges: Array<{ id: CharacterId; cost: number }> = []
   for (const c of state.party.chars) {
     if (c.hp <= 0) continue
     const n = effectiveStaminaMoveEveryN(baseEveryN, c.stats.endurance)
-    const pace = nextStaminaMovePace(nextPaceMap[c.id], n, baseCost)
+    const bump = moveKind === 'step' ? staminaStepVitalsBumpForCharacter(state, c) : 0
+    const effectiveCost = baseCost + bump
+    const pace = nextStaminaMovePace(nextPaceMap[c.id], n, effectiveCost)
     if (pace.cost > 0 && c.stamina < pace.cost) {
       const withMsg = pushActivityLog(state, 'Too exhausted to move.')
       return reduce(withMsg, { type: 'ui/sfx', kind: 'reject' })
     }
     nextPaceMap[c.id] = pace.nextCounter
-    if (pace.cost > 0) chargeCharacterIds.push(c.id)
+    if (pace.cost > 0) stepCharges.push({ id: c.id, cost: pace.cost })
   }
 
   const startedAtMs = state.nowMs
@@ -2808,8 +2842,8 @@ function attemptMoveTo(state: GameState, nx: number, ny: number, moveKind: 'step
       },
     },
   }
-  for (const id of chargeCharacterIds) {
-    moved = applyCharacterStaminaCost(moved, id, baseCost)
+  for (const { id, cost } of stepCharges) {
+    moved = applyCharacterStaminaCost(moved, id, cost)
   }
   const withHazard = applyRoomHazardAfterStep(moved, nx, ny)
   return reduce(withHazard, { type: 'ui/sfx', kind: 'step' })
