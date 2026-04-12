@@ -576,7 +576,7 @@ export type RenderTuning = {
   poiGroundY_Well: number
   /**
    * Filled **Well** only: additive world-space offset for the **glow** `Sprite` vs the main well billboard pivot (same axes as **`door*SpriteNudge*`** / **`floorItemSpriteNudge*`**).
-   * F2 **NPCs** + **`debug-settings.json`**. Clamped **−1..0.5** world units (**Y**/**Z** nudges stay **±0.5**).
+   * F2 **NPCs** + **`debug-settings.json`**. Clamped **−1..0.5** world units (**Y** / **Z** nudges stay **±0.5**).
    */
   poiWellGlowNudgeX: number
   poiWellGlowNudgeY: number
@@ -584,7 +584,7 @@ export type RenderTuning = {
   /**
    * Filled **Well** only: additive world-space offset for the **sparkle** `Sprite` vs the main well billboard pivot.
    * Default **`poiWellSparkleNudgeY`** **0.02** preserves the legacy vertical lift vs glow.
-   * **X** clamped **−1..0.5**; **Y**/**Z** **±0.5**.
+   * **X** clamped **−1..0.5**; **Y** / **Z** **±0.5**.
    */
   poiWellSparkleNudgeX: number
   poiWellSparkleNudgeY: number
@@ -619,7 +619,7 @@ export type RenderTuning = {
   poiKuratkoNestSpriteScale: number
   /**
    * **Lambert** POI billboards: multiplies **`emissiveIntensity`** and **`color`** (albedo × lights) each frame (**1** = unchanged).
-   * Filled **Well** **glow**/**sparkle** **`SpriteMaterial.color`** uses the same multiplier so POI brightness tuning matches the NPC boost “whole prop” read.
+   * Filled **Well** **glow** / **sparkle** **`SpriteMaterial.color`** uses the same multiplier so POI brightness tuning matches the NPC boost “whole prop” read.
    */
   poiSpriteBoost: number
   /**
