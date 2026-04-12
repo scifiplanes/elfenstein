@@ -1,0 +1,10 @@
+---
+description: Always commit web/public/debug-settings.json when it changes
+alwaysApply: true
+---
+
+# `debug-settings.json` is part of the repo baseline
+
+- **`web/public/debug-settings.json`** is **tracked** and must be **included in commits** whenever it changes (F2 disk save, manual edit, or parity with new tuning keys).
+- Before saying a tuning/debug task is done, run **`git status`**; if that file is modified, **`git add web/public/debug-settings.json`** and commit it with related changes (or in the same commit).
+- Humans can enable **`.githooks/pre-commit`** with **`git config core.hooksPath .githooks`** so unstaged edits to that file block **`git commit`** (**ADR-0486**).

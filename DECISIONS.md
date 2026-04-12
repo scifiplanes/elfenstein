@@ -7643,3 +7643,17 @@ Published builds ship an authoritative **`public/debug-settings.json`**; browser
 **localStorage** still mirrors effective state shortly after load (~450 ms debounce), so dev workflows stay the same. **`vite dev`** disk writes unchanged. Supersedes the prior “JSON first, then local overrides” description in **`DESIGN.md`**.
 
 ---
+
+## ADR-0486 — Always commit `web/public/debug-settings.json` when it changes
+Date: 2026-04-12
+
+### Decision
+Keep **`web/public/debug-settings.json`** **tracked** and **commit** it whenever it changes. Add **`.githooks/pre-commit`** (opt-in via **`git config core.hooksPath .githooks`**) that **fails `git commit`** if that file has **unstaged** working-tree edits. Add a **Cursor** rule (`.cursor/rules/debug-settings-always-committed.mdc`, `alwaysApply: true`) so agents stage it with tuning work.
+
+### Rationale
+The file is the **shipped render/audio/hub baseline**; leaving it unstaged strands teammates and CI on an old snapshot (**`debugSettingsJsonParity`** only sees the committed file).
+
+### Consequences
+Developers who enable **`core.hooksPath`** must **`git add web/public/debug-settings.json`** (or **`git commit --no-verify`**) before committing other work while the JSON is dirty. Clones do **not** enable the hook automatically until **`core.hooksPath`** is set locally.
+
+---

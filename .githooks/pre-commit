@@ -1,0 +1,17 @@
+#!/bin/sh
+# Refuse commits while web/public/debug-settings.json has unstaged edits (ADR-0486).
+# Enable once per clone: git config core.hooksPath .githooks
+set -e
+FILE=web/public/debug-settings.json
+if [ ! -f "$FILE" ]; then
+  exit 0
+fi
+if ! git ls-files --error-unmatch "$FILE" >/dev/null 2>&1; then
+  exit 0
+fi
+if ! git diff --quiet -- "$FILE"; then
+  echo "Pre-commit: $FILE has unstaged changes — stage them before committing." >&2
+  echo "  git add $FILE" >&2
+  echo "  (Or git commit --no-verify to skip this check.)" >&2
+  exit 1
+fi
