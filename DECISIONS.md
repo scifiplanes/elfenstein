@@ -7699,3 +7699,31 @@ Wall-clock drain punishes tabbing away and is decoupled from how much the player
 **`DESIGN.md`** and F2 / **`debug-settings.json`** schema change; **ADR-0488** time-based description is superseded for the drain clock only (statuses and penalties unchanged).
 
 ---
+
+## ADR-0490 — Unified twelve-theme floor palette (all floor types)
+Date: 2026-04-12
+
+### Decision
+Replace per–**`FloorType`** theme pairs with a **single** shared **`FLOOR_THEME_POOL`** of **twelve** **`FloorGenTheme`** entries in **`web/src/procgen/floorTheme.ts`**. **`pickFloorTheme`** always samples that pool (same **`theme`** RNG stream). **Cursed** + **Dungeon** layout profile forces theme id **`dungeon_cool`**; **Destroyed** + **Ruins** profile forces **`ruins_umber`** (id-based, not `pool[1]`). Add **`getThemeLightIntent`** presets in **`web/src/world/themeTuning.ts`** for **all twelve** ids.
+
+### Rationale
+One catalog keeps theme vocabulary small, increases variety across the run (any floor type can roll any of the twelve material tints), and avoids maintaining nine parallel two-pair lists. Property overrides stay explicit and art-directable.
+
+### Consequences
+Reskin **albedo** (procedural or PNG) may pair with a theme tint originally tuned for another biome; acceptable trade for unified variety, or a future filter/subset can narrow rolls per **`FloorType`**. Older theme ids **`jungle_canopy`**, **`nano_teal`**, etc., are removed in favor of the twelve canonical ids. F2 **hue/sat** keys remain only for the six legacy ids still present (**`dungeon_*`**, **`cave_*`**, **`ruins_*`**). Existing saves with removed **`floor.gen.theme.id`** strings are not migrated (WIP).
+
+---
+
+## ADR-0491 — Activity log omits procgen theme on descend / camp
+Date: 2026-04-13
+
+### Decision
+Stop appending **`floor.gen.theme.id`** to **`pushActivityLog`** messages in **`descendToNextFloor`** (`web/src/game/state/floorProgression.ts`).
+
+### Rationale
+Theme ids are procgen/debug vocabulary; the exploration feed stays clearer with floor depth and **`floorType`** only. Inspect theme in F2 Procgen when needed.
+
+### Consequences
+Descend and camp-return **activity log** lines no longer mention the rolled theme; **`floor.gen.theme`** is unchanged for rendering and dumps.
+
+---

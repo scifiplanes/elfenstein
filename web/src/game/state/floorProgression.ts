@@ -90,12 +90,12 @@ export function descendToNextFloor(state: GameState): GameState {
     }
     next = pushActivityLog(
       next,
-      `Camp · next expedition is floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+${XP_FLOOR_DESCEND} XP)`,
+      `Camp · next expedition is floor ${nextFloorIndex} (${nextFloorType}). (+${XP_FLOOR_DESCEND} XP)`,
     )
   } else {
     next = pushActivityLog(
       next,
-      `Descended to floor ${nextFloorIndex} (${nextFloorType}, ${gen.theme?.id ?? 'theme'}). (+${XP_FLOOR_DESCEND} XP)`,
+      `Descended to floor ${nextFloorIndex} (${nextFloorType}). (+${XP_FLOOR_DESCEND} XP)`,
     )
   }
 

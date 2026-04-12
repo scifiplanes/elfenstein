@@ -2,7 +2,28 @@ import type { Rng } from './seededRng'
 import { layoutProfile } from './floorLayoutProfile'
 import type { FloorGenTheme, FloorProperty, FloorType } from './types'
 
-const DUNGEON_THEMES: FloorGenTheme[] = [
+/**
+ * Forced theme when the floor has **Cursed** and uses the Dungeon layout profile
+ * (same mood as the former pool[1] dungeon roll).
+ */
+const CURSED_DUNGEON_THEME_ID = 'dungeon_cool'
+
+/**
+ * Forced theme when the floor has **Destroyed** and uses the Ruins layout profile
+ * (earth umber — distinct from Burning hazard red; see ADR-0167).
+ */
+const DESTROYED_RUINS_THEME_ID = 'ruins_umber'
+
+function indexOfThemeId(pool: readonly FloorGenTheme[], id: string): number {
+  const i = pool.findIndex((t) => t.id === id)
+  return i >= 0 ? i : 0
+}
+
+/**
+ * Shared pool: every `FloorType` picks from these twelve palettes (theme RNG stream).
+ * Order is stable for save/debug; ids are the stable public keys for tuning.
+ */
+export const FLOOR_THEME_POOL: FloorGenTheme[] = [
   {
     id: 'dungeon_warm',
     floorColor: '#e8dcc8',
@@ -15,9 +36,6 @@ const DUNGEON_THEMES: FloorGenTheme[] = [
     wallColor: '#b8c0d0',
     ceilColor: '#a8b0c8',
   },
-]
-
-const CAVE_THEMES: FloorGenTheme[] = [
   {
     id: 'cave_damp',
     floorColor: '#b8c8b8',
@@ -30,9 +48,6 @@ const CAVE_THEMES: FloorGenTheme[] = [
     wallColor: '#8890a0',
     ceilColor: '#707888',
   },
-]
-
-const RUINS_THEMES: FloorGenTheme[] = [
   {
     id: 'ruins_bleach',
     floorColor: '#e8e4dc',
@@ -45,47 +60,17 @@ const RUINS_THEMES: FloorGenTheme[] = [
     wallColor: '#c8b8a8',
     ceilColor: '#b8a898',
   },
-]
-
-/** Jungle / forest reskin (layout uses Cave realizer). */
-const JUNGLE_THEMES: FloorGenTheme[] = [
   {
-    id: 'jungle_canopy',
-    floorColor: '#4a5c3a',
-    wallColor: '#3d4a32',
-    ceilColor: '#2a3528',
+    id: 'jungle_moss',
+    floorColor: '#4d5f3c',
+    wallColor: '#3e4a32',
+    ceilColor: '#2c3626',
   },
   {
-    id: 'jungle_floor',
-    floorColor: '#5c6b48',
-    wallColor: '#454f3a',
-    ceilColor: '#323828',
-  },
-]
-
-/** Living / bio reskin (layout uses Cave realizer). */
-const LIVING_BIO_THEMES: FloorGenTheme[] = [
-  {
-    id: 'bio_pink',
-    floorColor: '#6b5a62',
-    wallColor: '#8a6270',
-    ceilColor: '#4a3840',
-  },
-  {
-    id: 'bio_vein',
-    floorColor: '#5a5048',
-    wallColor: '#6b5850',
-    ceilColor: '#3a3028',
-  },
-]
-
-/** Bunker reskin (layout uses Dungeon realizer). */
-const BUNKER_THEMES: FloorGenTheme[] = [
-  {
-    id: 'bunker_concrete',
-    floorColor: '#9a9a92',
-    wallColor: '#7a7a72',
-    ceilColor: '#6a6a64',
+    id: 'bio_chamber',
+    floorColor: '#5d4e52',
+    wallColor: '#6e5460',
+    ceilColor: '#3d3438',
   },
   {
     id: 'bunker_steel',
@@ -93,31 +78,11 @@ const BUNKER_THEMES: FloorGenTheme[] = [
     wallColor: '#6a7078',
     ceilColor: '#5a6068',
   },
-]
-
-/** Catacombs reskin (layout uses Ruins realizer). */
-const CATACOMBS_THEMES: FloorGenTheme[] = [
-  {
-    id: 'catacomb_ash',
-    floorColor: '#c8c4b8',
-    wallColor: '#a8a498',
-    ceilColor: '#888478',
-  },
   {
     id: 'catacomb_deep',
     floorColor: '#989088',
     wallColor: '#787068',
     ceilColor: '#585048',
-  },
-]
-
-/** Magical / “nano” reskin (layout uses Dungeon realizer). */
-const MAGICAL_NANO_THEMES: FloorGenTheme[] = [
-  {
-    id: 'nano_teal',
-    floorColor: '#c0d8d8',
-    wallColor: '#a0c0c8',
-    ceilColor: '#80a0b0',
   },
   {
     id: 'nano_violet',
@@ -125,46 +90,13 @@ const MAGICAL_NANO_THEMES: FloorGenTheme[] = [
     wallColor: '#a8a0c0',
     ceilColor: '#8880a8',
   },
-]
-
-/** Palace reskin (layout uses Ruins realizer). */
-const PALACE_THEMES: FloorGenTheme[] = [
   {
     id: 'palace_marble',
     floorColor: '#f0ebe4',
     wallColor: '#e0d8d0',
     ceilColor: '#d8d0c8',
   },
-  {
-    id: 'palace_gilt',
-    floorColor: '#e8dcc8',
-    wallColor: '#d8c8a8',
-    ceilColor: '#c8b898',
-  },
 ]
-
-function themePoolForFloorType(floorType: FloorType): FloorGenTheme[] {
-  switch (floorType) {
-    case 'Jungle':
-      return JUNGLE_THEMES
-    case 'LivingBio':
-      return LIVING_BIO_THEMES
-    case 'Bunker':
-      return BUNKER_THEMES
-    case 'Catacombs':
-      return CATACOMBS_THEMES
-    case 'Golem':
-      return MAGICAL_NANO_THEMES
-    case 'Palace':
-      return PALACE_THEMES
-    case 'Cave':
-      return CAVE_THEMES
-    case 'Ruins':
-      return RUINS_THEMES
-    default:
-      return DUNGEON_THEMES
-  }
-}
 
 /**
  * Deterministic theme roll from floor type + properties (no extra RNG stream required beyond `rng`).
@@ -176,11 +108,15 @@ export function pickFloorTheme(args: {
 }): FloorGenTheme {
   const { floorType, floorProperties, rng } = args
   const props = floorProperties ?? []
-  const pool = themePoolForFloorType(floorType)
+  const pool = FLOOR_THEME_POOL
   let idx = Math.floor(rng.next() * pool.length) % pool.length
   const prof = layoutProfile(floorType)
-  if (props.includes('Cursed') && prof === 'Dungeon') idx = 1 % pool.length
-  if (props.includes('Destroyed') && prof === 'Ruins') idx = 1 % pool.length
+  if (props.includes('Cursed') && prof === 'Dungeon') {
+    idx = indexOfThemeId(pool, CURSED_DUNGEON_THEME_ID)
+  }
+  if (props.includes('Destroyed') && prof === 'Ruins') {
+    idx = indexOfThemeId(pool, DESTROYED_RUINS_THEME_ID)
+  }
   const base = pool[idx]!
   return { ...base }
 }
