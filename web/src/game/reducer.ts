@@ -242,13 +242,19 @@ export function initialState(content: ContentDB): GameState {
   return applySpawnRoomHazardIfNeeded(makeInitialState(content))
 }
 
+type SfxKind = import('../ui/feedback/SfxEngine').SfxKind
+
 /**
  * SFX played once when the player opens a dialog with a given NPC kind.
- * Add entries here to assign a sound to any NPC — no other changes needed.
+ * Kind is checked first (most specific); language is the fallback.
+ * Add entries here — no other changes needed.
  */
-const NPC_DIALOG_SFX: Partial<Record<NpcKind, import('../ui/feedback/SfxEngine').SfxKind>> = {
+const NPC_DIALOG_SFX_BY_KIND: Partial<Record<NpcKind, SfxKind>> = {
   Skeleton: 'bones',
-  Chumbo:   'deep_gnome',
+}
+
+const NPC_DIALOG_SFX_BY_LANGUAGE: Partial<Record<import('./types').NpcLanguage, SfxKind>> = {
+  DeepGnome: 'deep_gnome',
 }
 
 export function reduce(state: GameState, action: Action): GameState {
@@ -743,7 +749,9 @@ export function reduce(state: GameState, action: Action): GameState {
       return { ...state, ui: { ...state.ui, paperdollFor: undefined } }
     case 'ui/openNpcDialog': {
       const npc = state.floor.npcs.find((n) => n.id === action.npcId)
-      const dialogSfx = npc ? NPC_DIALOG_SFX[npc.kind] : undefined
+      const dialogSfx = npc
+        ? (NPC_DIALOG_SFX_BY_KIND[npc.kind] ?? NPC_DIALOG_SFX_BY_LANGUAGE[npc.language])
+        : undefined
       const sfxQueue = dialogSfx
         ? (state.ui.sfxQueue ?? []).concat([{ id: `s_${state.nowMs}_npc_dialog`, kind: dialogSfx }])
         : state.ui.sfxQueue
