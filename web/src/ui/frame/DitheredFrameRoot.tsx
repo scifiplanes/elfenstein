@@ -272,50 +272,57 @@ export function DitheredFrameRoot(props: {
 
   useEffect(() => {
     if (!presentCanvasRef.current) return
+    let cancelled = false
     let w: WorldRenderer | null = null
     try {
-      const p = new FramePresenter(presentCanvasRef.current)
-      presenterRef.current = p
-      textureLoaderRef.current = new THREE.TextureLoader()
-      // Preload portrait overlay textures (idle/inspect/mouth) so the first press
-      // doesn't wait for async decode/load before compositor-time overlays can render.
-      {
-        const loader = textureLoaderRef.current
-        const cache = portraitTexCacheRef.current
-        const arCache = portraitArCacheRef.current
-        const preload = (src: string) => {
-          if (!src) return
-          if (cache.get(src)) return
-          const tex = loader.load(src, () => {
-            const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
-            const w = Number(img?.naturalWidth ?? img?.width ?? 0)
-            const h = Number(img?.naturalHeight ?? img?.height ?? 0)
-            if (w > 0 && h > 0) arCache.set(src, w / h)
-          })
-          tex.colorSpace = THREE.SRGBColorSpace
-          tex.minFilter = THREE.LinearFilter
-          tex.magFilter = THREE.LinearFilter
-          tex.generateMipmaps = false
-          cache.set(src, tex)
+      void FramePresenter.create(presentCanvasRef.current).then((p) => {
+        if (cancelled) {
+          p.dispose()
+          return
         }
-        const species: SpeciesId[] = ['Igor', 'Mycyclops', 'Frosch', 'Afonso']
-        for (const s of species) {
-          const urls = portraitOverlayUrlsForSpecies(s)
-          if (!urls) continue
-          preload(urls.idleSrc)
-          preload(urls.eyesInspectSrc)
-          preload(urls.mouthSrc)
-          if (urls.mouthClosedSrc) preload(urls.mouthClosedSrc)
+        presenterRef.current = p
+        textureLoaderRef.current = new THREE.TextureLoader()
+        // Preload portrait overlay textures (idle/inspect/mouth) so the first press
+        // doesn't wait for async decode/load before compositor-time overlays can render.
+        {
+          const loader = textureLoaderRef.current
+          const cache = portraitTexCacheRef.current
+          const arCache = portraitArCacheRef.current
+          const preload = (src: string) => {
+            if (!src) return
+            if (cache.get(src)) return
+            const tex = loader.load(src, () => {
+              const img = tex.image as unknown as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number } | undefined
+              const w = Number(img?.naturalWidth ?? img?.width ?? 0)
+              const h = Number(img?.naturalHeight ?? img?.height ?? 0)
+              if (w > 0 && h > 0) arCache.set(src, w / h)
+            })
+            tex.colorSpace = THREE.SRGBColorSpace
+            tex.minFilter = THREE.LinearFilter
+            tex.magFilter = THREE.LinearFilter
+            tex.generateMipmaps = false
+            cache.set(src, tex)
+          }
+          const species: SpeciesId[] = ['Igor', 'Mycyclops', 'Frosch', 'Afonso']
+          for (const s of species) {
+            const urls = portraitOverlayUrlsForSpecies(s)
+            if (!urls) continue
+            preload(urls.idleSrc)
+            preload(urls.eyesInspectSrc)
+            preload(urls.mouthSrc)
+            if (urls.mouthClosedSrc) preload(urls.mouthClosedSrc)
+          }
         }
-      }
-      w = new WorldRenderer(p.getRenderer())
-      setWorld(w)
-      setWebglError(null)
+        w = new WorldRenderer(p.getRenderer())
+        setWorld(w)
+        setWebglError(null)
+      })
     } catch {
       setWorld(null)
       setWebglError('WebGL init failed. Your browser/GPU may be blocking WebGL.')
     }
     return () => {
+      cancelled = true
       w?.dispose()
       presenterRef.current?.dispose()
       presenterRef.current = null

@@ -479,6 +479,7 @@ Asset types:
 ### 13.1 Asset serving & caching (web)
 - Runtime-served assets (portraits, NPC sprites, UI art, cursor sprites) live under repo-level `Content/` and are referenced via **stable** `/content/...` URLs.
 - The game relies on **browser HTTP caching** for these static URLs; avoid cache-busting query params for runtime art.
+- On Vercel, production caching is enforced via **`web/vercel.json`**: Vite-hashed **`/assets/*`** are immutable-cached; **`/index.html`** (and **`/`**) use **`max-age=0`** for browsers plus a short CDN **`s-maxage`** and SWR; unversioned **`/content/*`** and **`/sounds/*`** use a moderate browser **`max-age`**, a longer CDN **`s-maxage`**, and **`stale-while-revalidate`** so the edge can cache longer than typical browser freshness without **`immutable`** URLs.
 - Imperative image loads (e.g., measuring portrait aspect ratio or preloading sprite layers) go through a small shared **in-app image cache** (`web/src/ui/assets/imageCache.ts`) to dedupe concurrent loads and reduce repeated decodes/revalidation requests.
 
 ### 13.2 Procgen content coverage (data discipline)

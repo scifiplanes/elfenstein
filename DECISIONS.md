@@ -7769,3 +7769,29 @@ Retune filled-well **glow** layer alignment relative to the Lambert well billboa
 Fresh loads that apply the shipped file pick up the new offsets; **`DEFAULT_RENDER`** in **`tuningDefaults.ts`** stays **0 / 0 / 0**—the JSON remains the published override until code defaults change.
 
 ---
+
+## ADR-0495 — Vercel static cache headers for assets and content
+Date: 2026-04-13
+
+### Decision
+Add **`web/vercel.json`** with explicit **`Cache-Control`** headers: immutable 1-year caching for Vite-hashed **`/assets/*`**, revalidation for **`/index.html`** and **`/debug-settings.json`**, and moderate caching with **`stale-while-revalidate`** for unversioned **`/content/*`** PNGs.
+
+### Rationale
+The game ships many small static files (bundles plus `Content/` PNGs). Without strong caching, repeat visits re-request large portions of that set, driving up CDN edge request counts and slowing warm loads. `/content/*` paths are stable and not fingerprinted, so they must not be marked immutable.
+
+### Consequences
+Repeat loads cache-hit more often on Vercel’s edge and in browsers, reducing edge request volume. Updated `Content/` art may remain stale for up to the configured `/content/*` TTL until revalidation completes; deploy correctness for code remains protected by revalidating `index.html`.
+
+---
+
+## ADR-0496 — Vercel CDN `s-maxage` for HTML and static art/sounds
+Date: 2026-04-13
+
+### Decision
+Extend **`web/vercel.json`** **`Cache-Control`** so the **CDN** can hold responses longer than browsers where safe: **`/`** and **`/index.html`** use **`max-age=0`** with **`s-maxage=60`** and **`stale-while-revalidate=600`**; **`/content/*`** and **`/sounds/*`** keep browser **`max-age=86400`** but add **`s-maxage=604800`** (same SWR window as before).
+
+### Rationale
+Browsers still revalidate the HTML shell immediately (`max-age=0`), while Vercel’s shared cache can serve a short-lived cached **`index.html`** to cut edge work under concurrent traffic. Stable art/sound URLs cannot be **`immutable`**, but a higher **`s-maxage`** raises CDN hit rates without forcing week-long **browser** staleness.
+
+### Consequences
+Edge request volume for HTML and hot static paths should drop versus **`max-age` only**. Users may briefly see old **`index.html`** at the CDN within the **`s-maxage`** window after a deploy (typically acceptable at 60s). **`/content/*`** updates may take longer to propagate at the CDN edge than in-browser TTL alone.

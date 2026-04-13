@@ -1,6 +1,4 @@
 import * as THREE from 'three'
-import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js'
-import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js'
 import type { RenderTuning } from '../game/types'
 import { CompositeShader } from './CompositeShader'
 import { DitherShader } from './DitherShader'
@@ -13,15 +11,16 @@ type ShaderLike = {
 
 export class FramePresenter {
   private readonly renderer: THREE.WebGLRenderer
-  private readonly composer: EffectComposer
-  private readonly compositePass: ShaderPass
-  private readonly ditherPass: ShaderPass
+  private composer: any | null = null
+  private compositePass: any | null = null
+  private ditherPass: any | null = null
+  private ready = false
   private lastSize = { w: 0, h: 0 }
   private lastDpr = NaN
   private lastDrawingBuffer = { w: 0, h: 0 }
   private cssToBufferScale = { x: 1, y: 1 }
 
-  constructor(canvas: HTMLCanvasElement) {
+  private constructor(canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({
       canvas,
       antialias: false,
@@ -30,16 +29,25 @@ export class FramePresenter {
     })
     this.renderer.outputColorSpace = THREE.SRGBColorSpace
     this.renderer.setClearColor(new THREE.Color('#050508'), 1)
+  }
 
-    this.compositePass = new ShaderPass(CompositeShader as unknown as ShaderLike)
-    this.ditherPass = new ShaderPass(DitherShader as unknown as ShaderLike)
-    this.composer = new EffectComposer(this.renderer)
-    this.composer.addPass(this.compositePass)
-    this.composer.addPass(this.ditherPass)
+  static async create(canvas: HTMLCanvasElement): Promise<FramePresenter> {
+    const p = new FramePresenter(canvas)
+    const [{ EffectComposer }, { ShaderPass }] = await Promise.all([
+      import('three/examples/jsm/postprocessing/EffectComposer.js'),
+      import('three/examples/jsm/postprocessing/ShaderPass.js'),
+    ])
+    p.compositePass = new ShaderPass(CompositeShader as unknown as ShaderLike)
+    p.ditherPass = new ShaderPass(DitherShader as unknown as ShaderLike)
+    p.composer = new EffectComposer(p.renderer)
+    p.composer.addPass(p.compositePass)
+    p.composer.addPass(p.ditherPass)
+    p.ready = true
+    return p
   }
 
   dispose() {
-    this.composer.dispose()
+    this.composer?.dispose?.()
     this.renderer.dispose()
   }
 
@@ -62,8 +70,8 @@ export class FramePresenter {
     // Otherwise the browser may stretch the drawing buffer to fit fractional CSS pixels during resize.
     this.renderer.setSize(w, h, true)
     // EffectComposer maintains its own internal render targets; it needs pixelRatio too.
-    ;(this.composer as unknown as { setPixelRatio?: (dpr: number) => void }).setPixelRatio?.(capped)
-    this.composer.setSize(w, h)
+    ;(this.composer as unknown as { setPixelRatio?: (dpr: number) => void } | null)?.setPixelRatio?.(capped)
+    this.composer?.setSize?.(w, h)
 
     // Use the renderer's actual drawing buffer size (rounding differs under zoom).
     const db = new THREE.Vector2()
@@ -74,12 +82,14 @@ export class FramePresenter {
       y: this.lastDrawingBuffer.h / Math.max(1, h),
     }
 
-    const u = this.compositePass.uniforms as unknown as {
+    const u = (this.compositePass?.uniforms ?? {}) as unknown as {
       resolution: { value: { x: number; y: number } }
     }
     // Store framebuffer pixel resolution (actual drawing buffer).
-    u.resolution.value.x = this.lastDrawingBuffer.w
-    u.resolution.value.y = this.lastDrawingBuffer.h
+    if (u.resolution?.value) {
+      u.resolution.value.x = this.lastDrawingBuffer.w
+      u.resolution.value.y = this.lastDrawingBuffer.h
+    }
   }
 
   setInputs(args: {
@@ -108,7 +118,7 @@ export class FramePresenter {
     navPushedOn?: Array<number>
     navPushedTex?: THREE.Texture | null
   }) {
-    const u = this.compositePass.uniforms as unknown as {
+    const u = (this.compositePass?.uniforms ?? {}) as unknown as {
       tScene: { value: THREE.Texture | null }
       tUi: { value: THREE.Texture | null }
       gameRectPx: { value: { x: number; y: number; z: number; w: number } }
@@ -156,6 +166,7 @@ export class FramePresenter {
       debugSceneMode?: { value: number }
       debugSceneFlipY?: { value: number }
     }
+    if (!u.tScene || !u.tUi || !u.gameRectPx) return
     u.tScene.value = args.sceneTex
     u.tUi.value = args.uiTex
     // Convert CSS pixel rect into drawing-buffer pixels using actual X/Y scale.
@@ -336,7 +347,7 @@ export class FramePresenter {
   }
 
   setDebug(args: { sceneMode?: 0 | 1 | 2; sceneFlipY?: boolean }) {
-    const u = this.compositePass.uniforms as unknown as {
+    const u = (this.compositePass?.uniforms ?? {}) as unknown as {
       debugSceneMode?: { value: number }
       debugSceneFlipY?: { value: number }
     }
@@ -345,12 +356,12 @@ export class FramePresenter {
   }
 
   setRectDebug(enabled: boolean) {
-    const u = this.compositePass.uniforms as unknown as { debugRect?: { value: number } }
+    const u = (this.compositePass?.uniforms ?? {}) as unknown as { debugRect?: { value: number } }
     if (u.debugRect) u.debugRect.value = enabled ? 1 : 0
   }
 
   syncDither(t: RenderTuning) {
-    const u = this.ditherPass.uniforms as unknown as {
+    const u = (this.ditherPass?.uniforms ?? {}) as unknown as {
       strength: { value: number }
       colourPreserve: { value: number }
       pixelSize: { value: number }
@@ -362,6 +373,7 @@ export class FramePresenter {
       postLift: { value: number }
       postGamma: { value: number }
     }
+    if (!u.strength) return
     u.strength.value = t.ditherStrength
     u.colourPreserve.value = t.ditherColourPreserve
     u.pixelSize.value = t.ditherPixelSize
@@ -375,7 +387,8 @@ export class FramePresenter {
   }
 
   render() {
-    this.composer.render()
+    if (!this.ready) return
+    this.composer?.render?.()
   }
 }
 

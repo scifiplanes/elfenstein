@@ -124,7 +124,7 @@ export async function runPipelineBench(options: PipelineBenchOptions = {}): Prom
     benchCanvas.style.cssText = 'position:fixed;left:-20000px;top:0;width:1px;height:1px;'
     document.body.appendChild(benchCanvas)
 
-    presenter = new FramePresenter(benchCanvas)
+    presenter = await FramePresenter.create(benchCanvas)
     const renderer = presenter.getRenderer()
     presenter.syncSize(STAGE_CSS_WIDTH, STAGE_CSS_HEIGHT, pixelRatioCap)
     presenter.syncDither(DEFAULT_RENDER)

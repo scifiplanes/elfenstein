@@ -7,6 +7,7 @@ import react from '@vitejs/plugin-react'
 type BundleOutputOptions = { dir?: string }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const INCLUDE_BENCH = process.env.ROLLUP_BENCH === '1'
 const CONTENT_ROOT = (() => {
   // Locate repo-level `Content/` regardless of where Vite resolves this config from.
   // We anchor by checking for a known texture name.
@@ -67,10 +68,14 @@ export default defineConfig({
   },
   build: {
     rollupOptions: {
-      input: {
-        main: path.resolve(__dirname, 'index.html'),
-        benchPipeline: path.resolve(__dirname, 'bench-pipeline.html'),
-      },
+      input: INCLUDE_BENCH
+        ? {
+            main: path.resolve(__dirname, 'index.html'),
+            benchPipeline: path.resolve(__dirname, 'bench-pipeline.html'),
+          }
+        : {
+            main: path.resolve(__dirname, 'index.html'),
+          },
       output: {
         manualChunks(id) {
           if (id.includes('node_modules/three/examples/')) return 'three-examples'
@@ -118,6 +123,8 @@ export default defineConfig({
         const outDir = outputOptions.dir ? String(outputOptions.dir) : path.resolve(__dirname, 'dist')
         const dest = path.join(outDir, 'content')
         if (!fs.existsSync(CONTENT_ROOT)) return
+        // Ensure removed content files don't linger across builds.
+        fs.rmSync(dest, { recursive: true, force: true })
         copyDirSync(CONTENT_ROOT, dest)
       },
     },
