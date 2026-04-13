@@ -182,6 +182,23 @@ describe('resolvePartyPlayerLightAggregate', () => {
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.headlampIntensity)
   })
 
+  it('headlamp uses max(lantern, torch) theme mult (torch-boosted themes do not dim head vs held torch)', () => {
+    const base = makeInitialState(content)
+    const hid = 'i_hl' as ItemId
+    const ch = base.party.chars[0]!
+    const state: GameState = {
+      ...base,
+      party: {
+        ...base.party,
+        chars: [{ ...ch, equipment: { ...ch.equipment, head: hid } }],
+        items: { ...base.party.items, [hid]: { id: hid, defId: 'Headlamp', qty: 1 } },
+      },
+    }
+    const theme: PartyPlayerLightThemeMults = { lanternIntensityMult: 1, torchIntensityMult: 1.5 }
+    const a = resolvePartyPlayerLightAggregate(state, content, theme)
+    expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.headlampIntensity * 1.5)
+  })
+
   it('four headlamps: ~60 intensity and ~90 combined distance at unit theme (ADR-0477 anchor)', () => {
     const base = makeInitialState(content)
     const ids = ['i_hl0', 'i_hl1', 'i_hl2', 'i_hl3'] as const

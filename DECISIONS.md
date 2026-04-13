@@ -7795,3 +7795,17 @@ Browsers still revalidate the HTML shell immediately (`max-age=0`), while Vercel
 
 ### Consequences
 Edge request volume for HTML and hot static paths should drop versus **`max-age` only**. Users may briefly see old **`index.html`** at the CDN within the **`s-maxage`** window after a deploy (typically acceptable at 60s). **`/content/*`** updates may take longer to propagate at the CDN edge than in-browser TTL alone.
+
+---
+
+## ADR-0497 — Headlamp theme mult + floor scale match torch
+Date: 2026-04-13
+
+### Decision
+**Equipped** **headlamp** rows in **`resolvePartyPlayerLightAggregate`** (`playerLight.ts`) contribute intensity × **`max(lanternIntensityMult, torchIntensityMult)`** instead of **`lanternIntensityMult` alone**. **Dropped** **headlamp** floor accents in **`floorItemPlayerLightBase`** (`WorldRenderer.ts`) use the same **0.42** intensity scale factor as **torch** (was **0.36**) and the same **`max(lantern, torch)`** theme multiplier.
+
+### Rationale
+Floor themes from **`getThemeLightIntent`** often set **`torchIntensityMult` > `lanternIntensityMult`** (wall-torch bias). **Headlamp** used only **`lanternIntensityMult`**, so a **held torch** could outshine a **headlamp** even when F2 **`headlampIntensity` ≥ `heldTorchIntensity`**. Floor-item path also used a smaller scalar (**0.36** vs **0.42** for torch), amplifying the inversion for dropped gear.
+
+### Consequences
+**Headlamp** reads at least as theme-boosted as **torch** on intensity; with equal or higher F2 bases it should not lose to **held torch** purely from theme tables. Slightly brighter **headlamp** floor accents when **`torchIntensityMult`** dominates (and **0.42** vs **0.36**). **`DESIGN.md`** §11 lighting bullet updated; Vitest covers the torch-heavy theme case.

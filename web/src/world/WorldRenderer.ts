@@ -205,11 +205,14 @@ function floorItemPlayerLightBase(
         intensity: state.render.equippedLanternIntensity * 0.3 * lanternThemeMult * globalI,
         distance: state.render.equippedLanternDistance * 0.68,
       }
-    case 'headlamp':
+    case 'headlamp': {
+      const headM = Math.max(lanternThemeMult, torchThemeMult)
       return {
-        intensity: state.render.headlampIntensity * 0.36 * lanternThemeMult * globalI,
+        // Match torch floor scale (0.42); headlamp used 0.36 + lantern-only theme and read weaker.
+        intensity: state.render.headlampIntensity * 0.42 * headM * globalI,
         distance: state.render.headlampDistance * 0.55,
       }
+    }
     case 'glowbug': {
       const distMul = Math.sqrt(glowbugMul)
       return {

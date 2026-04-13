@@ -103,7 +103,10 @@ export function resolvePartyPlayerLightAggregate(
         }
         case 'headlamp': {
           anyHeadlamp = true
-          intensityBeforeGlobalFlicker += r.headlampIntensity * lanternM
+          // Themes often boost wall torches (`torchIntensityMult` > `lanternIntensityMult`); headlamp
+          // should not read weaker than a held torch when `headlampIntensity` ≥ `heldTorchIntensity`.
+          const headM = Math.max(lanternM, torchM)
+          intensityBeforeGlobalFlicker += r.headlampIntensity * headM
           sourceDistances.push(r.headlampDistance)
           break
         }
