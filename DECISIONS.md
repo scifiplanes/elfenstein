@@ -7809,3 +7809,45 @@ Floor themes from **`getThemeLightIntent`** often set **`torchIntensityMult` > `
 
 ### Consequences
 **Headlamp** reads at least as theme-boosted as **torch** on intensity; with equal or higher F2 bases it should not lose to **held torch** purely from theme tables. Slightly brighter **headlamp** floor accents when **`torchIntensityMult`** dominates (and **0.42** vs **0.36**). **`DESIGN.md`** §11 lighting bullet updated; Vitest covers the torch-heavy theme case.
+
+---
+
+## ADR-0498 — Capped merged player light: scale distance by cap/raw
+Date: 2026-04-13
+
+### Decision
+After computing the party **primary** **`PointLight`** **intensity** (**sum**, then **`min(raw, render.equippedLightIntensityCap)`** with **raw** including **global × flicker**) and **combined** reach (**`combinedPartyPlayerLightDistance`**), **`WorldRenderer.syncTuning`** sets **`PointLight.distance`** to **`combinedDistance × (cap / raw)`** when **`summandCount ≥ 2`** and **`raw > cap`**; otherwise **`combinedDistance`** unchanged. Helper **`effectiveMergedPlayerLightDistance`** lives in **`playerLight.ts`**.
+
+### Rationale
+Runtime logs showed **`hitCap: true`** with a low **`equippedLightIntensityCap`** (**~18.5**): **intensity** stayed at the cap while **combined distance** still grew with extra sources (**torch** + **lantern** / party stacks). A single **Three.js** **PointLight** then had the **same** capped **intensity** spread over a **much larger** cutoff distance, so **near-field** walls read **dimmer** than **torch** alone — the reported inversion.
+
+### Consequences
+**Torch + lantern** (and other multi-source equipped cases under a **tight** cap) should no longer look **darker** beside the player than **one** source. **Far** reach is intentionally traded when the cap clips (**distance** shrinks with **cap/raw**). **`DESIGN.md`** §1 / §11 / F2 bullet updated; Vitest covers the helper.
+
+---
+
+## ADR-0499 — Capped merge: floor distance at max per-source reach
+Date: 2026-04-13
+
+### Decision
+**`resolvePartyPlayerLightAggregate`** exposes **`maxSourceDistance`** (**max** of each contributing source’s configured reach). **`WorldRenderer.syncTuning`** sets **`PointLight.distance`** to **`max(effectiveMergedPlayerLightDistance(...), plAgg.maxSourceDistance)`** on the equipped path.
+
+### Rationale
+**ADR-0498** **× cap/raw** applies only when **`summandCount ≥ 2`**. A **single** equipped **torch** can already have **`raw > cap`** while keeping full **`heldTorchDistance`** (no scaling branch). Adding a **second** source triggers scaling; **`combinedDistance × cap/raw`** can fall **below** **`heldTorchDistance`**, so **torch + lantern** looked **dimmer** than **torch** alone. Session **`00b0dc`** logs: **`summandCount: 2`**, **`effLanternDistance` ~6.07** vs **`heldTorchDistance` 7.5** (**`distRatioVsTorchOnly` ~0.81**).
+
+### Consequences
+Merged reach is never **worse** than the **strongest** single equipped source’s tuned cutoff when multiple rows clip. **`DESIGN.md`** §1 / §3 (F2) / §11 updated; **`playerLight`** Vitest asserts **`maxSourceDistance`**.
+
+---
+
+## ADR-0500 — Lantern + torch: cap merged PointLight distance at torch reach
+Date: 2026-04-13
+
+### Decision
+**`resolvePartyPlayerLightAggregate`** adds **`anyLantern`** and **`maxTorchHeldDistance`**. On the equipped primary **`PointLight`**, after **`max(effectiveMerged, maxSourceDistance)`**, if **`anyLantern && maxTorchHeldDistance > 0`**, **`WorldRenderer.syncTuning`** sets **`distance = min(distance, maxTorchHeldDistance)`**.
+
+### Rationale
+**ADR-0499** stopped merged **distance** from falling **below** any single source. **Lantern** tuning often uses **`equippedLanternDistance` > `heldTorchDistance`**, so the merged **`PointLight`** could end up with a **larger** **`distance`** than **torch**-only while **intensity** stayed at **`equippedLightIntensityCap`**. In **Three.js**, that **thins** near-field brightness — **torch + lantern** still looked **dimmer** than **torch** alone (**post-0499** logs: **`d` ~9.2** vs **`heldTorchDistance` 7.5**).
+
+### Consequences
+**Torch + lantern** matches **torch-only** falloff distance (unless merged distance was already lower). **Headlamp** is not a **lantern** row — **torch + headlamp** keeps **0499** behavior without this **cap**. **`DESIGN.md`** updated; Vitest covers new aggregate fields.

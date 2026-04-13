@@ -13,6 +13,8 @@ export type PartyPlayerLightThemeMults = {
 export type PartyPlayerLightAggregate = {
   summandCount: number
   anyHeadlamp: boolean
+  /** True if any equipped row is **`playerLight: 'lantern'`** (not headlamp). */
+  anyLantern: boolean
   /**
    * Σ (per-tag base × theme mult × per-row glowbug mult) for equipped `playerLight` rows.
    * Excludes `globalIntensity` and flicker (applied in `WorldRenderer.syncTuning`).
@@ -24,6 +26,10 @@ export type PartyPlayerLightAggregate = {
    * between RSS and a full linear sum.
    */
   combinedDistance: number
+  /** Largest per-source reach among equipped `playerLight` rows (same **d** as in `combinedDistance`). */
+  maxSourceDistance: number
+  /** Max **`heldTorchDistance`** among equipped **torch** rows; **0** if none. */
+  maxTorchHeldDistance: number
 }
 
 /**
@@ -53,6 +59,28 @@ export function combinedPartyPlayerLightDistance(sourceDistances: readonly numbe
 }
 
 /**
+ * One merged `PointLight` uses summed intensity (clamped by cap) and `combinedPartyPlayerLightDistance`.
+ * When the cap clips `rawIntensity` but distance still reflects every source, falloff stretches and the
+ * near field looks **dimmer** than a single source at the same cap. Scale distance by `cap/raw` only when
+ * multiple summands and `raw > cap` so local brightness stays in line with fewer lights.
+ * **`WorldRenderer`** then clamps to **`maxSourceDistance`** so a second source cannot shrink reach below
+ * the best single equipped source (e.g. torch + lantern under a tight cap was darker than torch alone).
+ * When both **lantern** and **torch** are equipped, distance is also **capped** at **`maxTorchHeldDistance`**
+ * so merged reach does not exceed **torch-only** falloff (larger **`PointLight.distance`** at the same cap
+ * intensity thins near-field brightness in Three.js).
+ */
+export function effectiveMergedPlayerLightDistance(
+  summandCount: number,
+  combinedDistance: number,
+  rawIntensity: number,
+  intensityCap: number,
+): number {
+  if (combinedDistance <= 0 || rawIntensity <= 0) return combinedDistance
+  if (summandCount <= 1 || rawIntensity <= intensityCap) return combinedDistance
+  return combinedDistance * (intensityCap / rawIntensity)
+}
+
+/**
  * Glowbug jar uses clamped `glowbugs`; raw Glowbug item uses **1** (same rule as floor-item lights).
  */
 export function glowbugMulForInventory(inv: InventoryItem): number {
@@ -77,6 +105,8 @@ export function resolvePartyPlayerLightAggregate(
 
   let summandCount = 0
   let anyHeadlamp = false
+  let anyLantern = false
+  let maxTorchHeldDistance = 0
   let intensityBeforeGlobalFlicker = 0
   const sourceDistances: number[] = []
 
@@ -93,10 +123,13 @@ export function resolvePartyPlayerLightAggregate(
       switch (tag) {
         case 'torch': {
           intensityBeforeGlobalFlicker += r.heldTorchIntensity * torchM
-          sourceDistances.push(r.heldTorchDistance)
+          const td = r.heldTorchDistance
+          sourceDistances.push(td)
+          if (td > maxTorchHeldDistance) maxTorchHeldDistance = td
           break
         }
         case 'lantern': {
+          anyLantern = true
           intensityBeforeGlobalFlicker += r.equippedLanternIntensity * lanternM
           sourceDistances.push(r.equippedLanternDistance)
           break
@@ -121,11 +154,18 @@ export function resolvePartyPlayerLightAggregate(
   }
 
   const combinedDistance = combinedPartyPlayerLightDistance(sourceDistances)
+  let maxSourceDistance = 0
+  for (const d of sourceDistances) {
+    if (d > maxSourceDistance) maxSourceDistance = d
+  }
 
   return {
     summandCount,
     anyHeadlamp,
+    anyLantern,
     intensityBeforeGlobalFlicker,
     combinedDistance,
+    maxSourceDistance,
+    maxTorchHeldDistance,
   }
 }

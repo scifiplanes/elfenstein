@@ -5,6 +5,7 @@ import type { GameState, ItemId } from '../types'
 import { makeInitialState } from './initialState'
 import {
   combinedPartyPlayerLightDistance,
+  effectiveMergedPlayerLightDistance,
   glowbugMulForInventory,
   resolvePartyPlayerLightAggregate,
   type PartyPlayerLightThemeMults,
@@ -29,6 +30,20 @@ describe('combinedPartyPlayerLightDistance', () => {
 
   it('uses max + RSS of the rest for three+ sources', () => {
     expect(combinedPartyPlayerLightDistance([10, 10, 10])).toBeCloseTo(10 + 10 * Math.SQRT2)
+  })
+})
+
+describe('effectiveMergedPlayerLightDistance', () => {
+  it('returns combined distance for a single summand even when raw exceeds cap', () => {
+    expect(effectiveMergedPlayerLightDistance(1, 20, 100, 10)).toBe(20)
+  })
+
+  it('returns combined when raw is within cap', () => {
+    expect(effectiveMergedPlayerLightDistance(2, 15, 10, 20)).toBe(15)
+  })
+
+  it('scales distance by cap/raw when multiple summands and raw exceeds cap', () => {
+    expect(effectiveMergedPlayerLightDistance(2, 20, 40, 10)).toBe(5)
   })
 })
 
@@ -63,6 +78,9 @@ describe('resolvePartyPlayerLightAggregate', () => {
     expect(a.anyHeadlamp).toBe(false)
     expect(a.intensityBeforeGlobalFlicker).toBe(0)
     expect(a.combinedDistance).toBe(0)
+    expect(a.maxSourceDistance).toBe(0)
+    expect(a.anyLantern).toBe(false)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('sums one equipped lantern using per-instance base', () => {
@@ -81,6 +99,9 @@ describe('resolvePartyPlayerLightAggregate', () => {
     expect(a.summandCount).toBe(1)
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.equippedLanternIntensity)
     expect(a.combinedDistance).toBe(DEFAULT_RENDER.equippedLanternDistance)
+    expect(a.maxSourceDistance).toBe(DEFAULT_RENDER.equippedLanternDistance)
+    expect(a.anyLantern).toBe(true)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('sums lanterns across two party members', () => {
@@ -108,6 +129,9 @@ describe('resolvePartyPlayerLightAggregate', () => {
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.equippedLanternIntensity * 2)
     const D = DEFAULT_RENDER.equippedLanternDistance
     expect(a.combinedDistance).toBeCloseTo(2 * D)
+    expect(a.maxSourceDistance).toBeCloseTo(D)
+    expect(a.anyLantern).toBe(true)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('sums torches with torch theme mult', () => {
@@ -134,6 +158,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     const a = resolvePartyPlayerLightAggregate(state, content, torchTheme)
     expect(a.summandCount).toBe(2)
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.heldTorchIntensity * 1.5 * 2)
+    expect(a.anyLantern).toBe(false)
+    expect(a.maxTorchHeldDistance).toBeCloseTo(DEFAULT_RENDER.heldTorchDistance)
   })
 
   it('adds each glowbug jar row instead of taking party max jar fill', () => {
@@ -163,6 +189,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     const d0 = DEFAULT_RENDER.glowbugDistance * Math.sqrt(3)
     const d1 = DEFAULT_RENDER.glowbugDistance * Math.sqrt(7)
     expect(a.combinedDistance).toBeCloseTo(d0 + d1)
+    expect(a.anyLantern).toBe(false)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('sets anyHeadlamp when a headlamp is equipped', () => {
@@ -180,6 +208,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     const a = resolvePartyPlayerLightAggregate(state, content, unitTheme)
     expect(a.anyHeadlamp).toBe(true)
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.headlampIntensity)
+    expect(a.anyLantern).toBe(false)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('headlamp uses max(lantern, torch) theme mult (torch-boosted themes do not dim head vs held torch)', () => {
@@ -227,6 +257,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     expect(a.intensityBeforeGlobalFlicker).toBeCloseTo(DEFAULT_RENDER.headlampIntensity * 4, 1)
     const d = DEFAULT_RENDER.headlampDistance
     expect(a.combinedDistance).toBeCloseTo(d + d * Math.sqrt(3), 1)
+    expect(a.anyLantern).toBe(false)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('three lanterns: max(d) + √(Σ_rest d²)', () => {
@@ -256,6 +288,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     const a = resolvePartyPlayerLightAggregate(state, content, unitTheme)
     const D = DEFAULT_RENDER.equippedLanternDistance
     expect(a.combinedDistance).toBeCloseTo(D + Math.sqrt(2) * D)
+    expect(a.anyLantern).toBe(true)
+    expect(a.maxTorchHeldDistance).toBe(0)
   })
 
   it('combinedDistance sums two different per-source reaches', () => {
@@ -284,5 +318,8 @@ describe('resolvePartyPlayerLightAggregate', () => {
     const dt = DEFAULT_RENDER.heldTorchDistance
     const dl = DEFAULT_RENDER.equippedLanternDistance
     expect(a.combinedDistance).toBeCloseTo(dt + dl)
+    expect(a.maxSourceDistance).toBeCloseTo(Math.max(dt, dl))
+    expect(a.anyLantern).toBe(true)
+    expect(a.maxTorchHeldDistance).toBeCloseTo(dt)
   })
 })

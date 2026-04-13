@@ -38,6 +38,7 @@ import {
 import { ROOM_HAZARD_SPRITE_SRC, shouldPlaceHazardDecal } from '../game/world/hazardDefs'
 import { bossVisualScale } from '../game/content/npcBosses'
 import {
+  effectiveMergedPlayerLightDistance,
   glowbugMulForInventory,
   resolvePartyPlayerLightAggregate,
   type PartyPlayerLightThemeMults,
@@ -1284,7 +1285,19 @@ export class WorldRenderer {
       const raw = plAgg.intensityBeforeGlobalFlicker * globalI * flicker
       const cap = Math.max(0, Number(state.render.equippedLightIntensityCap ?? 10))
       this.lantern.intensity = Math.max(0, Math.min(raw, cap))
-      this.lantern.distance = plAgg.combinedDistance
+      const effMerged = effectiveMergedPlayerLightDistance(
+        plAgg.summandCount,
+        plAgg.combinedDistance,
+        raw,
+        cap,
+      )
+      let d = Math.max(effMerged, plAgg.maxSourceDistance)
+      // Lantern rows often use a longer tuned reach than torch; at the same capped intensity, a larger
+      // PointLight.distance thins near-field brightness vs torch-only (session 00b0dc post-fix: d≈9.2 > 7.5).
+      if (plAgg.anyLantern && plAgg.maxTorchHeldDistance > 0) {
+        d = Math.min(d, plAgg.maxTorchHeldDistance)
+      }
+      this.lantern.distance = d
     }
     {
       const base = new THREE.Color(0xffd7a0)
